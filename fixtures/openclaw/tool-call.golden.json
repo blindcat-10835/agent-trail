@@ -1,0 +1,17 @@
+{
+  "id": "stub-session-id",
+  "source": "openclaw",
+  "project": "test-project",
+  "startedAt": null,
+  "endedAt": null,
+  "status": "unknown",
+  "metrics": {
+    "messageCount": 0,
+    "userMessageCount": 0,
+    "hasToolCalls": false,
+    "terminationStatus": "unknown",
+    "parserMalformedLines": 0,
+    "isTruncated": false
+  },
+  "turns": []
+}

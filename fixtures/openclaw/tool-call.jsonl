@@ -1,0 +1,4 @@
+{"type":"user","timestamp":"2024-01-01T10:00:00Z","message":{"role":"user","content":"Read the auth.ts file"}}
+{"type":"assistant","timestamp":"2024-01-01T10:00:05Z","message":{"role":"assistant","content":[{"type":"text","text":"I'll read the auth.ts file for you"},{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"src/auth.ts"}}],"model":"claude-sonnet-4-20250514"}}
+{"type":"tool_result","timestamp":"2024-01-01T10:00:06Z","message":{"tool_use_id":"toolu_1","content":"export function authenticate(user) {\n  return user.isValid;\n}"}}
+{"type":"assistant","timestamp":"2024-01-01T10:00:10Z","message":{"role":"assistant","content":"The auth.ts file contains an authenticate function that checks user validity","model":"claude-sonnet-4-20250514"}}
