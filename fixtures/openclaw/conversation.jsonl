@@ -1,4 +1,4 @@
 {"type":"user","timestamp":"2024-01-01T10:00:00Z","message":{"role":"user","content":"List all agents"}}
 {"type":"assistant","timestamp":"2024-01-01T10:00:05Z","message":{"role":"assistant","content":"Found 3 active agents","model":"claude-sonnet-4-20250514"}}
 {"type":"user","timestamp":"2024-01-01T10:05:00Z","message":{"role":"user","content":"Show me the details"}}
-{"type":"assistant","timestamp":"2024-01-01T10:05:05Z","message":{"role":"assistant":"I'll fetch the agent details","model":"claude-sonnet-4-20250514"}}
+{"type":"assistant","timestamp":"2024-01-01T10:05:05Z","message":{"role":"assistant","content":"I'll fetch the agent details","model":"claude-sonnet-4-20250514"}}

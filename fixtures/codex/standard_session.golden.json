@@ -6,7 +6,7 @@
   "endedAt": null,
   "status": "unknown",
   "metrics": {
-    "messageCount": 0,
+    "messageCount": 3,
     "userMessageCount": 0,
     "hasToolCalls": false,
     "terminationStatus": "unknown",
