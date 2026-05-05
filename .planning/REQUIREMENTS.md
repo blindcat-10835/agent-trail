@@ -1,93 +1,164 @@
-# Requirements: OVAO
+# Requirements: agent-tracing-dashboard
 
-**Defined:** 2026-04-30
-**Core Value:** Agent 状态实时可视化 — 用户一眼掌握所有 Agent 运行状态
+**Defined:** 2026-05-06  
+**Core Value:** 开发者能快速找到本地运行过的 agent session，并按 turn 准确复盘每轮用户输入、agent 响应、工具/技能/subagent 活动和失败原因。
 
 ## v1 Requirements
 
-### 工程基础 (Engineering)
+### Foundation
 
-- [ ] **ENGR-01**: 项目脚手架配置（Next.js 16 + Tailwind v4 CSS-first + ESLint + shadcn/ui）
-- [ ] **ENGR-02**: 设计令牌系统（HUD 语义化 CSS 变量，light/dark 双主题，WCAG AA 对比度验证）
-- [ ] **ENGR-03**: Shell 布局（侧栏导航 + 主内容区 + 底部状态栏）
-- [ ] **ENGR-04**: HUD 基础组件库（Card / Panel / StatusIndicator / Header / GlowEffect）
+- [ ] **FOUND-01**: 项目文档、导航文案和默认入口使用 agent-tracing-dashboard 语义，不再把产品定义为单一 OVAO/OpenClaw visual office。
+- [ ] **FOUND-02**: 代码中定义统一 Trace Contract，包含 Source、Session、Turn、Message、ToolCall、SkillUse、Subagent、Activity、TokenUsage、Timing metadata。
+- [ ] **FOUND-03**: 建立 OpenClaw、Claude Code、Codex fixture corpus，并为 canonical parser 输出建立黄金样例。
+- [ ] **FOUND-04**: 保留现有 OpenClaw Gateway live overview 能力，避免改造期间丢失已完成的 Agent/KPI/Sessions/Cron/Skills/Activity 信息。
+- [ ] **FOUND-05**: 前端提供 source-aware 空状态、错误状态和配置状态，能区分未安装、未配置、无 session、读取失败、解析失败。
 
-### Agent Dashboard
+### Ingest Data Plane
 
-- [ ] **DASH-01**: Agent 状态网格（卡片布局展示所有 Agent 实时状态） ✅ Phase 4
-- [ ] **DASH-02**: Agent 状态指示器（颜色编码：idle/working/tool_calling/speaking/error） ✅ Phase 4
-- [ ] **DASH-03**: KPI 摘要条（活跃/工作中/错误 Agent 数量，Token 用量） ✅ Phase 4
-- [ ] **DASH-04**: Gateway 连接状态指示器（在线/离线/重连中） ✅ Phase 4
-- [ ] **DASH-05**: 搜索/筛选 Agent（按状态筛选、按名称搜索） ✅ Phase 4
+- [ ] **DATA-01**: 新增本地 Go ingest service，可启动 health/version/sources/events API。
+- [ ] **DATA-02**: ingest service 使用 SQLite WAL/FTS5 存储本地索引，包含 sessions、messages、tool_calls、tool_result_events、turns/source metadata/sync state。
+- [ ] **DATA-03**: ingest service 支持 OpenClaw、Claude Code、Codex 的默认目录发现、env/config 覆盖和 source health 状态。
+- [ ] **DATA-04**: ingest service 支持 fsnotify 文件监听、debounce、periodic resync fallback、skip cache 和 parse error 记录。
+- [ ] **DATA-05**: ingest service 暴露 REST API：sources、sessions、session detail、turns、messages、tools、children、search、sync/resync。
+- [ ] **DATA-06**: ingest service 暴露全局和单 session SSE，用于通知前端重新拉取 session/turn 数据。
+- [ ] **DATA-07**: API 只能按已索引 session id 读取受控 source file，不接受客户端任意文件路径。
 
-### Office Layout
+### Source Parsers
 
-- [ ] **OFFC-01**: 2D 办公室平面图（Agent 在工位上的位置可视化）
-- [ ] **OFFC-02**: Agent 位置交互（点击 Agent 查看状态/跳转工作区）
+- [ ] **SRC-01**: OpenClaw parser 支持 session header、message、toolResult role、usage 字段归一化、agent 子目录 session id 和 archive suffix 处理。
+- [ ] **SRC-02**: Claude Code parser 支持 uuid/parentUuid DAG、fork/continuation、queued command、streaming duplicate collapse、compact/system boundary 和 subagent mapping。
+- [ ] **SRC-03**: Codex parser 支持 session_meta、turn_context、response_item、event_msg、function_call/function_call_output、spawn_agent/wait/subagent notification 和 token_count 去重。
+- [ ] **SRC-04**: 三个 parser 都输出 canonical Message、ToolCall、ToolResultEvent、SubagentLink 和 source metadata。
+- [ ] **SRC-05**: parser 记录 termination_status、is_truncated、parser_malformed_lines、source_version、cwd/git_branch 等调试字段。
 
-### Workspace 视图
+### Turn Replay Model
 
-- [ ] **WORK-01**: 单 Agent 详情视图（终端日志流 + 任务进度 + 能力信息） ✅ Phase 4
-- [ ] **WORK-02**: 实时日志流（WebSocket 推送的彩色编码事件流） ✅ Phase 4
+- [ ] **TURN-01**: ingest 层提供 turn-first read model，按 user message 边界聚合 assistant response、tool calls、skills、subagents 和 activity。
+- [ ] **TURN-02**: 每个 turn 保留 startedAt、endedAt、duration、token usage、model、failure/error 状态和 source provenance。
+- [ ] **TURN-03**: Tool call 按 tool_use_id/call_id/toolCallId 精确配对结果，支持并发工具和多 result event。
+- [ ] **TURN-04**: Skill 使用以独立 block 呈现，显示 skill name、输入摘要、结果/状态。
+- [ ] **TURN-05**: Subagent 调用支持 `subagentSessionId`，可在父 turn 内 lazy 展开，也可打开完整子 session。
+- [ ] **TURN-06**: System/compact/queued/interruption 等边界事件保留在数据模型中，UI 默认折叠但可查看。
+
+### Frontend Architecture
+
+- [ ] **UI-01**: 前端采用 source-first 路由和 header switcher，至少支持 `/openclaw/*`、`/claude-code/*`、`/codex/*`。
+- [ ] **UI-02**: 实现 AgentToolProvider/registry/capability flags/UI profiles，三种 source 共享 Shell、Session Explorer、Replay 组件。
+- [ ] **UI-03**: 保留 legacy redirects，使 `/dashboard`、`/sessions`、`/activity` 等旧入口能跳到 OpenClaw 对应页面。
+- [ ] **UI-04**: Session Explorer 支持 source、project/workspace、model、status、时间、搜索、失败、tool/subagent facets 过滤。
+- [ ] **UI-05**: 前端通过 trace API client/store/selectors 读取 ingest API，不在 replay 组件中直接 fetch 文件或解析 JSONL。
+
+### OpenClaw Dashboard
+
+- [ ] **OPEN-01**: OpenClaw dashboard 保留并增强现有 overview：Agent 状态、Gateway 状态、KPI、sessions、skills、cron、activity、usage。
+- [ ] **OPEN-02**: OpenClaw live Gateway 数据和 ingest 历史 session 通过 session key/session id 做 best-effort link，支持从 overview drill down 到 turn replay。
+- [ ] **OPEN-03**: OpenClaw 无 Gateway 或 ingest 未启动时仍显示明确状态，不把 loading 当成永久空白。
+
+### Replay UI
+
+- [ ] **REPLAY-01**: Session replay 页面按 turn 展示用户输入、assistant 响应、tool/skill/subagent/activity，并支持展开/折叠。
+- [ ] **REPLAY-02**: Replay UI 支持长 session 虚拟化或 range pagination，切换 session/filter 后滚动测量缓存不会串场。
+- [ ] **REPLAY-03**: Tool block 显示 tool name/category、input JSON/摘要、result/status/error/duration，并支持 copy。
+- [ ] **REPLAY-04**: Subagent inline view 支持 lazy load 子 session messages/turns，并限制嵌套深度防止无限展开。
+- [ ] **REPLAY-05**: Replay 页面支持 in-session search、user/assistant/tool/skill/subagent/system block filters、上一/下一 turn 导航。
+- [ ] **REPLAY-06**: Replay 页面支持 copy message、copy tool、copy turn，输出适合调试和 issue/prompt 复用。
+- [ ] **REPLAY-07**: Replay 页面明确展示 running/awaiting user/aborted/error/truncated/parser warning 等状态。
+
+### Hardening
+
+- [ ] **HARD-01**: parser fixture tests 覆盖普通对话、工具调用、失败工具、subagent、queued command、compact boundary、截断尾行、malformed line 和 archive file。
+- [ ] **HARD-02**: ingest API 和前端能处理 1k+ messages / 10k+ tool events 的长 session，不出现明显卡顿或内存暴涨。
+- [ ] **HARD-03**: 本地路径、session id、source roots 和错误信息经过安全约束，避免读取任意文件或泄露不必要路径。
+- [ ] **HARD-04**: 隐私默认值明确：不上传、不公开分享、不执行工具；导出/copy 前只处理用户主动选择的内容。
+- [ ] **HARD-05**: 开发期启动流程能同时启动/连接 Next.js 和 ingest service，并在 UI 中展示 ingest 连接状态。
 
 ## v2 Requirements
 
-### 设置与偏好
+### Extended Sources
 
-- **PREF-01**: 用户设置页面（主题切换、Gateway 配置、布局偏好）
-- **PREF-02**: 自定义强调色（cyan/amber/green/purple/red 主题切换）
-- **PREF-03**: 布局密度控制（紧凑/标准/宽松）
+- **EXT-01**: 支持 agentsview 中更多 agent 类型，如 Gemini、OpenCode、Cursor、Copilot。
+- **EXT-02**: 支持导入 Claude.ai / ChatGPT export。
 
-### 高级可视化
+### Advanced Analysis
 
-- **VIS-01**: Radar 雷达可视化（极坐标图展示 Agent 活跃度）
-- **VIS-02**: 活跃度迷你图（每张 Agent 卡片内的近期活动 sparkline）
-- **VIS-03**: 工具冷却进度条（tool_calling 状态下的动画进度条）
+- **ANALY-01**: Session health/outcome/failure signals 更丰富地评分和解释。
+- **ANALY-02**: Session/turn 对比、成本趋势、tool failure trend 和 project heatmap。
+- **ANALY-03**: 可选 AI insight generation，基于本地 trace 生成问题总结。
 
-### 效率工具
+### Productization
 
-- **UTIL-01**: Command Palette（⌘K 快速搜索和导航）
-- **UTIL-02**: Provider/成本追踪（Token 用量、费用估算、模型分布）
+- **PROD-01**: 单命令 launcher 或桌面打包，自动管理 ingest service 生命周期。
+- **PROD-02**: Markdown/JSON/CSV export 和可配置 redaction。
+- **PROD-03**: 可选 OpenTelemetry/OpenInference exporter，而非 v1 ingestion server。
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| 3D 效果/WebGL | 性能开销大，无障碍性差，2D CSS 足够 |
-| 音频通知 | 监控场景下干扰大，用视觉指示替代 |
-| 拖拽面板 | 状态管理复杂，布局脆弱，用固定网格+密度切换 |
-| 国际化 (i18n) | 当前只需中文界面，代码结构预留扩展即可 |
-| 多 Gateway 管理 | 只连接单个 Gateway，不需要多实例管理 |
-| Agent 配置编辑 | 只做可视化展示，不做编辑操作 |
-| 认证/权限 | 单用户本地工具，无认证需求 |
-| 移动端专门优化 | 桌面优先，响应式但不专门适配移动端 |
-| 协作功能 | 监控工具，不是协作平台 |
-| 游戏化 | 不适合专业工具场景 |
+| SaaS observability / multi-tenant backend | 当前定位是本地 developer tool |
+| Public share links | 本地 session 可能含敏感代码、路径、shell output |
+| Tool rerun / prompt replay execution | 会产生副作用和安全问题，v1 只观察已有过程 |
+| Prompt playground / model comparison | 不服务当前 session replay 核心 |
+| LLM evals / LLM-as-judge | 需要额外模型调用和评估质量设计，后置 |
+| RBAC / team collaboration | 单用户本地工具不需要 |
+| 全 agent 类型支持 | v1 只做用户明确要求的 OpenClaw、Claude Code、Codex |
+| 移动端专项 | 桌面开发者调试优先 |
+| 3D/WebGL 可视化 | 不提升调试效率，增加性能和可访问性风险 |
+| 修改/删除原始 session 文件 | 原始日志是审计证据，v1 只读索引 |
 
 ## Traceability
 
-| Requirement | Milestone | Phase | Status |
-|-------------|-----------|-------|--------|
-| ENGR-01 | M1 | Phase 1 | Pending |
-| ENGR-02 | M1 | Phase 2 | Pending |
-| ENGR-03 | M1 | Phase 3 | Pending |
-| ENGR-04 | M1 | Phase 3 | Pending |
-| DASH-01 | M2 | Phase 4 | ✅ Complete |
-| DASH-02 | M2 | Phase 4 | ✅ Complete |
-| DASH-03 | M2 | Phase 4 | ✅ Complete |
-| DASH-04 | M2 | Phase 4 | ✅ Complete |
-| DASH-05 | M2 | Phase 4 | ✅ Complete |
-| OFFC-01 | M3 | Phase 5 | Pending |
-| OFFC-02 | M3 | Phase 5 | Pending |
-| WORK-01 | M2 | Phase 4 | ✅ Complete |
-| WORK-02 | M2 | Phase 4 | ✅ Complete |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Pending |
+| FOUND-05 | Phase 1 | Pending |
+| DATA-01 | Phase 2 | Pending |
+| DATA-02 | Phase 2 | Pending |
+| DATA-03 | Phase 2 | Pending |
+| DATA-04 | Phase 6 | Pending |
+| DATA-05 | Phase 2 | Pending |
+| DATA-06 | Phase 6 | Pending |
+| DATA-07 | Phase 6 | Pending |
+| SRC-01 | Phase 2 | Pending |
+| SRC-02 | Phase 3 | Pending |
+| SRC-03 | Phase 3 | Pending |
+| SRC-04 | Phase 3 | Pending |
+| SRC-05 | Phase 3 | Pending |
+| TURN-01 | Phase 3 | Pending |
+| TURN-02 | Phase 3 | Pending |
+| TURN-03 | Phase 3 | Pending |
+| TURN-04 | Phase 5 | Pending |
+| TURN-05 | Phase 5 | Pending |
+| TURN-06 | Phase 5 | Pending |
+| UI-01 | Phase 4 | Pending |
+| UI-02 | Phase 4 | Pending |
+| UI-03 | Phase 4 | Pending |
+| UI-04 | Phase 4 | Pending |
+| UI-05 | Phase 4 | Pending |
+| OPEN-01 | Phase 4 | Pending |
+| OPEN-02 | Phase 6 | Pending |
+| OPEN-03 | Phase 6 | Pending |
+| REPLAY-01 | Phase 5 | Pending |
+| REPLAY-02 | Phase 5 | Pending |
+| REPLAY-03 | Phase 5 | Pending |
+| REPLAY-04 | Phase 5 | Pending |
+| REPLAY-05 | Phase 5 | Pending |
+| REPLAY-06 | Phase 5 | Pending |
+| REPLAY-07 | Phase 5 | Pending |
+| HARD-01 | Phase 6 | Pending |
+| HARD-02 | Phase 6 | Pending |
+| HARD-03 | Phase 6 | Pending |
+| HARD-04 | Phase 6 | Pending |
+| HARD-05 | Phase 6 | Pending |
 
 **Coverage:**
-
-- v1 requirements: 13 total
-- Mapped to phases: 13
+- v1 requirements: 43 total
+- Mapped to phases: 43
 - Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-04-30*
-*Last updated: 2026-04-30 after initial definition*
+*Requirements defined: 2026-05-06*
+*Last updated: 2026-05-06 after project initialization*

@@ -1,92 +1,101 @@
-# OVAO — OpenClaw Visual Agents Office
+# agent-tracing-dashboard
 
 ## What This Is
 
-OVAO 是 OpenClaw 平台的 Agent 可视化管理界面，让用户通过赛博朋克 HUD 风格的仪表盘实时监控、管理和交互多个 AI Agent。面向开发者和运维人员，提供 Agent 状态总览、Office 可视化布局和单 Agent 工作区视图。
+agent-tracing-dashboard 是基于 OVAO 改造的本地 AI agent session tracing dashboard。它面向开发者，统一展示 OpenClaw、Claude Code、Codex 在本机运行过的 session，并能按 turn 重现一次 session 的过程：用户说了什么、agent 回了什么、这一轮调用了哪些工具/技能、生成了哪些 subagent 和相关 activity。
 
-旧版（openclaw-visual-agent-office）功能完整但 UI 过时，本次重写仅替换 UI 层，数据层（WebSocket RPC + Zustand stores）完整复用。
+OpenClaw 仍保留现有实时 overview 价值：Agent 状态、Gateway 状态、sessions、skills、cron、activity、usage 等信息继续可见，并和历史 trace drilldown 打通。
 
 ## Core Value
 
-Agent 状态实时可视化 — 用户一眼掌握所有 Agent 的运行状态，快速定位问题 Agent。
+开发者能快速找到本地运行过的 agent session，并按 turn 准确复盘每轮用户输入、agent 响应、工具/技能/subagent 活动和失败原因。
 
 ## Requirements
 
 ### Validated
 
-（旧版已验证的能力，本次 UI 重写需完整继承）
+（来自 OVAO 当前代码和参考实现的已验证基础能力）
 
-- ✓ WebSocket RPC 连接 OpenClaw Gateway — existing
-- ✓ Agent 列表和状态实时同步 — existing
-- ✓ Agent 日志流实时展示 — existing
-- ✓ Office 可视化布局（Agent 在办公室中的位置） — existing
-- ✓ 单 Agent 工作区（终端/任务详情） — existing
-- ✓ Zustand store 管理 Agent/日志/UI 状态 — existing
+- ✓ Next.js App Router HUD Shell 可承载 dashboard、sessions、activity 等页面 — existing
+- ✓ OpenClaw Gateway WebSocket/RPC 可提供实时 Agent 状态、active sessions、skills、cron、usage、activity 等 overview 数据 — existing
+- ✓ 当前 OpenClaw overview、sessions table、session detail drawer 已证明基础 UI 方向可行 — existing
+- ✓ agentsview 参考实现已验证本地 session 文件发现、parser、SQLite 索引、REST/SSE、message/tool/subagent 渲染方案 — reference
 
 ### Active
 
-- [ ] 全站赛博朋克 HUD 视觉风格（Rajdhani + JetBrains Mono，clip-path 切角，scanline/grid overlay，霓虹发光）
-- [ ] 响应式 Shell 布局（侧栏导航 + 主内容区 + 状态栏）
-- [ ] 设计令牌系统（语义化 token，light/dark 双主题）
-- [ ] Agent Dashboard 页面（Agent 列表/状态卡片/实时监控）
-- [ ] Office Layout 页面（可视化 Agent 办公室位置布局）
-- [ ] Workspace 视图页面（单 Agent 终端/日志/任务详情）
-- [ ] 脚手架和工具链配置（Biome, shadcn/ui, Tailwind v4）
+- [ ] 顶层支持 OpenClaw、Claude Code、Codex 三个 source dashboard，并通过 header/source switcher 切换。
+- [ ] OpenClaw overview 保真增强，保留现有 Agent/KPI/Sessions/Cron/Skills/Activity 信息并支持进入 trace drilldown。
+- [ ] 建立本项目统一 Trace Contract：Source、Session、Turn、Message、ToolCall、SkillUse、Subagent、Activity、Token/Timing metadata。
+- [ ] 新增本地 Go ingest service，复刻 agentsview 的目录发现、source-specific parser、SQLite WAL/FTS5、REST API、SSE 变更通知。
+- [ ] 支持 OpenClaw、Claude Code、Codex 本地 session 文件解析，并输出统一 canonical model。
+- [ ] 提供 turn-first replay API：每个 turn 聚合 user message、assistant response、tool calls、skills、subagents 和相关 activity。
+- [ ] 前端采用共享 `[tool]` 路由、AgentToolProvider、Session Explorer 和 Replay 组件架构，避免为三种 agent 重复实现页面。
+- [ ] Session 列表支持 source、project/workspace、model、status、time、search、failure/tool/subagent facets。
+- [ ] Session replay 支持长 transcript 虚拟化、tool/skill/subagent 展开、block filters、in-session search、copy turn/tool/message。
+- [ ] 本地同步和解析状态可观测：source path、last sync、watcher 状态、parse errors、empty/error states。
+- [ ] 默认只读、安全本地访问：API 不接受任意路径，敏感内容默认不上传、不公开分享。
 
 ### Out of Scope
 
-- 用户设置/偏好页面 — v2 再做，当前使用默认配置
-- 国际化 (i18n) — 当前只需中文界面，但代码结构需支持未来扩展
-- 多 Gateway 管理 — 当前只连接单个 Gateway (ws://localhost:18789)
-- Agent 配置编辑 — 只做可视化展示，不做编辑操作
-- 认证/权限 — 单用户本地工具，无认证需求
-- 移动端适配 — 桌面优先，响应式但不专门优化移动端
+- 复制 LangSmith/Langfuse/Phoenix 的完整 SaaS 观测平台 — 本项目是本地 session trace viewer，不做云端 observability 平台。
+- v1 支持 agentsview 的全部 agent 类型 — v1 只做 OpenClaw、Claude Code、Codex，schema 保留扩展点。
+- Tool rerun / prompt edit / replay execution — “回放”只观察已有过程，不重新执行工具或模型。
+- Prompt playground、model comparison、AI evals、LLM-as-judge insights — 非本地复盘核心，后续再评估。
+- Public publish/share links — 本地 session 可能包含代码、路径、命令输出和密钥，v1 不上传。
+- Multi-user auth / RBAC / team collaboration — 当前定位是单用户本地工具。
+- OTLP/OpenTelemetry ingestion server — 内部概念可接近 trace/span，但 v1 不做通用 telemetry collector。
+- 移动端专项优化和 3D/WebGL 可视化 — 桌面开发者调试优先。
+- Agent 配置编辑或控制 OpenClaw/Claude/Codex 行为 — v1 只读观察，不做控制面。
 
 ## Context
 
-- **旧版源码**：`../references/openclaw-visual-agent-office/` — 功能完整的 Next.js 14 项目，`src/gateway/` 和 `src/stores/` 数据层稳定
-- **新设计稿**：`../ovao-design/` — `dashboard-hud.html` 是视觉风格基准，`dashboard.html` 是布局结构参考
-- **当前项目**：`ovao/` — Next.js 16 App Router 脚手架已搭建，`gateway/` 和 `stores/` 已从旧版迁移过来
-- **数据层**：gateway/ (WebSocket RPC 客户端) + stores/ (Zustand) 已就位，允许小范围适配（加 selector/类型导出）
-- **HUD 风格**：全站统一赛博朋克 HUD — Rajdhani 标题字体，JetBrains Mono 数据字体，clip-path 切角卡片，scanline 和 grid 叠加层，霓虹发光效果
+- **当前项目来源**：OVAO（OpenClaw Visual Agents Office）HUD dashboard。当前代码已有 Next.js App Router Shell、OpenClaw Gateway 类型、overview/session/activity UI。
+- **改造目标**：从单一 OpenClaw visual office/dashboard，升级为跨 OpenClaw、Claude Code、Codex 的本地 session tracing dashboard。
+- **参考实现**：`../references/agentsview`。它用 Go 单二进制实现本地 session 文件发现、parser registry、SQLite/FTS5、REST/SSE 和 Svelte 前端。我们复用其数据获取思路，不直接迁移 UI。
+- **当前不足**：`app/api/sessions/messages/route.ts` 只按需读取 OpenClaw JSONL 的最后 30 行，返回扁平 `{role, content, timestamp}`，不能支撑 turn replay、tool result、subagent、搜索或多 source。
+- **关键产品模型**：Turn 是用户定义的核心单位，一次 user-agent exchange 内必须包含用户输入、agent 回复、工具/技能/subagent/activity。
+- **技术方向**：Next.js 前端保留，新增本地 Go ingest service 负责历史数据面；OpenClaw Gateway WebSocket 继续负责实时 overview。
 
 ## Constraints
 
-- **Tech Stack**: Next.js 16 App Router + React 19 + TypeScript + Tailwind v4 + shadcn/ui + Zustand + ESLint + pnpm — 用户明确指定
-- **Data Layer**: gateway/ 和 stores/ 主体不改，允许小范围适配 — 数据层稳定，避免引入回归
-- **Visual Style**: 必须遵循 dashboard-hud.html 设计稿的 HUD 赛博朋克风格 — 设计约束
-- **Semantic Tokens**: 视觉令牌走语义化 (text-foreground / bg-background / border-border) — 维护性要求
-- **Dual Theme**: light/dark 双主题都要验证 — 可访问性要求
-- **Language**: AI 文档/spec/plan 用中文，代码注释和变量名用英文 — 开发约定
-- **AGENTS.md**: 项目有 Next.js 16 breaking changes 警告，编码前必须读 `node_modules/next/dist/docs/`
+- **Tech Stack**: Next.js + React + TypeScript + Tailwind v4 + shadcn/ui + Zustand + pnpm 继续作为前端栈 — 保留 brownfield 投入。
+- **Data Plane**: 历史 session replay 必须来自本地 ingest/index，不再继续扩展 request-time JSONL 扫描 route — 避免性能和数据准确性问题。
+- **Source Scope**: v1 仅支持 OpenClaw、Claude Code、Codex — 用户明确范围，降低 parser 和 UI 复杂度。
+- **Local-first**: 默认 localhost、本地文件、本地 SQLite，不上传 session 内容 — 保护敏感代码和命令输出。
+- **Read-only**: v1 不执行工具、不修改原始 session 文件、不控制 agent — 降低安全和副作用风险。
+- **Frontend Architecture**: 三个 source 共享 Shell、Session Explorer、Replay 组件和 Trace API store，差异通过 adapter/profile/slots 表达 — 防止页面分叉。
+- **Parser Rigor**: Claude DAG/fork、Codex function_call/subagent、OpenClaw toolResult 必须 source-specific 处理 — 不能通用字符串扫描。
+- **Language**: AI 文档/spec/plan 用中文，代码注释、变量名、commit message 用英文 — 沿用项目约定。
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| 全站 HUD 风格 | 统一视觉体验，减少设计系统复杂度 | — Pending |
-| 数据层小范围适配 | 主体锁定降低风险，但允许加 selector 方便 UI 消费 | — Pending |
-| Tailwind v4 + shadcn/ui | 最新版本，Tailwind v4 用 CSS-first 配置，shadcn/ui 提供可复用组件基础 | — Pending |
-| 保持 ESLint | 项目已有 eslint-config-next，无需迁移到 Biome | — Pending |
-| M1 先做脚手架+令牌+Shell | 先建立基础设施再逐页面开发 | — Pending |
-| 设置/偏好推迟到 v2 | 不是核心价值，先聚焦可视化 | — Pending |
+| Hybrid Next.js frontend + Go ingest service | 保留 OVAO 前端投入，同时复刻 agentsview 已验证的数据采集/索引方案 | — Pending |
+| Turn-first read model | 用户目标是重现每轮过程，turn 比 raw message 更贴合核心体验 | — Pending |
+| OpenClaw Gateway 只负责 live overview，ingest 负责历史 replay | 避免把实时状态和历史真相混成一个不稳定 store | — Pending |
+| v1 只做 OpenClaw / Claude Code / Codex | 明确范围，避免复刻 agentsview 全 agent support | — Pending |
+| Source-specific parsers 输出 canonical trace model | 三种日志格式差异大，必须把复杂度留在 adapter/parser 层 | — Pending |
+| 前端采用 `[tool]` 路由 + AgentToolProvider + UI profiles | 三个 dashboard 共享架构，只在能力/slots/columns 上差异化 | — Pending |
+| 默认只读本地工具 | 保护用户机器和 session 敏感内容，避免 tool rerun 副作用 | — Pending |
+| 不在 v1 做 SaaS observability / OTLP / AI evals | 聚焦本地 session replay，不扩大产品边界 | — Pending |
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
-**After each phase transition** (via `/gsd-transition`):
+**After each phase transition** (via `$gsd-transition`):
 1. Requirements invalidated? → Move to Out of Scope with reason
 2. Requirements validated? → Move to Validated with phase reference
 3. New requirements emerged? → Add to Active
 4. Decisions to log? → Add to Key Decisions
 5. "What This Is" still accurate? → Update if drifted
 
-**After each milestone** (via `/gsd-complete-milestone`):
+**After each milestone** (via `$gsd-complete-milestone`):
 1. Full review of all sections
 2. Core Value check — still the right priority?
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-30 after initialization*
+*Last updated: 2026-05-06 after agent-tracing-dashboard initialization*

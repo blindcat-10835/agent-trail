@@ -1,62 +1,66 @@
-# OVAO Project State
+# agent-tracing-dashboard Project State
 
-**Project:** OpenClaw Visual Agents Office
-**Core Value:** Agent 状态实时可视化 — 用户一眼掌握所有 Agent 运行状态
-**Last Updated:** 2026-05-02
+**Project:** agent-tracing-dashboard  
+**Core Value:** 开发者能快速找到本地运行过的 agent session，并按 turn 准确复盘每轮用户输入、agent 响应、工具/技能/subagent 活动和失败原因。  
+**Last Updated:** 2026-05-06
 
 ---
 
 ## Project Reference
 
-**What This Is**:
-OVAO 是 OpenClaw 平台的 Agent 可视化管理界面，让用户通过赛博朋克 HUD 风格的仪表盘实时监控、管理和交互多个 AI Agent。面向开发者和运维人员，提供 Agent 状态总览、Office 可视化布局和单 Agent 工作区视图。
+See: `.planning/PROJECT.md` (updated 2026-05-06)
 
-**Core Value**:
-Agent 状态实时可视化 — 用户一眼掌握所有 Agent 的运行状态，快速定位问题 Agent。
+**What This Is**:  
+基于 OVAO 改造的本地 AI agent session tracing dashboard，统一展示 OpenClaw、Claude Code、Codex 在本机运行过的 session，并能按 turn 重现用户输入、agent 回复、工具/技能/subagent 和 activity。
 
-**Current Focus**:
-Milestone M4 — Sessions Dashboard (✅ Complete) 和 Office Layout/Activity Console 待规划
+**Core Value**:  
+开发者能快速找到本地运行过的 agent session，并按 turn 准确复盘每轮用户输入、agent 响应、工具/技能/subagent 活动和失败原因。
+
+**Current Focus**:  
+Phase 1 — Trace Contract & Brownfield Reset
 
 ---
 
 ## Current Position
 
-**Milestone**: M4
-**Phase**: 07-sessions-dashboard
-**Plan**: 04 (complete) — Phase 7 complete
-**Status**: Phase 7 complete — Full Sessions Dashboard with page integration, navigation updates, and Overview integration
+**Milestone**: M1 Trace Foundation  
+**Phase**: 1  
+**Plan**: Not planned yet  
+**Status**: Project initialized, ready for `$gsd-discuss-phase 1`
 
 **Progress Bar**:
-```
-M1 Foundation: [██████████] 100% (3/3 phases complete)
-M2 Dashboard: [██████████] 100% (1/1 phases complete)
-M3 Advanced Views: [░░░░░░░░░░] 0% (0/1 phases complete)
-M4 Dashboard Enhancements: [██████████] 100% (4/4 plans complete, Phase 7 done)
 
-Overall: [███████░░░] 71% (5/7 phases complete, Phase 7 done)
+```text
+M1 Trace Foundation: [░░░░░░░░░░] 0% (0/3 phases complete)
+M2 Multi-source UI:  [░░░░░░░░░░] 0% (0/2 phases complete)
+M3 Hardening:        [░░░░░░░░░░] 0% (0/1 phases complete)
+
+Overall:             [░░░░░░░░░░] 0% (0/6 phases complete)
 ```
 
 **Phase Progress**:
-- Phase 1 (脚手架和工具链): ✅ Complete
-- Phase 2 (设计令牌和主题系统): ✅ Complete (2026-04-30)
-- Phase 3 (Shell 布局和基础组件): ✅ Complete (2026-04-30)
-- Phase 4 (Agent Dashboard): ✅ Complete (2026-04-30)
-- Phase 5 (Office Layout): Not started
-- Phase 6 (Activity Console): Not started
-- Phase 7 (Sessions Dashboard): ✅ Complete (2026-05-02)
+
+- Phase 1: Trace Contract & Brownfield Reset — Pending
+- Phase 2: Local Ingest Core + OpenClaw Parser — Pending
+- Phase 3: Claude/Codex Parsers + Turn Assembly — Pending
+- Phase 4: Multi-source Frontend Shell + Session Explorer — Pending
+- Phase 5: Turn Replay UI — Pending
+- Phase 6: Sync, OpenClaw Drilldown & Hardening — Pending
 
 ---
 
-## Performance Metrics
+## Research Summary
 
-**Velocity**: 18 min/plan (Phase 2 Plan 1 completed in 18 min)
-**Cycle Time**: TBD (after more completed phases)
-**Lead Time**: TBD (after more completed phases)
+Research artifacts are in `.planning/research/`:
 
-**Quality Metrics**:
-- ESLint violations: 0 (all builds passing)
-- Theme contrast failures: 0 (WCAG AA compliant by design)
-- Component test coverage: TBD (not tracking in M1)
+- `AGENTSVIEW-DATA-SCHEME.md` — agentsview 数据获取方案分析和本项目改造建议
+- `STACK.md` — 推荐 Next.js + Go ingest + SQLite WAL/FTS5 + REST/SSE
+- `FEATURES.md` — v1 table stakes、differentiators、anti-features
+- `ARCHITECTURE.md` — multi-source frontend architecture
+- `PITFALLS.md` — parser/sync/replay/security failure modes
+- `SUMMARY.md` — synthesis for roadmap
+
+**Key Finding**: Next.js should remain the frontend and OpenClaw live overview surface; historical session replay should move to a local Go ingest service modeled after agentsview.
 
 ---
 
@@ -66,122 +70,93 @@ Overall: [███████░░░] 71% (5/7 phases complete, Phase 7 done
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| 全站 HUD 风格 | 统一视觉体验，减少设计系统复杂度 | ✅ Implemented (Phase 2) |
-| 数据层小范围适配 | 主体锁定降低风险，但允许加 selector 方便 UI 消费 | Pending |
-| Tailwind v4 + shadcn/ui | 最新版本，Tailwind v4 用 CSS-first 配置，shadcn/ui 提供可复用组件基础 | ✅ Implemented (Phase 1-2) |
-| 保持 ESLint | 项目已有 eslint-config-next，无需迁移到 Biome | Pending |
-| M1 先做脚手架+令牌+Shell | 先建立基础设施再逐页面开发 | ✅ In progress (Phase 2 complete) |
-| 设置/偏好推迟到 v2 | 不是核心价值，先聚焦可视化 | Pending |
-| data-theme attribute switching | 替代 .dark class，支持未来多主题扩展（v2 accent colors） | ✅ Implemented (Phase 2) |
-| Zustand over React Context | SSR-safe theme state management with less boilerplate | ✅ Implemented (Phase 2) |
-| JetBrains Mono + Inter fonts | 替换 Geist，JetBrains Mono 用于数据/代码，Inter 用于 sans 场景 | ✅ Implemented (Phase 2) |
-
-### Roadmap Evolution
-
-- Phase 6 added: Activity Console — 替换 ALERT 为结构化事件日志流 (2026-05-02)
-- Phase 7 added: Sessions Dashboard — 替换 Channels 为 AI 会话管理 (2026-05-02)
-- M4 milestone added: Dashboard Enhancements (Phases 6-7)
+| Hybrid Next.js frontend + Go ingest service | 保留当前前端投入，同时复用 agentsview 已验证的数据采集形态 | Pending |
+| Turn-first read model | 用户目标是按 turn 重现 session 过程，而不是浏览原始 message list | Pending |
+| v1 只支持 OpenClaw / Claude Code / Codex | 用户明确范围；避免 agentsview 全 agent 覆盖导致范围爆炸 | Pending |
+| OpenClaw Gateway 和 ingest 分工 | Gateway 是实时状态通道；ingest 是历史回放和搜索通道 | Pending |
+| Source-specific parser + canonical model | 三种日志协议差异大，不能用通用扫描器 | Pending |
+| 默认只读本地工具 | 不做 tool rerun、prompt playground、公开分享、RBAC 或 OTLP collector | Pending |
 
 ### Technical Context
 
-**Tech Stack**:
-- Next.js 16 App Router + React 19 + TypeScript
-- Tailwind v4 (CSS-first config with @theme inline)
-- shadcn/ui (HUD-themed CSS variable overrides)
-- Zustand (state management)
-- ESLint (not Biome — keep existing eslint-config-next)
-- pnpm (package manager)
+**Frontend**:
+- Next.js App Router + React + TypeScript
+- Tailwind v4 + shadcn/ui + HUD design tokens
+- Zustand stores
+- Existing OpenClaw Shell/Header/Sidebar/Overview/Sessions components
 
-**Data Layer** (already exists and stable):
-- `gateway/` — WebSocket RPC client (connects to ws://localhost:18789)
-- `stores/` — Zustand stores (manage agent/logs/UI state)
+**Existing OpenClaw data layer**:
+- `gateway/` WebSocket RPC client and event parser
+- OpenClaw Gateway protocol v3 types
+- Current session messages API is a temporary file-scanning route and should be replaced/proxied through ingest
 
-**Design System**:
-- Fonts: JetBrains Mono (primary, data/code) + Inter (secondary, sans scenarios)
-- Semantic tokens: text-foreground / bg-background / border-border (4-level hierarchy)
-- Themes: light/dark dual theme with WCAG AA validation (data-theme attribute switching)
-- HUD style: clip-path 切角 + scanline/grid overlay + 霓虹发光 (✅ Phase 3)
+**Planned ingest data layer**:
+- Go service under `ingest/`
+- SQLite WAL/FTS5
+- fsnotify + debounce + periodic resync
+- REST endpoints for sources/sessions/turns/messages/tools/search
+- SSE endpoints for global/session invalidation
 
-**Language Convention**:
-- AI docs/spec/plan: 中文
-- Code comments and variable names: 英文
-
-**Critical Constraint**:
-- AGENTS.md has Next.js 16 breaking changes warning — read `node_modules/next/dist/docs/` before writing code
+**Reference implementation**:
+- `../references/agentsview`
+- Go parser registry covers OpenClaw, Claude Code, Codex
+- SQLite schema already models sessions/messages/tool_calls/tool_result_events/parent-child relationships
 
 ### Dependencies
 
-**External Dependencies**:
-- OpenClaw Gateway (WebSocket RPC) — must be running for Dashboard/Workspace testing
-- 旧版源码 (../references/openclaw-visual-agent-office/) — reference for data layer patterns
-- 新设计稿 (../ovao-design/) — dashboard-hud.html is visual style baseline
-
-**Internal Dependencies**:
-- Phase 2 depends on Phase 1 (Tailwind v4 config needed for design tokens)
-- Phase 3 depends on Phase 2 (design tokens needed for Shell/HUD components)
-- Phase 4 depends on Phase 3 (Shell layout needed for Dashboard page)
-- Phase 5 depends on Phase 3 (Shell layout needed for Office Layout page)
+```text
+Trace Contract
+  -> Ingest Core/OpenClaw Parser
+  -> Claude/Codex Parser Parity
+  -> Multi-source UI Shell
+  -> Turn Replay UI
+  -> Realtime/Hardening
+```
 
 ### Blockers
 
-**Current Blockers**: None
+**Current Blockers**:
+- `gsd-sdk` command is not available in this environment, so GSD initialization was executed by writing artifacts directly.
+- Current worktree already contains unrelated deleted `.planning/phases`, `.planning/quick`, `.planning/debug`, and `.planning/ui-reviews` files. These were present before this initialization and should not be reverted unless explicitly requested.
 
 **Potential Blockers**:
-- Next.js 16 breaking changes — may impact App Router patterns
-- Tailwind v4 CSS-first config — unfamiliar to team, requires learning
-- Gateway connection — need running Gateway instance for integration testing
-- shadcn/ui theming — need to override CSS variables for HUD style
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 20260502-001 | Stale-while-revalidate dashboard snapshot cache | 2026-05-02 | 2fa2dfb | [20260502-001-dashboard-snapshot-cache](./quick/20260502-001-dashboard-snapshot-cache/) |
-| 260502-a1b | Overview cron activity 行点击弹出右侧 detail 面板 | 2026-05-02 | aca3525 | [260502-a1b-cron-activity-detail-panel](./quick/260502-a1b-cron-activity-detail-panel/) |
-| 20260502-002 | Phase 7 UI fixes: remove Sessions header nav, session detail overlay drawer, SES page layout | 2026-05-02 | 8ce7800 | [20260502-002-phase7-ui-fixes](./quick/20260502-002-phase7-ui-fixes/) |
-| 20260502-003 | Session fixes: graceful message fetch failure + center sessions page layout | 2026-05-02 | a150ccc | [20260502-003-session-fixes](./quick/20260502-003-session-fixes/) |
+- Current repo root appears to be missing `package.json` even though `../ovao/package.json` exists; Phase 1 should verify the intended project root and restore/relocate package metadata if needed.
+- Introducing Go ingest service means dev workflow must manage two processes or a launcher.
+- Parser correctness depends on fixture coverage for real OpenClaw/Claude/Codex logs.
 
 ### Todos
 
-**Immediate** (Phase 6/7 planning):
-- [ ] Run `/gsd-plan-phase 6` or `/gsd-plan-phase 7` to plan Activity Console / Sessions
-- [ ] Phase 5/6/7 可并行 — 选择优先级
+**Immediate**:
+- [ ] Run `$gsd-discuss-phase 1` to clarify trace contract scope and brownfield migration boundaries.
+- [ ] Verify whether this workspace should own `package.json` or inherit/copy from `../ovao`.
+- [ ] Decide whether old OVAO `.planning/phases` deletion state should be archived/committed separately or restored.
 
 **Upcoming**:
-- [ ] Phase 5: Office Layout (run `/gsd-discuss-phase 5`)
-- [ ] v2 features (settings, radar visualization, command palette, etc.)
+- [ ] Plan Phase 1 with fixture paths and canonical DTO details.
+- [ ] Decide ingest service launch strategy for development.
+- [ ] Audit current OpenClaw overview components for preservation contracts.
 
 ---
 
 ## Session Continuity
 
-**Last Session**: 2026-05-02 - Completed quick task 20260502-002: Phase 7 UI fixes (sessions overlay drawer, header nav cleanup)
+**Last Session**: 2026-05-06 — Initialized agent-tracing-dashboard planning from user goals and agentsview reference.
 
 **What Was Done**:
-- ✅ Created Sessions page (`/sessions`) with complete layout (Stats bar + Filter bar + Table + Detail rail)
-- ✅ Updated Sidebar navigation to add SES item (6th item: OVR/AGT/USD/SKL/ACT/SES)
-- ✅ Updated Header navigation to add Sessions link (3rd item: Dashboard/Office/Sessions)
-- ✅ Replaced Overview Channels section with Sessions summary (active count + recent 5 activities + View All link)
-- ✅ All verification checks passed (TypeScript, ESLint)
-- ✅ Phase 7 (Sessions Dashboard) now complete!
+- Read existing OVAO project instructions and `.planning` docs.
+- Analyzed `../references/agentsview` architecture, API, parser types, OpenClaw/Claude/Codex parser behavior, SQLite schema, sync watcher, and frontend transcript rendering concepts.
+- Generated research docs for stack, features, frontend architecture, pitfalls, and agentsview data scheme.
+- Replaced top-level `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, and `STATE.md` to reflect the new agent-tracing-dashboard target.
 
 **What's Next**:
-- Phase 5: Office Layout (run `/gsd-discuss-phase 5`)
-- Phase 6: Activity Console (run `/gsd-discuss-phase 6`)
-- Both phases are independent and can be parallelized
-
-**Context Handoff**:
-- Phase 7 (Sessions Dashboard): ✅ Complete
-- Full Sessions Dashboard functionality:
-  - Data layer: SessionInfo type, store integration, P0 selector, API route (Plan 07-01)
-  - UI components: Stats bar, Filter bar, Table, Detail rail, Chat bubbles (Plans 07-02, 07-03)
-  - Page integration: /sessions page, navigation updates, Overview integration (Plan 07-04)
-- User journey: Navigate from Sidebar/Header → View Sessions → Filter → Select → View details with messages
+- `$gsd-discuss-phase 1` — gather implementation decisions for Trace Contract & Brownfield Reset.
 
 **Open Questions**:
-- None
+- Should old OVAO phase artifacts be archived, restored, or intentionally removed?
+- Should ingest service be a repo-local Go module under `ingest/`, or should it initially vendor a trimmed agentsview package?
+- Should `pnpm dev` eventually launch both Next.js and ingest service, or should ingest be started manually for early phases?
 
 ---
 
-*State created: 2026-04-30*
-*Last updated: 2026-05-02*
+*State created: 2026-05-06*
+*Last updated: 2026-05-06 after project initialization*
