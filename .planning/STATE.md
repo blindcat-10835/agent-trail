@@ -1,3 +1,16 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-05-05T19:47:30.926Z"
+progress:
+  total_phases: 6
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+---
+
 # agent-tracing-dashboard Project State
 
 **Project:** agent-tracing-dashboard  
@@ -80,17 +93,20 @@ Research artifacts are in `.planning/research/`:
 ### Technical Context
 
 **Frontend**:
+
 - Next.js App Router + React + TypeScript
 - Tailwind v4 + shadcn/ui + HUD design tokens
 - Zustand stores
 - Existing OpenClaw Shell/Header/Sidebar/Overview/Sessions components
 
 **Existing OpenClaw data layer**:
+
 - `gateway/` WebSocket RPC client and event parser
 - OpenClaw Gateway protocol v3 types
 - Current session messages API is a temporary file-scanning route and should be replaced/proxied through ingest
 
 **Planned ingest data layer**:
+
 - Independent Node/TypeScript service under `ingest/`
 - SQLite WAL/FTS5
 - chokidar / Node fs watcher + debounce + periodic resync
@@ -98,6 +114,7 @@ Research artifacts are in `.planning/research/`:
 - SSE endpoints for global/session invalidation
 
 **Reference implementation**:
+
 - `../references/agentsview`
 - Go parser registry covers OpenClaw, Claude Code, Codex and should be treated as behavioral reference material for TypeScript parsers
 - SQLite schema already models sessions/messages/tool_calls/tool_result_events/parent-child relationships
@@ -116,10 +133,12 @@ Trace Contract
 ### Blockers
 
 **Current Blockers**:
+
 - `gsd-sdk` command is not available in this environment, so GSD initialization was executed by writing artifacts directly.
 - Current worktree already contains unrelated deleted `.planning/phases`, `.planning/quick`, `.planning/debug`, and `.planning/ui-reviews` files. These were present before this initialization and should not be reverted unless explicitly requested.
 
 **Potential Blockers**:
+
 - Current repo root appears to be missing `package.json` even though `../ovao/package.json` exists; Phase 1 should verify the intended project root and restore/relocate package metadata if needed.
 - Introducing an independent ingest service means dev workflow must manage two processes or a launcher.
 - Parser correctness depends on fixture coverage for real OpenClaw/Claude/Codex logs.
@@ -127,11 +146,13 @@ Trace Contract
 ### Todos
 
 **Immediate**:
+
 - [ ] Run `$gsd-discuss-phase 1` to clarify trace contract scope and brownfield migration boundaries.
 - [ ] Verify whether this workspace should own `package.json` or inherit/copy from `../ovao`.
 - [ ] Decide whether old OVAO `.planning/phases` deletion state should be archived/committed separately or restored.
 
 **Upcoming**:
+
 - [ ] Plan Phase 1 with fixture paths and canonical DTO details.
 - [ ] Decide ingest service launch strategy for development.
 - [ ] Audit current OpenClaw overview components for preservation contracts.
@@ -143,15 +164,18 @@ Trace Contract
 **Last Session**: 2026-05-06 — Initialized agent-tracing-dashboard planning from user goals and agentsview reference.
 
 **What Was Done**:
+
 - Read existing OVAO project instructions and `.planning` docs.
 - Analyzed `../references/agentsview` architecture, API, parser types, OpenClaw/Claude/Codex parser behavior, SQLite schema, sync watcher, and frontend transcript rendering concepts.
 - Generated research docs for stack, features, frontend architecture, pitfalls, and agentsview data scheme.
 - Replaced top-level `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, and `STATE.md` to reflect the new agent-tracing-dashboard target.
 
 **What's Next**:
+
 - `$gsd-discuss-phase 1` — gather implementation decisions for Trace Contract & Brownfield Reset.
 
 **Open Questions**:
+
 - Should old OVAO phase artifacts be archived, restored, or intentionally removed?
 - Should ingest service be a repo-local TypeScript package under `ingest/`, or part of the main workspace package scripts?
 - Should `pnpm dev` eventually launch both Next.js and ingest service, or should ingest be started manually for early phases?
