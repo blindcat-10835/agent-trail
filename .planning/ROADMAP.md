@@ -1,9 +1,9 @@
 # agent-tracing-dashboard Roadmap
 
-**Project**: agent-tracing-dashboard  
-**Version**: 1.0  
-**Last Updated**: 2026-05-06  
-**Status**: Initialized  
+**Project**: agent-tracing-dashboard
+**Version**: 1.0
+**Last Updated**: 2026-05-06
+**Status**: Planned
 **Granularity**: Standard
 
 ## Vision
@@ -134,7 +134,7 @@
 | HARD-04 | Phase 6 | Pending |
 | HARD-05 | Phase 6 | Pending |
 
-**Orphaned Requirements**: 0  
+**Orphaned Requirements**: 0
 **Unmapped Requirements**: 0
 
 ---
@@ -168,7 +168,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 **Goal**: Reframe the project from OVAO into agent-tracing-dashboard, lock the canonical trace/turn contract, and create parser fixtures before implementing data or UI against unstable shapes.
 
-**Status**: Pending
+**Status**: Planned
 
 **Requirements**: FOUND-01, FOUND-02, FOUND-03, FOUND-04, FOUND-05
 
@@ -179,7 +179,12 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 4. Existing OpenClaw overview capabilities are listed as preserved contracts, not accidental legacy behavior.
 5. Source status taxonomy covers installed/configured/empty/indexing/error/parser-warning states.
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+- [ ] 01-01-PLAN.md — Define canonical trace contract and set up test infrastructure
+- [ ] 01-02-PLAN.md — Create fixture corpus and parser validation infrastructure
+- [ ] 01-03-PLAN.md — Document preserved OpenClaw overview capabilities
+- [ ] 01-04-PLAN.md — Update project documentation and visible labels to agent-tracing-dashboard
 
 **UI hint**: yes
 
