@@ -8,7 +8,7 @@
 
 ## Vision
 
-把 OVAO 从 OpenClaw visual office/dashboard 改造成一个本地 agent session tracing dashboard。v1 聚焦 OpenClaw、Claude Code、Codex 三个 source：用户能从 header 切换不同 source，浏览本地运行过的 session，并按 turn 回放用户输入、agent 回复、工具/技能/subagent 活动和失败原因。
+Build agent-tracing-dashboard as a local multi-source AI agent session tracing dashboard. v1 focuses on OpenClaw, Claude Code, and Codex: users can switch between sources from the header, browse local sessions, and replay each turn with user input, agent response, tool/skill/subagent activity, and failure reasons.
 
 ## Project Scope
 
@@ -51,7 +51,7 @@
 
 ### M2: Multi-source UI (Phases 4-5)
 
-**Goal**: 前端从单一 OVAO dashboard 迁移为多 source tracing dashboard，并提供可用的 turn replay 体验。
+**Goal**: Migrate the frontend from single-source OVAO dashboard to multi-source tracing dashboard and provide a usable turn replay experience.
 
 **Deliverables**:
 - `/openclaw/*`、`/claude-code/*`、`/codex/*` 路由和 header source switcher

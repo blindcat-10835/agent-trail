@@ -1,7 +1,7 @@
 # Requirements: agent-tracing-dashboard
 
-**Defined:** 2026-05-06  
-**Core Value:** 开发者能快速找到本地运行过的 agent session，并按 turn 准确复盘每轮用户输入、agent 响应、工具/技能/subagent 活动和失败原因。
+**Defined:** 2026-05-06
+**Core Value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
 ## v1 Requirements
 

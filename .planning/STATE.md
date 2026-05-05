@@ -14,8 +14,8 @@ progress:
 
 # agent-tracing-dashboard Project State
 
-**Project:** agent-tracing-dashboard  
-**Core Value:** 开发者能快速找到本地运行过的 agent session，并按 turn 准确复盘每轮用户输入、agent 响应、工具/技能/subagent 活动和失败原因。  
+**Project:** agent-tracing-dashboard
+**Core Value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 **Last Updated:** 2026-05-06
 
 ---
@@ -24,11 +24,11 @@ progress:
 
 See: `.planning/PROJECT.md` (updated 2026-05-06)
 
-**What This Is**:  
-基于 OVAO 改造的本地 AI agent session tracing dashboard，统一展示 OpenClaw、Claude Code、Codex 在本机运行过的 session，并能按 turn 重现用户输入、agent 回复、工具/技能/subagent 和 activity。
+**What This Is**:
+Multi-source AI agent session tracing dashboard for OpenClaw, Claude Code, and Codex. Browse local sessions and replay each turn with user input, agent response, tool/skill/subagent activity, and failure reasons.
 
-**Core Value**:  
-开发者能快速找到本地运行过的 agent session，并按 turn 准确复盘每轮用户输入、agent 响应、工具/技能/subagent 活动和失败原因。
+**Core Value**:
+Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
 **Current Focus**:  
 Phase 1 — Trace Contract & Brownfield Reset
@@ -168,10 +168,11 @@ Trace Contract
 
 **What Was Done**:
 
-- Read existing OVAO project instructions and `.planning` docs.
+- Read existing agent-tracing-dashboard (formerly OVAO) project instructions and `.planning` docs.
 - Analyzed `../references/agentsview` architecture, API, parser types, OpenClaw/Claude/Codex parser behavior, SQLite schema, sync watcher, and frontend transcript rendering concepts.
 - Generated research docs for stack, features, frontend architecture, pitfalls, and agentsview data scheme.
 - Replaced top-level `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, and `STATE.md` to reflect the new agent-tracing-dashboard target.
+- Updated project documentation to use agent-tracing-dashboard branding and multi-source scope (Plan 01-04).
 
 **What's Next**:
 
@@ -179,7 +180,6 @@ Trace Contract
 
 **Open Questions**:
 
-- Should old OVAO phase artifacts be archived, restored, or intentionally removed?
 - Should ingest service be a repo-local TypeScript package under `ingest/`, or part of the main workspace package scripts?
 - Should `pnpm dev` eventually launch both Next.js and ingest service, or should ingest be started manually for early phases?
 

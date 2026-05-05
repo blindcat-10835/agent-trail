@@ -1,8 +1,12 @@
 @AGENTS.md
 
-# OVAO — OpenClaw Visual Agents Office
+# agent-tracing-dashboard
 
-赛博朋克 HUD 风格的 Agent 可视化管理界面。通过 WebSocket 连接 OpenClaw Gateway，实时展示多个 AI Agent 的状态、日志、Office 布局和单 Agent 工作区。
+**Multi-source AI agent session tracing dashboard for OpenClaw, Claude Code, and Codex**
+
+赛博朋克 HUD 风格的 multi-source AI agent session tracing dashboard。支持 OpenClaw、Claude Code、Codex 三个数据来源，提供 session browsing、turn replay 和 activity 追踪。
+
+**Note**: This project was formerly known as OVAO (OpenClaw Visual Agents Office) during initial development.
 
 ## Commands
 
@@ -53,7 +57,8 @@ types/                  # 共享类型
 - **语言**：AI 文档/spec/plan 用**中文**；代码注释、变量名、commit message 用**英文**
 - **视觉令牌**：用语义化 token（`bg-background`, `text-foreground`, `border-border`），不要硬编码颜色值
 - **双主题**：light/dark 都要验证，WCAG AA 对比度
-- **数据层锁定**：`gateway/` 和 `stores/` 主体不改 —— 只允许加 selector / 类型导出，**禁止**重构核心逻辑（从旧版 openclaw-visual-agent-office 迁移过来，功能稳定）
+- **Multi-source 架构**：支持 OpenClaw、Claude Code、Codex 三个数据来源，通过 source switcher 切换
+- **数据层锁定**：`gateway/` 和 `stores/` 主体不改 —— 只允许加 selector / 类型导出，**禁止**重构核心逻辑（从旧版 OVAO 迁移过来，功能稳定）
 
 ## Environment
 
@@ -70,7 +75,7 @@ types/                  # 共享类型
 - **Tailwind v4 没有 `tailwind.config.js`** — 改主题/添加 token 全部在 `app/globals.css` 的 `@theme inline { ... }` 块里。
 - **`(shell)` 是路由组**，不是 URL 段 —— `/dashboard` 而非 `/(shell)/dashboard`。
 - **shadcn 添加组件**：`pnpm dlx shadcn@latest add <name>`，组件落在 `components/ui/`。preset 是 `radix-nova`，不要换成默认。
-- **Gateway 必须在跑**（默认 `ws://localhost:18789`）才能测试 Dashboard/Workspace —— 没有 Gateway 时 UI 会卡在 loading。
+- **Gateway 必须在跑**（默认 `ws://localhost:18789`）才能测试 OpenClaw Dashboard/Workspace —— 没有 Gateway 时 UI 会卡在 loading。Claude Code/Codex sources 不依赖 Gateway。
 - **GSD 工作流**：项目用 `.planning/` 跟踪 milestone/phase/plan。开新工作前看 `.planning/STATE.md` 了解当前 phase。不要手编 `.planning/` 里的 STATE/ROADMAP —— 用 `/gsd-*` 命令。
 
 ## Skills

@@ -4,6 +4,8 @@
 **Phase:** 1 - Trace Contract & Brownfield Reset
 **Purpose:** Audit trail of existing OpenClaw overview capabilities to ensure preservation during brownfield reset
 
+**Note:** This document is part of Phase 1 brownfield reset from OVAO (OpenClaw Visual Agents Office) to agent-tracing-dashboard (multi-source tracing dashboard).
+
 ---
 
 ## Overview
