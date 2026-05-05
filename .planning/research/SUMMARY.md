@@ -8,12 +8,13 @@
 
 ### Stack
 
-推荐采用 **Next.js 前端 + 本地 Go ingest service + SQLite WAL/FTS5 + REST/SSE** 的混合架构。
+推荐采用 **Next.js 前端 + 独立 Node/TypeScript ingest service + SQLite WAL/FTS5 + REST/SSE** 的混合架构。
 
 - Next.js 继续承载 HUD dashboard、source switcher、OpenClaw live overview、session/replay UI。
-- Go ingest service 负责长期运行的本地数据面：目录发现、JSONL parser、增量同步、SQLite 索引、FTS 搜索、REST API、SSE 变更通知。
+- Node/TypeScript ingest service 负责长期运行的本地数据面：目录发现、JSONL parser、增量同步、SQLite 索引、FTS 搜索、REST API、SSE 变更通知。
 - OpenClaw Gateway WebSocket 继续用于实时 agent 状态和 overview；历史 session replay 统一来自 ingest SQLite。
 - 不建议把文件监视、复杂 parser、SQLite 索引和全文搜索塞进 Next.js API Routes；当前 `app/api/sessions/messages/route.ts` 只能作为临时 fallback。
+- agentsview 的 Go 实现继续作为 parser 行为、schema 和同步架构参考；v1 不把 Go 作为硬性实现语言。
 
 ### Table Stakes
 
@@ -81,7 +82,7 @@ Agent 本地会话文件
 - `AgentDef` registry：声明 agent 默认目录、env override、ID prefix、discover/find source 函数。
 - `ParsedSession` / `ParsedMessage` / `ParsedToolCall` / `ParsedToolResultEvent`。
 - SQLite `sessions`, `messages`, `tool_calls`, `tool_result_events`。
-- `fsnotify` watcher + debounce + periodic resync fallback。
+- `fsnotify` watcher 的设计思想，在 TypeScript 中对应 chokidar/Node watcher + debounce + periodic resync fallback。
 - `/api/v1/sessions`, `/messages`, `/tool-calls`, `/children`, `/activity`, `/timing`, `/events`。
 
 本项目的改进点是新增 **Turn read model**，把 agentsview 的 message/tool 结构聚合成 UI 主消费对象。
@@ -101,7 +102,7 @@ Agent 本地会话文件
 ## Recommended Roadmap Shape
 
 1. **Trace Contract & Brownfield Reset** — 固定 source/trace/session/turn/tool/subagent 模型，建立 fixture corpus，梳理 OVAO 保留边界。
-2. **Local Ingest Core** — Go service、SQLite schema、source discovery、OpenClaw parser、REST/SSE 基础。
+2. **Local Ingest Core** — Node/TypeScript service、SQLite schema、source discovery、OpenClaw parser、REST/SSE 基础。
 3. **Claude + Codex Parser Parity** — Claude DAG parser、Codex event/function_call parser、subagent/result event linkage、turn assembler。
 4. **Multi-source Frontend Shell** — `[tool]` routing、AgentToolProvider、source switcher、shared session explorer。
 5. **Turn Replay Experience** — virtualized replay、tool/skill/subagent/activity blocks、search/filter/copy/replay controls。
@@ -111,7 +112,7 @@ Agent 本地会话文件
 
 | Decision | Rationale |
 |----------|-----------|
-| Hybrid Next.js + Go ingest | 保留当前前端投入，同时复用 agentsview 已验证的数据采集形态 |
+| Hybrid Next.js + Node/TypeScript ingest | 保留当前前端投入和单语言维护优势，同时复用 agentsview 已验证的数据采集形态 |
 | Turn-first read model | 用户目标是按 turn 重现 session 过程，而不是浏览原始 message list |
 | v1 只支持 OpenClaw / Claude Code / Codex | 用户明确范围；避免 agentsview 全 agent 覆盖导致范围爆炸 |
 | OpenClaw Gateway 和 ingest 分工 | Gateway 是实时状态通道；ingest 是历史回放和搜索通道 |

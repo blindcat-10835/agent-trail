@@ -155,17 +155,19 @@ Turn 聚合规则建议：
 
 | 方案 | 优点 | 风险 | 适合程度 |
 |------|------|------|----------|
-| Go + SQLite + REST/SSE，前端继续 Next.js | 最接近 agentsview；文件监视、并发解析、单二进制分发成熟；parser 可按 agentsview 迁移 | 引入第二语言；需要进程管理和本地服务启动策略 | 最适合长期版本 |
-| Next.js-only Node backend + SQLite + chokidar | 单语言、集成快；API route/server action 直接服务前端 | 长驻文件 watcher 与 Next dev/prod 生命周期耦合；复杂 parser 用 TS 重写成本高；本地权限和打包更脆弱 | 适合 POC，不适合最终索引层 |
+| 独立 Node/TypeScript ingest service + SQLite + REST/SSE，前端继续 Next.js | 单语言维护；可共享 DTO/fixtures/tooling；性能足够 v1；架构上仍能复刻 agentsview 的 Registry / Parser / SQLite / SSE 分层 | 需要认真移植 agentsview parser 行为；仍然要管理 Next.js 和 ingest 两个本地进程 | **v1 首选** |
+| Go + SQLite + REST/SSE，前端继续 Next.js | 最接近 agentsview；文件监视、并发解析、单二进制分发成熟；parser 可按 agentsview 迁移 | 引入第二语言；需要第二套构建/测试/发布链路；与 TS 前端共享类型更麻烦 | 后续可选优化，或作为长期 daemon 重写方向 |
+| Next.js-only Node backend + SQLite + chokidar | 单语言、集成快；API route/server action 直接服务前端 | 长驻文件 watcher 与 Next dev/prod 生命周期耦合；复杂 parser、增量索引和 SSE 生命周期容易变成 request-time scanner | 只适合 read-only 原型，不适合作为最终索引层 |
 | Rust/Tauri sidecar + SQLite | 桌面分发体验好；文件系统和性能强 | parser 迁移成本最高；当前 repo 和参考实现都不是 Rust | 不建议 v1 |
 | 直接接入 agentsview 二进制/API | 最快验证数据模型；少造索引轮子 | 产品控制弱；难做 OpenClaw overview 深度融合；部署依赖外部工具 | 适合临时调研，不适合产品形态 |
 
 推荐路线：
 
-1. **v1 采用 Next.js 前端 + 本地 ingest service 的混合架构。**
-2. ingest service 优先用 Go 实现，复刻 agentsview 的 Registry / Parser / SQLite / SSE 分层。
-3. 前端不直接读 jsonl，只读本项目定义的 `/api/traces/*`。
-4. 初期可以用 Next.js route handler 做 read-only adapter 原型，但要把接口设计成可替换为 Go service。
+1. **v1 采用 Next.js 前端 + 独立 Node/TypeScript ingest service 的混合架构。**
+2. ingest service 复刻 agentsview 的 Registry / Parser / SQLite / SSE 分层，但用 TypeScript 实现 parser、同步和 API。
+3. Go 版本 agentsview 作为行为参考、fixture 对照和未来可选优化方向，不作为 v1 默认实现语言。
+4. 前端不直接读 jsonl，只读本项目定义的 `/api/traces/*` 或 ingest service 代理出的等价 trace API。
+5. 初期可以保留很薄的 Next.js route handler 做 API facade，但文件监听、解析、索引和 SSE 必须留在独立 ingest 进程中。
 
 ## 相比 agentsview 的改进点
 

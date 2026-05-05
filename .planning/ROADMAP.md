@@ -15,7 +15,7 @@
 **In Scope**:
 - OpenClaw / Claude Code / Codex 三个 source dashboard
 - OpenClaw live overview 保真增强
-- 本地 Go ingest service + SQLite WAL/FTS5 + REST/SSE
+- 独立 Node/TypeScript ingest service + SQLite WAL/FTS5 + REST/SSE
 - OpenClaw / Claude Code / Codex parser 和 canonical trace model
 - Turn-first session replay API 和 UI
 - Shared frontend architecture：`[tool]` routes、AgentToolProvider、shared Session Explorer、shared Replay blocks
@@ -37,7 +37,7 @@
 
 **Deliverables**:
 - Trace Contract 和 fixture corpus
-- Go ingest service skeleton
+- Node/TypeScript ingest service skeleton
 - SQLite schema 和 REST API 基础
 - OpenClaw / Claude Code / Codex parser
 - Turn assembler 和 canonical replay DTO
@@ -72,7 +72,7 @@
 **Goal**: 把本地同步、SSE、OpenClaw drilldown、性能和隐私边界补齐到可长期使用。
 
 **Deliverables**:
-- fsnotify + periodic resync + source health UI
+- chokidar/Node watcher + periodic resync + source health UI
 - Global/session SSE invalidation
 - OpenClaw overview 到 replay 的 drilldown
 - Fixture regression、长 session 性能、path safety 和隐私默认值
@@ -174,7 +174,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 **Success Criteria** (what must be TRUE):
 1. Project docs, visible product labels, and default entry points refer to agent-tracing-dashboard while keeping OpenClaw as one source.
-2. TypeScript and Go-facing trace contract is documented with Source, Session, Turn, Message, ToolCall, SkillUse, Subagent, Activity, TokenUsage, Timing metadata.
+2. TypeScript trace contract is documented with Source, Session, Turn, Message, ToolCall, SkillUse, Subagent, Activity, TokenUsage, Timing metadata, and remains portable enough to compare with agentsview fixtures.
 3. Fixture corpus exists for OpenClaw, Claude Code, and Codex with golden expected canonical output.
 4. Existing OpenClaw overview capabilities are listed as preserved contracts, not accidental legacy behavior.
 5. Source status taxonomy covers installed/configured/empty/indexing/error/parser-warning states.
@@ -196,7 +196,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 **Requirements**: DATA-01, DATA-02, DATA-03, DATA-05, SRC-01
 
 **Success Criteria** (what must be TRUE):
-1. `ingest/` Go service starts locally and exposes health/version/sources/events endpoints.
+1. `ingest/` Node/TypeScript service starts locally and exposes health/version/sources/events endpoints.
 2. SQLite schema stores sessions, messages, tool calls, tool result events, turns, source metadata, and sync state.
 3. OpenClaw source discovery supports default path plus env/config override.
 4. OpenClaw parser handles session headers, messages, toolResult role, usage normalization, agent-scoped session ids, and archive suffixes.
@@ -290,7 +290,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 **Requirements**: DATA-04, DATA-06, DATA-07, OPEN-02, OPEN-03, HARD-01, HARD-02, HARD-03, HARD-04, HARD-05
 
 **Success Criteria** (what must be TRUE):
-1. ingest service uses fsnotify + debounce + periodic resync fallback and exposes last sync/watch/parser error status.
+1. ingest service uses chokidar/Node watcher + debounce + periodic resync fallback and exposes last sync/watch/parser error status.
 2. Frontend subscribes to global/session SSE and refreshes active session data without full-page reload.
 3. OpenClaw live sessions and activity can drill down to indexed session replay where a matching session exists.
 4. API reads only indexed sessions under configured roots and returns safe errors for unknown ids or unavailable sources.
@@ -323,7 +323,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 - **ToolCall**: agent 在 turn 中调用的工具，包含输入、状态、结果事件和错误。
 - **SkillUse**: 以 skill 形式触发的专门能力，作为独立 block 展示。
 - **Subagent**: 由父 session/turn 生成的子 agent session，可 inline 展开或作为完整 session 打开。
-- **Ingest service**: 本地 Go 服务，负责发现、解析、索引和服务 session trace 数据。
+- **Ingest service**: 本地独立 Node/TypeScript 服务，负责发现、解析、索引和服务 session trace 数据。
 - **Gateway**: OpenClaw WebSocket/RPC 实时状态通道。
 
 ---

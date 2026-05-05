@@ -15,10 +15,10 @@
 
 ### Ingest Data Plane
 
-- [ ] **DATA-01**: 新增本地 Go ingest service，可启动 health/version/sources/events API。
+- [ ] **DATA-01**: 新增独立 Node/TypeScript ingest service，可启动 health/version/sources/events API，并能独立于 Next.js request lifecycle 长期运行。
 - [ ] **DATA-02**: ingest service 使用 SQLite WAL/FTS5 存储本地索引，包含 sessions、messages、tool_calls、tool_result_events、turns/source metadata/sync state。
 - [ ] **DATA-03**: ingest service 支持 OpenClaw、Claude Code、Codex 的默认目录发现、env/config 覆盖和 source health 状态。
-- [ ] **DATA-04**: ingest service 支持 fsnotify 文件监听、debounce、periodic resync fallback、skip cache 和 parse error 记录。
+- [ ] **DATA-04**: ingest service 支持 chokidar/Node 文件监听、debounce、periodic resync fallback、skip cache 和 parse error 记录。
 - [ ] **DATA-05**: ingest service 暴露 REST API：sources、sessions、session detail、turns、messages、tools、children、search、sync/resync。
 - [ ] **DATA-06**: ingest service 暴露全局和单 session SSE，用于通知前端重新拉取 session/turn 数据。
 - [ ] **DATA-07**: API 只能按已索引 session id 读取受控 source file，不接受客户端任意文件路径。

@@ -54,13 +54,13 @@ Overall:             [░░░░░░░░░░] 0% (0/6 phases complete)
 Research artifacts are in `.planning/research/`:
 
 - `AGENTSVIEW-DATA-SCHEME.md` — agentsview 数据获取方案分析和本项目改造建议
-- `STACK.md` — 推荐 Next.js + Go ingest + SQLite WAL/FTS5 + REST/SSE
+- `STACK.md` — 推荐 Next.js + 独立 Node/TypeScript ingest + SQLite WAL/FTS5 + REST/SSE
 - `FEATURES.md` — v1 table stakes、differentiators、anti-features
 - `ARCHITECTURE.md` — multi-source frontend architecture
 - `PITFALLS.md` — parser/sync/replay/security failure modes
 - `SUMMARY.md` — synthesis for roadmap
 
-**Key Finding**: Next.js should remain the frontend and OpenClaw live overview surface; historical session replay should move to a local Go ingest service modeled after agentsview.
+**Key Finding**: Next.js should remain the frontend and OpenClaw live overview surface; historical session replay should move to an independent local Node/TypeScript ingest service modeled after agentsview's data pipeline.
 
 ---
 
@@ -70,7 +70,7 @@ Research artifacts are in `.planning/research/`:
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Hybrid Next.js frontend + Go ingest service | 保留当前前端投入，同时复用 agentsview 已验证的数据采集形态 | Pending |
+| Hybrid Next.js frontend + Node/TypeScript ingest service | 保留当前前端投入和单语言维护优势，同时复用 agentsview 已验证的数据采集形态 | Pending |
 | Turn-first read model | 用户目标是按 turn 重现 session 过程，而不是浏览原始 message list | Pending |
 | v1 只支持 OpenClaw / Claude Code / Codex | 用户明确范围；避免 agentsview 全 agent 覆盖导致范围爆炸 | Pending |
 | OpenClaw Gateway 和 ingest 分工 | Gateway 是实时状态通道；ingest 是历史回放和搜索通道 | Pending |
@@ -91,15 +91,15 @@ Research artifacts are in `.planning/research/`:
 - Current session messages API is a temporary file-scanning route and should be replaced/proxied through ingest
 
 **Planned ingest data layer**:
-- Go service under `ingest/`
+- Independent Node/TypeScript service under `ingest/`
 - SQLite WAL/FTS5
-- fsnotify + debounce + periodic resync
+- chokidar / Node fs watcher + debounce + periodic resync
 - REST endpoints for sources/sessions/turns/messages/tools/search
 - SSE endpoints for global/session invalidation
 
 **Reference implementation**:
 - `../references/agentsview`
-- Go parser registry covers OpenClaw, Claude Code, Codex
+- Go parser registry covers OpenClaw, Claude Code, Codex and should be treated as behavioral reference material for TypeScript parsers
 - SQLite schema already models sessions/messages/tool_calls/tool_result_events/parent-child relationships
 
 ### Dependencies
@@ -121,7 +121,7 @@ Trace Contract
 
 **Potential Blockers**:
 - Current repo root appears to be missing `package.json` even though `../ovao/package.json` exists; Phase 1 should verify the intended project root and restore/relocate package metadata if needed.
-- Introducing Go ingest service means dev workflow must manage two processes or a launcher.
+- Introducing an independent ingest service means dev workflow must manage two processes or a launcher.
 - Parser correctness depends on fixture coverage for real OpenClaw/Claude/Codex logs.
 
 ### Todos
@@ -153,7 +153,7 @@ Trace Contract
 
 **Open Questions**:
 - Should old OVAO phase artifacts be archived, restored, or intentionally removed?
-- Should ingest service be a repo-local Go module under `ingest/`, or should it initially vendor a trimmed agentsview package?
+- Should ingest service be a repo-local TypeScript package under `ingest/`, or part of the main workspace package scripts?
 - Should `pnpm dev` eventually launch both Next.js and ingest service, or should ingest be started manually for early phases?
 
 ---
