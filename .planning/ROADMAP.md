@@ -181,7 +181,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 **Plans**: 4 plans
 
-- [ ] 01-01-PLAN.md — Define canonical trace contract and set up test infrastructure
+- [x] 01-01-PLAN.md — Define canonical trace contract and set up test infrastructure
 - [ ] 01-02-PLAN.md — Create fixture corpus and parser validation infrastructure
 - [ ] 01-03-PLAN.md — Document preserved OpenClaw overview capabilities
 - [ ] 01-04-PLAN.md — Update project documentation and visible labels to agent-tracing-dashboard
