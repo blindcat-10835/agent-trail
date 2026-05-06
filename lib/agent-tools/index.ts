@@ -1,12 +1,20 @@
 /**
  * Agent Tools — Barrel Export
  *
- * Re-exports the complete agent tool type system and registry.
+ * Re-exports the complete agent tool type system, registry,
+ * React context provider, hooks, and capability gate utilities.
  * Import from here instead of individual files for convenience.
  *
  * @example
  * ```typescript
- * import { getDefinition, assertAgentToolId, type AgentToolId } from '@/lib/agent-tools'
+ * import {
+ *   AgentToolProvider,
+ *   useAgentTool,
+ *   CapabilityGate,
+ *   getDefinition,
+ *   assertAgentToolId,
+ *   type AgentToolId,
+ * } from '@/lib/agent-tools'
  * ```
  */
 
@@ -37,3 +45,17 @@ export {
 export { default as openclawDefinition } from './openclaw/definition'
 export { default as claudeCodeDefinition } from './claude-code/definition'
 export { default as codexDefinition } from './codex/definition'
+
+// Client hooks
+export {
+  AgentToolProvider,
+  useAgentTool,
+  AgentToolContext,
+  getClientToolDefinition,
+} from './client-hooks'
+
+// Capability gate
+export {
+  CapabilityGate,
+  requiresCapability,
+} from './capability-gate'
