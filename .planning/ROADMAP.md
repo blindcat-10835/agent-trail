@@ -13,6 +13,7 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 ## Project Scope
 
 **In Scope**:
+
 - OpenClaw / Claude Code / Codex 三个 source dashboard
 - OpenClaw live overview 保真增强
 - 独立 Node/TypeScript ingest service + SQLite WAL/FTS5 + REST/SSE
@@ -22,11 +23,12 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 - 本地同步、source health、parse errors、隐私和路径安全
 
 **Out of Scope**:
+
 - SaaS observability 平台、multi-user auth、public share links
 - Tool rerun、prompt playground、model execution replay
 - v1 支持全部 agentsview agent 类型
 - OTLP/OpenTelemetry ingestion server
-- AI evals / LLM-as-a-judge insights
+- AI evals / LLM-as-judge insights
 - 移动端专项和 3D/WebGL 可视化
 
 ## Milestones
@@ -36,6 +38,7 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 **Goal**: 先把本地 trace 数据面做对，固定合同、parser、索引和 turn read model。
 
 **Deliverables**:
+
 - Trace Contract 和 fixture corpus
 - Node/TypeScript ingest service skeleton
 - SQLite schema 和 REST API 基础
@@ -43,6 +46,7 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 - Turn assembler 和 canonical replay DTO
 
 **Success Criteria**:
+
 - [ ] 三个 source 的 fixture 都能解析为同一个 canonical model
 - [ ] API 可列出 sessions 并返回 turn replay 数据
 - [ ] tool/result/subagent 关系不依赖前端字符串猜测
@@ -54,6 +58,7 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 **Goal**: Migrate the frontend from single-source OVAO dashboard to multi-source tracing dashboard and provide a usable turn replay experience.
 
 **Deliverables**:
+
 - `/openclaw/*`、`/claude-code/*`、`/codex/*` 路由和 header source switcher
 - AgentToolProvider / UI profile / capability gates
 - Shared Session Explorer
@@ -61,6 +66,7 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 - Tool/skill/subagent/activity blocks
 
 **Success Criteria**:
+
 - [ ] 用户能在三个 source 间切换并看到各自 session surface
 - [ ] OpenClaw overview 信息不退化
 - [ ] 任意已解析 session 能按 turn 回放
@@ -72,12 +78,14 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 **Goal**: 把本地同步、SSE、OpenClaw drilldown、性能和隐私边界补齐到可长期使用。
 
 **Deliverables**:
+
 - chokidar/Node watcher + periodic resync + source health UI
 - Global/session SSE invalidation
 - OpenClaw overview 到 replay 的 drilldown
 - Fixture regression、长 session 性能、path safety 和隐私默认值
 
 **Success Criteria**:
+
 - [ ] 活跃 session 更新能在 UI 中刷新
 - [ ] 长 session 不明显卡顿
 - [ ] API 不允许任意路径读取
@@ -88,51 +96,51 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 
 **v1 Requirements Mapped**: 43/43 (100%)
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
-| FOUND-02 | Phase 1 | Pending |
-| FOUND-03 | Phase 1 | Pending |
-| FOUND-04 | Phase 1 | Pending |
-| FOUND-05 | Phase 1 | Pending |
-| DATA-01 | Phase 2 | Pending |
-| DATA-02 | Phase 2 | Pending |
-| DATA-03 | Phase 2 (partial), Phase 3 (full) | Pending |
-| DATA-04 | Phase 6 | Pending |
-| DATA-05 | Phase 2 | Pending |
-| DATA-06 | Phase 6 | Pending |
-| DATA-07 | Phase 6 | Pending |
-| SRC-01 | Phase 2 | Pending |
-| SRC-02 | Phase 3 | Pending |
-| SRC-03 | Phase 3 | Pending |
-| SRC-04 | Phase 3 | Pending |
-| SRC-05 | Phase 3 | Pending |
-| TURN-01 | Phase 3 | Pending |
-| TURN-02 | Phase 3 | Pending |
-| TURN-03 | Phase 3 | Pending |
-| TURN-04 | Phase 5 | Pending |
-| TURN-05 | Phase 5 | Pending |
-| TURN-06 | Phase 5 | Pending |
-| UI-01 | Phase 4 | Pending |
-| UI-02 | Phase 4 | Pending |
-| UI-03 | Phase 4 | Pending |
-| UI-04 | Phase 4 | Pending |
-| UI-05 | Phase 4 | Pending |
-| OPEN-01 | Phase 4 | Pending |
-| OPEN-02 | Phase 6 | Pending |
-| OPEN-03 | Phase 6 | Pending |
-| REPLAY-01 | Phase 5 | Pending |
-| REPLAY-02 | Phase 5 | Pending |
-| REPLAY-03 | Phase 5 | Pending |
-| REPLAY-04 | Phase 5 | Pending |
-| REPLAY-05 | Phase 5 | Pending |
-| REPLAY-06 | Phase 5 | Pending |
-| REPLAY-07 | Phase 5 | Pending |
-| HARD-01 | Phase 6 | Pending |
-| HARD-02 | Phase 6 | Pending |
-| HARD-03 | Phase 6 | Pending |
-| HARD-04 | Phase 6 | Pending |
-| HARD-05 | Phase 6 | Pending |
+| Requirement | Phase   | Status  |
+| ----------- | ------- | ------- |
+| FOUND-01    | Phase 1 | Pending |
+| FOUND-02    | Phase 1 | Pending |
+| FOUND-03    | Phase 1 | Pending |
+| FOUND-04    | Phase 1 | Pending |
+| FOUND-05    | Phase 1 | Pending |
+| DATA-01     | Phase 2 | Pending |
+| DATA-02     | Phase 2 | Pending |
+| DATA-03     | Phase 2 | Pending |
+| DATA-04     | Phase 6 | Pending |
+| DATA-05     | Phase 2 | Pending |
+| DATA-06     | Phase 6 | Pending |
+| DATA-07     | Phase 6 | Pending |
+| SRC-01      | Phase 2 | Pending |
+| SRC-02      | Phase 3 | Pending |
+| SRC-03      | Phase 3 | Pending |
+| SRC-04      | Phase 3 | Pending |
+| SRC-05      | Phase 3 | Pending |
+| TURN-01     | Phase 3 | Pending |
+| TURN-02     | Phase 3 | Pending |
+| TURN-03     | Phase 3 | Pending |
+| TURN-04     | Phase 5 | Pending |
+| TURN-05     | Phase 5 | Pending |
+| TURN-06     | Phase 5 | Pending |
+| UI-01       | Phase 4 | Pending |
+| UI-02       | Phase 4 | Pending |
+| UI-03       | Phase 4 | Pending |
+| UI-04       | Phase 4 | Pending |
+| UI-05       | Phase 4 | Pending |
+| OPEN-01     | Phase 4 | Pending |
+| OPEN-02     | Phase 6 | Pending |
+| OPEN-03     | Phase 6 | Pending |
+| REPLAY-01   | Phase 5 | Pending |
+| REPLAY-02   | Phase 5 | Pending |
+| REPLAY-03   | Phase 5 | Pending |
+| REPLAY-04   | Phase 5 | Pending |
+| REPLAY-05   | Phase 5 | Pending |
+| REPLAY-06   | Phase 5 | Pending |
+| REPLAY-07   | Phase 5 | Pending |
+| HARD-01     | Phase 6 | Pending |
+| HARD-02     | Phase 6 | Pending |
+| HARD-03     | Phase 6 | Pending |
+| HARD-04     | Phase 6 | Pending |
+| HARD-05     | Phase 6 | Pending |
 
 **Orphaned Requirements**: 0
 **Unmapped Requirements**: 0
@@ -156,6 +164,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 ```
 
 **Parallel Execution**:
+
 - Phase 4 UI architecture can start once Phase 1 contracts are stable, but should not finalize data hooks until Phase 2/3 API shapes exist.
 - Phase 5 replay UI depends on Phase 3 turn DTOs and Phase 4 route/provider structure.
 - Phase 6 hardening depends on all prior phases.
@@ -173,6 +182,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 **Requirements**: FOUND-01, FOUND-02, FOUND-03, FOUND-04, FOUND-05
 
 **Success Criteria** (what must be TRUE):
+
 1. Project docs, visible product labels, and default entry points refer to agent-tracing-dashboard while keeping OpenClaw as one source.
 2. TypeScript trace contract is documented with Source, Session, Turn, Message, ToolCall, SkillUse, Subagent, Activity, TokenUsage, Timing metadata, and remains portable enough to compare with agentsview fixtures.
 3. Fixture corpus exists for OpenClaw, Claude Code, and Codex with golden expected canonical output.
@@ -181,7 +191,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 **Plans**: 4 plans
 
-- [x] 01-01-PLAN.md — Define canonical trace contract and set up test infrastructure
+- [X] 01-01-PLAN.md — Define canonical trace contract and set up test infrastructure
 - [ ] 01-02-PLAN.md — Create fixture corpus and parser validation infrastructure
 - [ ] 01-03-PLAN.md — Document preserved OpenClaw overview capabilities
 - [ ] 01-04-PLAN.md — Update project documentation and visible labels to agent-tracing-dashboard
@@ -191,32 +201,31 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 ---
 
 ---
+
 ### Phase 2: Local Ingest Core + OpenClaw Parser
 
 **Goal**: Build the local ingest service foundation and migrate OpenClaw history parsing from request-time JSONL scanning to indexed, queryable session/turn data.
 
-**Status**: Planned
+**Status**: Pending
 
 **Depends on**: Phase 1
 
-**Requirements**: DATA-01, DATA-02, DATA-03 (partial), DATA-05, SRC-01
+**Requirements**: DATA-01, DATA-02, DATA-03, DATA-05, SRC-01
 
 **Success Criteria** (what must be TRUE):
+
 1. `ingest/` Node/TypeScript service starts locally and exposes health/version/sources/events endpoints.
 2. SQLite schema stores sessions, messages, tool calls, tool result events, turns, source metadata, and sync state.
 3. OpenClaw source discovery supports default path plus env/config override.
 4. OpenClaw parser handles session headers, messages, toolResult role, usage normalization, agent-scoped session ids, and archive suffixes.
 5. REST API can list OpenClaw sessions and return turn-first replay DTOs from SQLite.
 
-**Plans**: 5 plans
+**Plans**: 4 plans
 
-- [ ] 02-01-PLAN.md — Ingest service skeleton + SQLite schema + health/version endpoints + test infrastructure
-- [ ] 02-02-PLAN.md — OpenClaw parser types + JSONL parser + source discovery
-- [ ] 02-02b-PLAN.md — Database write layer + REST API (sources, sync, SSE skeleton)
+- [x] 02-01-PLAN.md — Ingest service skeleton + SQLite schema + health/version endpoints
+- [ ] 02-02-PLAN.md — OpenClaw source discovery + parser + database storage
 - [ ] 02-03-PLAN.md — REST API (sessions, turns, messages) + minimal turn assembly
 - [ ] 02-04-PLAN.md — Development workflow setup (concurrently, pnpm dev)
-
-**Note on DATA-03**: Per user decision in 02-CONTEXT.md, Phase 2 implements DATA-03 for OpenClaw only (partial coverage). Claude Code and Codex parser support is deferred to Phase 3, completing full DATA-03 implementation across all three sources.
 
 **UI hint**: no
 
@@ -226,13 +235,14 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 **Goal**: Add Claude Code and Codex parser parity and produce reliable turn-level replay data across all three sources.
 
-**Status**: Planned
+**Status**: Pending
 
 **Depends on**: Phase 2
 
-**Requirements**: SRC-02, SRC-03, SRC-04, SRC-05, TURN-01, TURN-02, TURN-03, DATA-03 (completion)
+**Requirements**: SRC-02, SRC-03, SRC-04, SRC-05, TURN-01, TURN-02, TURN-03
 
 **Success Criteria** (what must be TRUE):
+
 1. Claude Code parser handles DAG/fork/continuation, queued command, compact/system boundary, streaming duplicate collapse, subagent mapping, truncation and malformed lines.
 2. Codex parser handles session_meta, turn_context, response_item, event_msg, function calls, function outputs, spawn_agent/wait/subagent notification, token_count dedupe and termination status.
 3. All three parsers output canonical Message, ToolCall, ToolResultEvent, SubagentLink, source metadata and parser warning fields.
@@ -256,6 +266,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 **Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, OPEN-01
 
 **Success Criteria** (what must be TRUE):
+
 1. Header source switcher supports OpenClaw, Claude Code and Codex, with source-specific labels and status.
 2. Source-first routes exist for `/openclaw/*`, `/claude-code/*`, `/codex/*`, with legacy redirects from old routes.
 3. AgentToolProvider/registry/capabilities/UI profiles drive nav items, empty states, columns and source-specific slots.
@@ -279,6 +290,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 **Requirements**: TURN-04, TURN-05, TURN-06, REPLAY-01, REPLAY-02, REPLAY-03, REPLAY-04, REPLAY-05, REPLAY-06, REPLAY-07
 
 **Success Criteria** (what must be TRUE):
+
 1. Session replay page renders turn cards with user input, assistant response and structured activity blocks.
 2. Tool blocks show category/name, input, output/result events, status/error/duration and copy action.
 3. Skill blocks show skill name, input summary and result/status.
@@ -304,6 +316,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 **Requirements**: DATA-04, DATA-06, DATA-07, OPEN-02, OPEN-03, HARD-01, HARD-02, HARD-03, HARD-04, HARD-05
 
 **Success Criteria** (what must be TRUE):
+
 1. ingest service uses chokidar/Node watcher + debounce + periodic resync fallback and exposes last sync/watch/parser error status.
 2. Frontend subscribes to global/session SSE and refreshes active session data without full-page reload.
 3. OpenClaw live sessions and activity can drill down to indexed session replay where a matching session exists.
