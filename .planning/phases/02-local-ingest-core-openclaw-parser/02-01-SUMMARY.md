@@ -135,6 +135,31 @@ None - no external service configuration required. The ingest service runs local
 - Service port configurable - can run multiple instances for different sources
 - Internal types separate from canonical trace contract - maintain this separation
 
+## Self-Check: PASSED
+
+**Files Created (10/10 verified):**
+- ✓ ingest/db/schema.sql (6.1K)
+- ✓ ingest/db/index.ts (4.0K)
+- ✓ ingest/index.ts (3.7K)
+- ✓ ingest/config/index.ts (2.5K)
+- ✓ ingest/types.ts (1.4K)
+- ✓ tests/integration/ingest/api.test.ts (1.3K)
+- ✓ tests/integration/ingest/db.test.ts (1.3K)
+- ✓ tests/unit/ingest/parser.test.ts (1.3K)
+- ✓ tests/unit/ingest/turns.test.ts (1.0K)
+- ✓ tests/fixtures/openclaw-sessions.jsonl (811B)
+
+**Commits Created (7/7 verified):**
+- ✓ 514c92d - test(02-01): create test infrastructure scaffolds
+- ✓ 9078285 - feat(02-01): add ingest service dependencies
+- ✓ cb59627 - feat(02-01): create SQLite schema from trace contract
+- ✓ f63c5b0 - feat(02-01): implement database connection and initialization layer
+- ✓ e0e1ae8 - feat(02-01): create configuration management module
+- ✓ 02fed02 - feat(02-01): create main service entry point with health/version endpoints
+- ✓ 9c7d2c5 - docs(02-01): complete ingest service skeleton plan
+
+All claims in SUMMARY.md verified against actual git repository state.
+
 ---
 *Phase: 02-local-ingest-core-openclaw-parser*
 *Plan: 01*
