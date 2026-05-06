@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-05-06T07:58:34.000Z"
+last_updated: "2026-05-06T09:39:31Z"
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_phases: 2
+  total_plans: 16
+  completed_plans: 12
+  percent: 75
 ---
 
 # agent-tracing-dashboard Project State
@@ -38,11 +38,11 @@ Phase 1 — Trace Contract & Brownfield Reset
 ## Current Position
 
 Phase: 02 (local-ingest-core-openclaw-parser) — EXECUTING
-Plan: 2 of 5
+Plan: 4 of 5 complete
 **Milestone**: M1 Trace Foundation
-**Phase**: 2 — Executing (Wave 2 of 3)
+**Phase**: 2 — Executing (Wave 3 of 3)
 **Plan**: 5 plans in 3 waves
-**Status**: Plan 02-02 (OpenClaw Parser) complete, ready for 02-02b (Turn Assembler)
+**Status**: Plan 02-04 (Dev Workflow) complete, ready for 02-05 (Phase Verification + End-to-End Test)
 
 **Progress Bar**:
 
@@ -57,7 +57,7 @@ Overall:             [▓▓░░░░░░░░] 22% (1.5/6 phases complete
 **Phase Progress**:
 
 - Phase 1: Trace Contract & Brownfield Reset — **Complete** (4/4 plans)
-- Phase 2: Local Ingest Core + OpenClaw Parser — **In Progress** (2/5 plans complete)
+- Phase 2: Local Ingest Core + OpenClaw Parser — **In Progress** (4/5 plans complete)
 - Phase 3: Claude/Codex Parsers + Turn Assembly — Pending
 - Phase 4: Multi-source Frontend Shell + Session Explorer — Pending
 - Phase 5: Turn Replay UI — Pending
@@ -92,6 +92,8 @@ Research artifacts are in `.planning/research/`:
 | OpenClaw Gateway 和 ingest 分工 | Gateway 是实时状态通道；ingest 是历史回放和搜索通道 | Pending |
 | Source-specific parser + canonical model | 三种日志协议差异大，不能用通用扫描器 | Pending |
 | 默认只读本地工具 | 不做 tool rerun、prompt playground、公开分享、RBAC 或 OTLP collector | Pending |
+| concurrently 双服务开发工作流 | 单 pnpm dev 命令并发启动 Next.js 和 ingest，tsx watch 实现热重载 | Implemented |
+| TypeScript project references | root tsconfig 引用 ingest，rootDir 扩展到父级以共享 types/trace.ts | Implemented |
 
 ### Technical Context
 
@@ -164,24 +166,23 @@ Trace Contract
 
 ## Session Continuity
 
-**Last Session**: 2026-05-06 — Initialized agent-tracing-dashboard planning from user goals and agentsview reference.
+**Last Session**: 2026-05-06 — Completed Phase 2 Plan 04: Development Workflow.
 
 **What Was Done**:
 
-- Read existing agent-tracing-dashboard (formerly OVAO) project instructions and `.planning` docs.
-- Analyzed `../references/agentsview` architecture, API, parser types, OpenClaw/Claude/Codex parser behavior, SQLite schema, sync watcher, and frontend transcript rendering concepts.
-- Generated research docs for stack, features, frontend architecture, pitfalls, and agentsview data scheme.
-- Replaced top-level `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, and `STATE.md` to reflect the new agent-tracing-dashboard target.
-- Updated project documentation to use agent-tracing-dashboard branding and multi-source scope (Plan 01-04).
+- Installed concurrently, tsx, ts-node as dev dependencies
+- Updated package.json scripts with concurrent dev workflow (pnpm dev starts both services)
+- Created ingest/tsconfig.json with TypeScript project references
+- Updated root tsconfig.json with ingest project reference
+- Created postcss.config.mjs for Tailwind v4 + Next.js compatibility
+- Fixed pre-existing TypeScript errors in ingest source for strict mode compliance
+- Added comprehensive README with development docs, API endpoints, and troubleshooting
+- Verified pnpm dev starts both Next.js (port 3000) and ingest service (port 8078) concurrently
 
 **What's Next**:
 
-- `$gsd-discuss-phase 1` — gather implementation decisions for Trace Contract & Brownfield Reset.
-
-**Open Questions**:
-
-- Should ingest service be a repo-local TypeScript package under `ingest/`, or part of the main workspace package scripts?
-- Should `pnpm dev` eventually launch both Next.js and ingest service, or should ingest be started manually for early phases?
+- 02-05: Phase verification and end-to-end integration test
+- Phase 3: Claude/Codex parsers + turn assembly
 
 ---
 

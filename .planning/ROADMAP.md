@@ -225,9 +225,9 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 - [X] 02-01-PLAN.md — Ingest service skeleton + SQLite schema + health/version endpoints
 - [X] 02-02-PLAN.md — OpenClaw source discovery + parser (database storage deferred to 02-03)
-- [ ] 02-02b-PLAN.md — Turn assembler (group messages into turns, pair tool calls with results)
-- [ ] 02-03-PLAN.md — REST API (sessions, turns, messages) + database integration
-- [ ] 02-04-PLAN.md — Local file discovery + watcher + auto-ingest
+- [x] 02-02b-PLAN.md — Turn assembler (group messages into turns, pair tool calls with results)
+- [x] 02-03-PLAN.md — REST API (sessions, turns, messages) + database integration
+- [x] 02-04-PLAN.md — Local file discovery + watcher + auto-ingest
 
 **UI hint**: no
 

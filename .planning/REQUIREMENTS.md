@@ -15,7 +15,7 @@
 
 ### Ingest Data Plane
 
-- [ ] **DATA-01**: 新增独立 Node/TypeScript ingest service，可启动 health/version/sources/events API，并能独立于 Next.js request lifecycle 长期运行。
+- [x] **DATA-01**: 新增独立 Node/TypeScript ingest service，可启动 health/version/sources/events API，并能独立于 Next.js request lifecycle 长期运行。
 - [ ] **DATA-02**: ingest service 使用 SQLite WAL/FTS5 存储本地索引，包含 sessions、messages、tool_calls、tool_result_events、turns/source metadata/sync state。
 - [ ] **DATA-03**: ingest service 支持 OpenClaw、Claude Code、Codex 的默认目录发现、env/config 覆盖和 source health 状态。
 - [ ] **DATA-04**: ingest service 支持 chokidar/Node 文件监听、debounce、periodic resync fallback、skip cache 和 parse error 记录。
@@ -115,7 +115,7 @@
 | FOUND-03 | Phase 1 | Pending |
 | FOUND-04 | Phase 1 | Pending |
 | FOUND-05 | Phase 1 | Pending |
-| DATA-01 | Phase 2 | Pending |
+| DATA-01 | Phase 2 | Complete |
 | DATA-02 | Phase 2 | Pending |
 | DATA-03 | Phase 2 | Pending |
 | DATA-04 | Phase 6 | Pending |
