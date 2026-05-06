@@ -26,7 +26,7 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 - Tool rerun、prompt playground、model execution replay
 - v1 支持全部 agentsview agent 类型
 - OTLP/OpenTelemetry ingestion server
-- AI evals / LLM-as-judge insights
+- AI evals / LLM-as-a-judge insights
 - 移动端专项和 3D/WebGL 可视化
 
 ## Milestones
@@ -97,7 +97,7 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 | FOUND-05 | Phase 1 | Pending |
 | DATA-01 | Phase 2 | Pending |
 | DATA-02 | Phase 2 | Pending |
-| DATA-03 | Phase 2 | Pending |
+| DATA-03 | Phase 2 (partial), Phase 3 (full) | Pending |
 | DATA-04 | Phase 6 | Pending |
 | DATA-05 | Phase 2 | Pending |
 | DATA-06 | Phase 6 | Pending |
@@ -195,11 +195,11 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 **Goal**: Build the local ingest service foundation and migrate OpenClaw history parsing from request-time JSONL scanning to indexed, queryable session/turn data.
 
-**Status**: Pending
+**Status**: Planned
 
 **Depends on**: Phase 1
 
-**Requirements**: DATA-01, DATA-02, DATA-03, DATA-05, SRC-01
+**Requirements**: DATA-01, DATA-02, DATA-03 (partial), DATA-05, SRC-01
 
 **Success Criteria** (what must be TRUE):
 1. `ingest/` Node/TypeScript service starts locally and exposes health/version/sources/events endpoints.
@@ -208,12 +208,15 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 4. OpenClaw parser handles session headers, messages, toolResult role, usage normalization, agent-scoped session ids, and archive suffixes.
 5. REST API can list OpenClaw sessions and return turn-first replay DTOs from SQLite.
 
-**Plans**: 4 plans
+**Plans**: 5 plans
 
-- [ ] 02-01-PLAN.md — Ingest service skeleton + SQLite schema + health/version endpoints
-- [ ] 02-02-PLAN.md — OpenClaw source discovery + parser + database storage
+- [ ] 02-01-PLAN.md — Ingest service skeleton + SQLite schema + health/version endpoints + test infrastructure
+- [ ] 02-02-PLAN.md — OpenClaw parser types + JSONL parser + source discovery
+- [ ] 02-02b-PLAN.md — Database write layer + REST API (sources, sync, SSE skeleton)
 - [ ] 02-03-PLAN.md — REST API (sessions, turns, messages) + minimal turn assembly
 - [ ] 02-04-PLAN.md — Development workflow setup (concurrently, pnpm dev)
+
+**Note on DATA-03**: Per user decision in 02-CONTEXT.md, Phase 2 implements DATA-03 for OpenClaw only (partial coverage). Claude Code and Codex parser support is deferred to Phase 3, completing full DATA-03 implementation across all three sources.
 
 **UI hint**: no
 
@@ -223,11 +226,11 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 **Goal**: Add Claude Code and Codex parser parity and produce reliable turn-level replay data across all three sources.
 
-**Status**: Pending
+**Status**: Planned
 
 **Depends on**: Phase 2
 
-**Requirements**: SRC-02, SRC-03, SRC-04, SRC-05, TURN-01, TURN-02, TURN-03
+**Requirements**: SRC-02, SRC-03, SRC-04, SRC-05, TURN-01, TURN-02, TURN-03, DATA-03 (completion)
 
 **Success Criteria** (what must be TRUE):
 1. Claude Code parser handles DAG/fork/continuation, queued command, compact/system boundary, streaming duplicate collapse, subagent mapping, truncation and malformed lines.
