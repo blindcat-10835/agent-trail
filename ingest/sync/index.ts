@@ -3,6 +3,7 @@
  *
  * Orchestrates sync operations between parsers and the database.
  * Handles session upserts, message insertion, and source-level sync.
+ * Supports OpenClaw, Claude Code, and Codex sources.
  *
  * @module ingest/sync
  */
@@ -23,6 +24,8 @@ export interface SyncResult {
   errors: string[];
 }
 
+export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex';
+
 // ============================================================================
 // Database Write Operations
 // ============================================================================
@@ -33,7 +36,7 @@ export interface SyncResult {
  * Handles session upsert (insert or update) and message insertion.
  * If session already exists, updates metadata and replaces all messages.
  *
- * @param parseResult - Parsed session data from OpenClaw parser
+ * @param parseResult - Parsed session data from any parser
  * @param db - Optional database connection (defaults to getDatabase())
  * @returns SyncResult with counts and errors
  */
@@ -146,16 +149,56 @@ export function writeSessionToDatabase(parseResult: ParseResult, db?: Database.D
   };
 }
 
+// ============================================================================
+// Source Sync Orchestration
+// ============================================================================
+
 /**
  * Sync all sessions from a source type
  *
  * Orchestrates full sync pipeline: discover sources → parse files → write to database.
+ * Supports OpenClaw, Claude Code, and Codex source types.
  *
- * @param sourceType - Type of source to sync ('openclaw' only in Phase 2)
+ * @param sourceType - Type of source to sync ('openclaw', 'claude-code', 'codex')
  * @param basePath - Optional base path override for source discovery
  * @returns SyncResult with aggregated counts and errors
  */
-export async function syncSource(sourceType: 'openclaw', basePath?: string): Promise<SyncResult> {
+export async function syncSource(
+  sourceType: SyncSourceType,
+  basePath?: string
+): Promise<SyncResult> {
+  // D-21 (Plan 01): Enumerated source types only — unknown sources have no parser
+  if (sourceType === 'openclaw') {
+    return syncOpenClawSource(basePath);
+  }
+
+  if (sourceType === 'claude-code') {
+    return syncClaudeCodeSource();
+  }
+
+  if (sourceType === 'codex') {
+    return syncCodexSource();
+  }
+
+  return {
+    sessionsInserted: 0,
+    sessionsUpdated: 0,
+    messagesInserted: 0,
+    errors: [`Unknown source type: ${sourceType}`],
+  };
+}
+
+// ============================================================================
+// OpenClaw Sync (preserved from Phase 2)
+// ============================================================================
+
+/**
+ * Sync OpenClaw sessions
+ *
+ * Uses discoverOpenClawSources() and parseOpenClawSession() from the parser module.
+ * This is the original sync path preserved from Phase 2.
+ */
+async function syncOpenClawSource(basePath?: string): Promise<SyncResult> {
   const { discoverOpenClawSources } = await import('./sources');
   const { parseOpenClawSession } = await import('../parser/openclaw');
 
@@ -164,7 +207,7 @@ export async function syncSource(sourceType: 'openclaw', basePath?: string): Pro
     sessionsInserted: 0,
     sessionsUpdated: 0,
     messagesInserted: 0,
-    errors: []
+    errors: [],
   };
 
   for (const source of sources) {
@@ -174,7 +217,7 @@ export async function syncSource(sourceType: 'openclaw', basePath?: string): Pro
       // Find all session files in source path
       const fs = await import('fs/promises');
       const files = await fs.readdir(source.path);
-      const sessionFiles = files.filter(f => f.endsWith('.jsonl'));
+      const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
 
       for (const file of sessionFiles) {
         const filePath = `${source.path}/${file}`;
@@ -193,6 +236,120 @@ export async function syncSource(sourceType: 'openclaw', basePath?: string): Pro
       }
     } catch (err) {
       totalResult.errors.push(`Failed to sync source ${source.path}: ${err}`);
+    }
+  }
+
+  return totalResult;
+}
+
+// ============================================================================
+// Claude Code Sync
+// ============================================================================
+
+/**
+ * Sync Claude Code sessions
+ *
+ * Uses discoverClaudeSources() and parseClaudeSession() from the parser module.
+ * Handles parser errors gracefully — errors are captured in SyncResult.errors.
+ */
+async function syncClaudeCodeSource(): Promise<SyncResult> {
+  const { discoverClaudeSources } = await import('./sources');
+  const { parseClaudeSession } = await import('../parser/claude');
+
+  const sources = await discoverClaudeSources();
+  const totalResult: SyncResult = {
+    sessionsInserted: 0,
+    sessionsUpdated: 0,
+    messagesInserted: 0,
+    errors: [],
+  };
+
+  for (const source of sources) {
+    if (source.error || source.sessionCount === 0) continue;
+
+    try {
+      const fs = await import('fs/promises');
+      const files = await fs.readdir(source.path);
+      const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
+
+      for (const file of sessionFiles) {
+        const filePath = `${source.path}/${file}`;
+        const project = 'default';
+
+        try {
+          const parseResult = await parseClaudeSession(filePath, project);
+          const result = writeSessionToDatabase(parseResult);
+          totalResult.sessionsInserted += result.sessionsInserted;
+          totalResult.sessionsUpdated += result.sessionsUpdated;
+          totalResult.messagesInserted += result.messagesInserted;
+          totalResult.errors.push(...result.errors);
+        } catch (err) {
+          totalResult.errors.push(
+            `Failed to parse Claude session ${filePath}: ${err}`
+          );
+        }
+      }
+    } catch (err) {
+      totalResult.errors.push(
+        `Failed to sync Claude source ${source.path}: ${err}`
+      );
+    }
+  }
+
+  return totalResult;
+}
+
+// ============================================================================
+// Codex Sync
+// ============================================================================
+
+/**
+ * Sync Codex sessions
+ *
+ * Uses discoverCodexSources() and parseCodexSession() from the parser module.
+ * Handles parser errors gracefully — errors are captured in SyncResult.errors.
+ */
+async function syncCodexSource(): Promise<SyncResult> {
+  const { discoverCodexSources } = await import('./sources');
+  const { parseCodexSession } = await import('../parser/codex');
+
+  const sources = await discoverCodexSources();
+  const totalResult: SyncResult = {
+    sessionsInserted: 0,
+    sessionsUpdated: 0,
+    messagesInserted: 0,
+    errors: [],
+  };
+
+  for (const source of sources) {
+    if (source.error || source.sessionCount === 0) continue;
+
+    try {
+      const fs = await import('fs/promises');
+      const files = await fs.readdir(source.path);
+      const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
+
+      for (const file of sessionFiles) {
+        const filePath = `${source.path}/${file}`;
+        const project = 'default';
+
+        try {
+          const parseResult = await parseCodexSession(filePath, project);
+          const result = writeSessionToDatabase(parseResult);
+          totalResult.sessionsInserted += result.sessionsInserted;
+          totalResult.sessionsUpdated += result.sessionsUpdated;
+          totalResult.messagesInserted += result.messagesInserted;
+          totalResult.errors.push(...result.errors);
+        } catch (err) {
+          totalResult.errors.push(
+            `Failed to parse Codex session ${filePath}: ${err}`
+          );
+        }
+      }
+    } catch (err) {
+      totalResult.errors.push(
+        `Failed to sync Codex source ${source.path}: ${err}`
+      );
     }
   }
 
