@@ -226,7 +226,7 @@ export function OverviewTab({ onNavigateToSkills }: { onNavigateToSkills?: () =>
       {/* Session drawer overlay */}
       {peekSession && (
         <SessionsDetailRail
-          session={peekSession}
+          sessionId={peekSession.sessionId || peekSession.key}
           onClose={() => setPeekSessionKey(null)}
         />
       )}

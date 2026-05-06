@@ -1,212 +1,255 @@
-/* eslint-disable */
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { SessionInfo } from '@/gateway/adapter-types'
-import { useGatewayStore } from '@/stores/gateway/gateway-store'
-import { AgentAvatar } from '@/components/dashboard/overview/agent-avatar'
-import { ChatBubble, type ChatMessage } from './chat-bubble'
+import { useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { useSessionDetail } from '@/lib/agent-tools/client-hooks'
+import type { TraceSession, SessionStatus } from '@/types/trace'
+
+// ============================================================================
+// Props
+// ============================================================================
 
 interface SessionsDetailRailProps {
-  session: SessionInfo | null
+  sessionId: string | null
   onClose: () => void
 }
 
-// Helper: compute session status
-function computeSessionStatus(session: SessionInfo | null): 'active' | 'idle' | 'aborted' | null {
-  if (!session) return null
-  if (session.aborted) return 'aborted'
-  if (!session.updatedAt) return 'idle'
+// ============================================================================
+// Status Badge (per UI-SPEC copywriting)
+// ============================================================================
 
-  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000
-  return session.updatedAt > fiveMinutesAgo ? 'active' : 'idle'
+const STATUS_CONFIG: Record<
+  SessionStatus,
+  { label: string; color: string; pulse?: boolean }
+> = {
+  active:   { label: 'LIVE', color: 'text-[oklch(0.76_0.17_145)]', pulse: true },
+  idle:     { label: 'IDL',  color: 'text-muted-foreground' },
+  aborted:  { label: 'ABT',  color: 'text-destructive' },
+  error:    { label: 'ERR',  color: 'text-destructive' },
+  unknown:  { label: '---',  color: 'text-muted-foreground' },
 }
 
-// Status badge component
-function StatusBadge({ status }: { status: 'active' | 'idle' | 'aborted' }) {
-  if (status === 'active') {
+function StatusBadge({ status }: { status: SessionStatus }) {
+  const cfg = STATUS_CONFIG[status]
+
+  if (cfg.pulse) {
     return (
       <div className="flex items-center gap-1.5">
         <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[oklch(0.76_0.17_145)] opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-[oklch(0.76_0.17_145)]"></span>
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[oklch(0.76_0.17_145)] opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-[oklch(0.76_0.17_145)]" />
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-wider text-[oklch(0.76_0.17_145)]">
-          ACTIVE
+          {cfg.label}
         </span>
       </div>
     )
   }
 
-  if (status === 'idle') {
-    return (
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        IDLE
-      </span>
-    )
-  }
-
   return (
-    <span className="text-[10px] font-semibold uppercase tracking-wider text-destructive">
-      ABORTED
+    <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: cfg.color === 'text-muted-foreground' ? undefined : undefined }}>
+      <span className={cfg.color}>{cfg.label}</span>
     </span>
   )
 }
 
-export function SessionsDetailRail({ session, onClose }: SessionsDetailRailProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+// ============================================================================
+// Session Detail Rail
+// ============================================================================
 
-  const agentsMap = useGatewayStore((s) => s.agents)
-  const ownerAgent = useMemo(
-    () => Array.from(agentsMap.values()).find(a => a.activeSessionKey === session?.key) ?? null,
-    [agentsMap, session?.key]
-  )
+export function SessionsDetailRail({
+  sessionId,
+  onClose,
+}: SessionsDetailRailProps) {
+  const { toolId } = useAgentTool()
+  const { session, loading, error } = useSessionDetail(toolId, sessionId)
 
-  // Fetch messages when session changes
-  useEffect(() => {
-    if (!session) {
-      setMessages([])
-      return
-    }
+  // Empty state — no session selected
+  if (!sessionId) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+        Select a session
+      </div>
+    )
+  }
 
-    const sessionId = session.sessionId || session.key
-    if (!sessionId) return
+  // Loading state — spinner only (per UI-SPEC: no text)
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" />
+      </div>
+    )
+  }
 
-    setLoading(true)
-    setError(null)
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
+        <div className="text-[11px] font-bold text-destructive uppercase tracking-wider">
+          ERR
+        </div>
+        <div className="text-[10px] text-muted-foreground text-center">
+          {error}
+        </div>
+        <button
+          onClick={onClose}
+          className="text-[10px] text-accent hover:underline"
+        >
+          DISMISS
+        </button>
+      </div>
+    )
+  }
 
-    fetch(`/api/sessions/messages?id=${encodeURIComponent(sessionId)}`)
-      .then(res => {
-        if (!res.ok) return []
-        return res.json()
-      })
-      .then((data: ChatMessage[]) => {
-        setMessages(Array.isArray(data) ? data : [])
-        setLoading(false)
-      })
-      .catch(() => {
-        setMessages([])
-        setLoading(false)
-      })
-  }, [session])
+  // Not found — session data is null
+  if (!session) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
+        <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+          NOT FOUND
+        </div>
+        <div className="text-[10px] text-muted-foreground text-center">
+          Session data is not available.
+        </div>
+        <button
+          onClick={onClose}
+          className="text-[10px] text-accent hover:underline"
+        >
+          DISMISS
+        </button>
+      </div>
+    )
+  }
 
-  if (!session) return null
-
-  const status = computeSessionStatus(session)
-  const modelShort = session.model?.split('/').pop() || '-'
+  // Derive display values from TraceSession
+  const label = (session as any).label || session.project || session.id
+  const model = (session as any).model || '-'
+  const modelShort = model.split('/').pop() || '-'
+  const totalTokens = session.metrics.totalTokens || 0
+  const costEstimate = totalTokens * 0.000002
+  const kind = (session as any).kind || session.source
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-black/55 backdrop-blur-[2px]"
-        style={{ animation: 'drawer-fade-in .15s ease' }}
-        onClick={onClose}
-      />
+    <div className="min-h-0 overflow-y-auto">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-card flex-shrink-0">
+        {/* Session icon placeholder */}
+        <div className="hud-clip-sm border border-border w-8 h-8 grid place-items-center text-muted-foreground text-sm flex-shrink-0">
+          &#9673;
+        </div>
 
-      {/* Panel */}
-      <div
-        className="fixed top-0 right-0 h-screen z-50 bg-background border-l border-border flex flex-col overflow-hidden"
-        style={{ width: 'min(640px, 90vw)', animation: 'drawer-slide-in .22s cubic-bezier(.2,.8,.2,1)' }}
-      >
-        {/* Header */}
-        <div className="flex items-center gap-3.5 px-5 py-4 border-b border-border bg-card flex-shrink-0 relative">
-          {/* Bottom accent line */}
-          <div className="absolute bottom-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, var(--color-accent), transparent)', opacity: 0.6 }} />
-
-          {/* Agent avatar or placeholder */}
-          {ownerAgent ? (
-            <AgentAvatar agent={ownerAgent} size={40} />
-          ) : (
-            <div className="hud-clip-sm border border-border w-10 h-10 grid place-items-center text-muted-foreground text-base flex-shrink-0">
-              ◉
-            </div>
-          )}
-
-          {/* Session label + subline */}
-          <div className="min-w-0 flex-1">
-            <div className="text-base font-bold text-foreground truncate">
-              {session.label || session.key}
-            </div>
-            <div className="text-[10.5px] text-muted-foreground font-mono truncate">
-              {ownerAgent ? ownerAgent.name : 'No agent'} · {modelShort}
-            </div>
+        {/* Label + subline */}
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold text-foreground truncate">
+            {label}
           </div>
-
-          {/* Status badge + close */}
-          <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-            {status && <StatusBadge status={status} />}
-            <button
-              onClick={onClose}
-              className="w-7 h-7 hud-clip-sm border border-border grid place-items-center text-muted-foreground text-sm hover:text-foreground hover:border-foreground/30 transition-colors"
-              aria-label="Close details"
-            >
-              ✕
-            </button>
+          <div className="text-[10.5px] text-muted-foreground font-mono truncate">
+            {modelShort}
           </div>
         </div>
 
-        {/* KPI strip */}
-        <div className="grid grid-cols-4 border-b border-border bg-card flex-shrink-0">
-          {[
-            { label: 'TOKENS', value: (session.totalTokens || 0).toLocaleString() },
-            { label: 'COST', value: '$' + (session.cost || 0).toFixed(2) },
-            { label: 'KIND', value: session.kind || '-' },
-            { label: 'CREATED', value: session.createdAt ? new Date(session.createdAt).toLocaleDateString() : '-' },
-          ].map((kpi) => (
-            <div key={kpi.label} className="px-4 py-3 border-r border-border last:border-r-0">
-              <div className="text-[9px] text-muted-foreground tracking-[0.2em] uppercase">{kpi.label}</div>
-              <div className="text-sm font-bold mt-1 tabular-nums">{kpi.value}</div>
-            </div>
-          ))}
+        {/* Status badge + close */}
+        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+          <StatusBadge status={session.status} />
+          <button
+            onClick={onClose}
+            className="w-6 h-6 hud-clip-sm border border-border grid place-items-center text-muted-foreground text-xs hover:text-foreground hover:border-foreground/30 transition-colors"
+            aria-label="Close details"
+          >
+            &#10005;
+          </button>
         </div>
+      </div>
 
-        {/* Messages section */}
-        <div className="flex-1 min-h-0 overflow-auto flex flex-col">
-          {/* Messages header */}
-          <div className="px-4 py-2 border-b border-border bg-muted/30 flex-shrink-0">
-            <span className="text-[9px] text-accent tracking-[0.25em] uppercase font-semibold">
-              MESSAGE HISTORY
-            </span>
+      {/* KPI Strip */}
+      <div className="grid grid-cols-4 border-b border-border bg-card flex-shrink-0">
+        {[
+          { label: 'TOKENS', value: totalTokens.toLocaleString() },
+          {
+            label: 'COST',
+            value: '$' + costEstimate.toFixed(2),
+          },
+          { label: 'KIND', value: kind },
+          {
+            label: 'CREATED',
+            value: session.startedAt
+              ? new Date(session.startedAt).toLocaleDateString()
+              : '-',
+          },
+        ].map((kpi) => (
+          <div
+            key={kpi.label}
+            className="px-3 py-2 border-r border-border last:border-r-0"
+          >
+            <div className="text-[9px] text-muted-foreground tracking-[0.2em] uppercase">
+              {kpi.label}
+            </div>
+            <div className="text-xs font-bold mt-1 tabular-nums truncate">
+              {kpi.value}
+            </div>
           </div>
+        ))}
+      </div>
 
-          {/* Messages list */}
-          <div className="flex-1 px-4 py-3 overflow-auto">
-            {loading && (
-              <div className="flex items-center justify-center h-full">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
-              </div>
-            )}
-
-            {error && (
-              <div className="text-destructive text-sm text-center py-8">
-                {error}
-              </div>
-            )}
-
-            {!loading && !error && messages.length === 0 && (
-              <div className="text-muted-foreground text-sm text-center py-8">
-                No messages
-              </div>
-            )}
-
-            {!loading && !error && messages.length > 0 && (
-              <>
-                {messages.slice(0, 100).map((msg, idx) => (
-                  <ChatBubble key={idx} message={msg} />
-                ))}
-                {messages.length > 100 && (
-                  <div className="text-muted-foreground text-xs text-center py-2">
-                    Showing 100 of {messages.length} messages
-                  </div>
-                )}
-              </>
-            )}
+      {/* Message/event list section (placeholder for Phase 5 turn replay) */}
+      <div className="border-b border-border">
+        <div className="px-4 py-2 bg-muted/30">
+          <span className="text-[9px] text-accent tracking-[0.25em] uppercase font-semibold">
+            MESSAGE HISTORY
+          </span>
+        </div>
+        <div className="px-4 py-3">
+          <div className="text-muted-foreground text-[11px] text-center py-6">
+            Turn replay available in Phase 5
           </div>
         </div>
       </div>
-    </>
+
+      {/* Session metadata */}
+      <div className="p-4 space-y-3">
+        <div>
+          <span className="block text-[9px] text-muted-foreground uppercase tracking-[0.2em] mb-1">
+            SESSION ID
+          </span>
+          <div className="font-mono text-[10px] text-muted-foreground break-all">
+            {session.id}
+          </div>
+        </div>
+        <div>
+          <span className="block text-[9px] text-muted-foreground uppercase tracking-[0.2em] mb-1">
+            PROJECT
+          </span>
+          <div className="text-sm">{session.project || '-'}</div>
+        </div>
+        {session.startedAt && (
+          <div>
+            <span className="block text-[9px] text-muted-foreground uppercase tracking-[0.2em] mb-1">
+              STARTED
+            </span>
+            <div className="text-sm tabular-nums">
+              {new Date(session.startedAt).toLocaleString()}
+            </div>
+          </div>
+        )}
+        {session.endedAt && (
+          <div>
+            <span className="block text-[9px] text-muted-foreground uppercase tracking-[0.2em] mb-1">
+              ENDED
+            </span>
+            <div className="text-sm tabular-nums">
+              {new Date(session.endedAt).toLocaleString()}
+            </div>
+          </div>
+        )}
+        <div>
+          <span className="block text-[9px] text-muted-foreground uppercase tracking-[0.2em] mb-1">
+            MESSAGES
+          </span>
+          <div className="text-sm">
+            {session.metrics.messageCount.toLocaleString()}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

@@ -1,8 +1,11 @@
-/* eslint-disable */
 'use client'
 
 import { useMemo } from 'react'
-import type { SessionInfo } from '@/gateway/adapter-types'
+import type { TraceSession } from '@/types/trace'
+
+// ============================================================================
+// Helpers
+// ============================================================================
 
 function fmtNum(n: number): string {
   if (n < 1000) return String(n)
@@ -14,61 +17,89 @@ function fmtUsd(n: number): string {
   return '$' + n.toFixed(2)
 }
 
+// ============================================================================
+// Props
+// ============================================================================
+
 interface SessionsStatsBarProps {
-  sessions: SessionInfo[]
+  sessions: TraceSession[]
+  totalCount: number
 }
 
-export function SessionsStatsBar({ sessions }: SessionsStatsBarProps) {
-  // Date.now() is intentional here for real-time active session tracking
-  // Session status updates should reflect current time, not render time
-  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000 // eslint-disable-line react-compiler/react-compiler
+// ============================================================================
+// KPI Tile
+// ============================================================================
 
-  const stats = useMemo(() => {
-    const totalSessions = sessions.length
-    const activeSessions = sessions.filter(s => {
-      const updatedAt = s.updatedAt ?? 0
-      return updatedAt > fiveMinutesAgo && !s.aborted
-    }).length
-    const totalTokens = sessions.reduce((sum, s) => sum + (s.totalTokens || 0), 0)
-    const totalCost = sessions.reduce((sum, s) => sum + (s.cost || 0), 0)
-
-    return { totalSessions, activeSessions, totalTokens, totalCost }
-  }, [sessions, fiveMinutesAgo])
-
-  function StatTile({ label, value, sub }: {
-    label: string
-    value: React.ReactNode
-    sub?: React.ReactNode
-  }) {
-    return (
-      <div className="bg-card px-4 py-3.5 border border-border flex flex-col gap-1 relative overflow-hidden min-w-0">
-        <div className="text-[9.5px] text-muted-foreground tracking-[0.2em] uppercase">{label}</div>
-        <div className="text-3xl font-bold tracking-tight tabular-nums leading-tight whitespace-nowrap">
-          {value}
-        </div>
-        {sub && <div className="text-[10.5px] text-foreground/65">{sub}</div>}
+function KpiTile({
+  label,
+  value,
+  sublabel,
+  mono,
+}: {
+  label: string
+  value: string
+  sublabel?: string
+  mono?: boolean
+}) {
+  return (
+    <div className="px-4 py-3.5 border-r border-border last:border-r-0 flex flex-col gap-1 min-w-0">
+      <div className="text-[9.5px] text-muted-foreground tracking-[0.2em] uppercase">
+        {label}
       </div>
+      <div
+        className={`text-2xl font-bold tracking-tight leading-tight whitespace-nowrap ${
+          mono ? 'font-mono' : 'tabular-nums'
+        }`}
+      >
+        {value}
+      </div>
+      {sublabel && (
+        <div className="text-[10.5px] text-foreground/65">{sublabel}</div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// Stats Bar Component
+// ============================================================================
+
+export function SessionsStatsBar({
+  sessions,
+  totalCount,
+}: SessionsStatsBarProps) {
+  const stats = useMemo(() => {
+    const activeCount = sessions.filter((s) => s.status === 'active').length
+    const totalTokens = sessions.reduce(
+      (sum, s) => sum + (s.metrics.totalTokens || 0),
+      0,
     )
-  }
+    // Rough cost estimate at $2/M tokens
+    const totalCost = totalTokens * 0.000002
+
+    return { activeCount, totalTokens, totalCost }
+  }, [sessions])
 
   return (
-    <div className="grid grid-cols-4 gap-px bg-border border border-border">
-      <StatTile
+    <div className="grid grid-cols-4 bg-card border border-border">
+      <KpiTile
         label="TOTAL SESSIONS"
-        value={stats.totalSessions}
-        sub={`${stats.activeSessions} active now`}
+        value={totalCount.toLocaleString()}
+        sublabel={`${stats.activeCount} active now`}
       />
-      <StatTile
+      <KpiTile
         label="ACTIVE SESSIONS"
-        value={stats.activeSessions}
+        value={String(stats.activeCount)}
       />
-      <StatTile
+      <KpiTile
         label="TOTAL TOKENS"
         value={fmtNum(stats.totalTokens)}
+        mono
       />
-      <StatTile
+      <KpiTile
         label="TOTAL COST"
         value={fmtUsd(stats.totalCost)}
+        mono
       />
     </div>
   )
