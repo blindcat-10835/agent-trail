@@ -317,7 +317,7 @@ describe('turn assembler', () => {
       insertMessage(db, sessionId, 0, 'user', 'Test', '2024-01-01T00:00:00Z');
       insertMessage(db, sessionId, 1, 'assistant', 'Trying', '2024-01-01T00:00:05Z');
 
-      insertToolCall(db, sessionId, 1, 'tool_use_err', 'Bash', 'error', '{"command":"bad"}', 'Bash', 'command not found');
+      insertToolCall(db, sessionId, 1, 'tool_use_err', 'Bash', 'error', '{"command":"bad"}', 'Bash');
 
       const turns = await assembleTurns(sessionId, db);
 

@@ -365,12 +365,12 @@ describe('Optional Fields', () => {
       userMessage: null,
       assistantMessages: [],
       activities: [],
-      startedAt: undefined,
-      endedAt: undefined,
+      startedAt: null,
+      endedAt: null,
       durationMs: null,
     };
 
-    expect(turn.startedAt).toBeUndefined();
+    expect(turn.startedAt).toBeNull();
     expect(turn.durationMs).toBeNull();
   });
 });

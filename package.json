@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm:dev:*\" --names \"NEXT,INGEST\" --prefix-colors \"blue,green\"",
-    "dev:next": "next dev",
+    "dev:next": "next dev --webpack",
     "dev:ingest": "tsx watch ingest/index.ts",
     "build": "next build",
     "build:ingest": "tsc -p ingest/tsconfig.json",
