@@ -251,7 +251,14 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 4. Turn assembler groups user message, assistant responses, tool calls, result events and subagent references without UI-side guessing.
 5. Parser fixture tests pass for OpenClaw, Claude Code and Codex golden outputs.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Parser types extension + source discovery functions
+- [ ] 03-02-PLAN.md — Claude Code JSONL parser (DAG, dedup, compact, subagent)
+- [ ] 03-03-PLAN.md — Codex JSONL parser (turn_context, function_call, spawn_agent)
+- [ ] 03-04-PLAN.md — Enhanced turn assembler + sync pipeline wiring
+- [ ] 03-05-PLAN.md — Parser fixture tests (Claude + Codex golden outputs)
 
 **UI hint**: no
 
