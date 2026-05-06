@@ -4,9 +4,9 @@ import { useState, useMemo } from 'react'
 import { useGatewayStore } from '@/stores/gateway/gateway-store'
 import { selectSessionsState } from '@/stores/gateway/p0-selectors'
 import { SessionsStatsBar } from '@/components/sessions/sessions-stats-bar'
-import { SessionsFilterBar, useSessionsFilter } from '@/components/sessions/sessions-filter-bar'
 import { SessionsTable } from '@/components/sessions/sessions-table'
 import { SessionsDetailRail } from '@/components/sessions/sessions-detail-rail'
+import type { TraceSession } from '@/types/trace'
 
 export default function SessionsPage() {
   const sessionsState = selectSessionsState(useGatewayStore())
@@ -18,8 +18,6 @@ export default function SessionsPage() {
     [sessionsState.data, hideCron]
   )
 
-  const { filters, setFilters, filtered } = useSessionsFilter(nonCronSessions)
-
   const availableModels = useMemo(() => {
     const models = new Set(sessionsState.data.map(s => s.model?.split('/').pop() || '-'))
     return Array.from(models).filter(m => m !== '-').sort()
@@ -29,8 +27,6 @@ export default function SessionsPage() {
     const kinds = new Set(sessionsState.data.map(s => s.kind || '-'))
     return Array.from(kinds).filter(k => k !== '-').sort()
   }, [sessionsState.data])
-
-  const selectedSession = sessionsState.data.find(s => s.key === selectedKey) || null
 
   // Handle UI states
   if (sessionsState.state === 'loading') {
@@ -49,10 +45,10 @@ export default function SessionsPage() {
     <div className="relative h-full min-w-0 overflow-hidden">
       <div className="h-full overflow-auto">
         <div className="max-w-5xl mx-auto w-full flex flex-col p-3.5 gap-3">
-          {/* Stats bar */}
-          <SessionsStatsBar sessions={nonCronSessions} />
+          {/* Stats bar — adapted for new component signature */}
+          <SessionsStatsBar sessions={nonCronSessions as unknown as TraceSession[]} totalCount={sessionsState.data.length} />
 
-          {/* Cron toggle + Filter bar */}
+          {/* Cron toggle */}
           <div className="flex items-start gap-3">
             <button
               onClick={() => setHideCron(v => !v)}
@@ -64,24 +60,19 @@ export default function SessionsPage() {
             >
               {hideCron ? 'CRON HIDDEN' : 'CRON SHOWN'}
             </button>
-            <div className="flex-1 min-w-0">
-              <SessionsFilterBar
-                filters={filters}
-                setFilters={setFilters}
-                availableModels={availableModels}
-                availableKinds={availableKinds}
-              />
+            <div className="flex-1 min-w-0 text-[10px] text-muted-foreground self-center">
+              {availableModels.length} model{availableModels.length !== 1 ? 's' : ''} &middot; {availableKinds.length} kind{availableKinds.length !== 1 ? 's' : ''}
             </div>
           </div>
 
           {/* Table */}
-          {filtered.length === 0 ? (
+          {nonCronSessions.length === 0 ? (
             <div className="py-16 flex items-center justify-center text-muted-foreground">
               No sessions found
             </div>
           ) : (
             <SessionsTable
-              sessions={filtered}
+              sessions={nonCronSessions}
               selectedKey={selectedKey}
               onSelectKey={setSelectedKey}
             />
@@ -92,7 +83,7 @@ export default function SessionsPage() {
       {/* Session detail overlay */}
       {selectedKey && (
         <SessionsDetailRail
-          session={selectedSession}
+          sessionId={selectedKey}
           onClose={() => setSelectedKey(null)}
         />
       )}

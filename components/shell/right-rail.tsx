@@ -1,19 +1,30 @@
 'use client'
 
-import { type ReactNode } from 'react'
+import { SessionsDetailRail } from '@/components/sessions/sessions-detail-rail'
 
 interface RightRailProps {
-  children?: ReactNode
+  selectedSessionId?: string | null
+  onCloseSession?: () => void
 }
 
-export function RightRail({ children }: RightRailProps) {
+/**
+ * Right rail frame — renders session detail when a session is selected.
+ *
+ * Per D-12: Right rail always visible alongside any page. When no session
+ * is selected, shows a neutral placeholder. When a session is selected
+ * (via the Session Explorer table), renders the SessionsDetailRail
+ * with full session metadata via the BFF proxy.
+ */
+export function RightRail({
+  selectedSessionId,
+  onCloseSession,
+}: RightRailProps) {
   return (
     <aside className="border-l border-border bg-card min-h-0 min-w-0 overflow-hidden">
-      {children || (
-        <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-          Select a session
-        </div>
-      )}
+      <SessionsDetailRail
+        sessionId={selectedSessionId ?? null}
+        onClose={onCloseSession ?? (() => {})}
+      />
     </aside>
   )
 }
