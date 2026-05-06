@@ -14,7 +14,7 @@ import { openclawAdapter } from '@/lib/agent-tools/openclaw/server-adapter'
 import { claudeCodeAdapter } from '@/lib/agent-tools/claude-code/server-adapter'
 import { codexAdapter } from '@/lib/agent-tools/codex/server-adapter'
 import { sanitizeError } from '@/lib/agent-tools/server-adapter'
-import type { AgentToolServerAdapter } from '@/lib/agent-tools/server-adapter'
+import type { AgentToolServerAdapter, TurnsQueryParams } from '@/lib/agent-tools/server-adapter'
 
 const adapters: Record<string, AgentToolServerAdapter> = {
   openclaw: openclawAdapter,
@@ -23,7 +23,7 @@ const adapters: Record<string, AgentToolServerAdapter> = {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ tool: string; sessionId: string }> },
 ) {
   const { tool, sessionId } = await params
@@ -32,7 +32,35 @@ export async function GET(
     const toolId = assertSourceToolId(tool)
     const adapter = adapters[toolId]
 
-    const result = await adapter.getSessionTurns(sessionId)
+    // Parse offset/limit query params
+    const { searchParams } = new URL(request.url)
+    const rawOffset = searchParams.get('offset')
+    const rawLimit = searchParams.get('limit')
+    const offset = rawOffset ? parseInt(rawOffset, 10) : undefined
+    const limit = rawLimit ? parseInt(rawLimit, 10) : undefined
+
+    // Validate offset/limit
+    if (offset !== undefined && (isNaN(offset) || offset < 0)) {
+      return NextResponse.json(
+        { error: 'Invalid offset parameter, must be non-negative integer' },
+        { status: 400 },
+      )
+    }
+    if (limit !== undefined && (isNaN(limit) || limit < 0)) {
+      return NextResponse.json(
+        { error: 'Invalid limit parameter, must be non-negative integer' },
+        { status: 400 },
+      )
+    }
+
+    // Cap limit to prevent resource exhaustion (100 max at BFF layer)
+    const cappedLimit =
+      limit !== undefined ? Math.min(limit, 100) : undefined
+
+    const result = await adapter.getSessionTurns(sessionId, {
+      offset,
+      limit: cappedLimit,
+    })
     return NextResponse.json(result)
   } catch (err) {
     const { error, code } = sanitizeError(err)

@@ -14,7 +14,7 @@
  * @see .planning/research/ARCHITECTURE.md §Adapter 与 Provider 接口
  */
 
-import type { TraceSession } from '@/types/trace'
+import type { TraceSession, TraceTurn } from '@/types/trace'
 import type { SourceToolId } from './types'
 
 // ============================================================================
@@ -247,6 +247,22 @@ export interface SessionListResult {
   }
 }
 
+export interface TurnsQueryParams {
+  offset?: number
+  limit?: number
+}
+
+export interface TurnsListResult {
+  sessionId: string
+  turns: TraceTurn[]
+  pagination: {
+    total: number
+    limit: number
+    offset: number
+    hasMore: boolean
+  }
+}
+
 // ============================================================================
 // Adapter Interface
 // ============================================================================
@@ -294,9 +310,10 @@ export interface AgentToolServerAdapter {
   getSessionMessages(sessionId: string): Promise<unknown[]>
 
   /**
-   * Get turns for a session.
+   * Get turns for a session with optional pagination.
    *
    * @param sessionId - Session ID (validated before proxying)
+   * @param query - Optional pagination params (offset, limit)
    */
-  getSessionTurns(sessionId: string): Promise<unknown[]>
+  getSessionTurns(sessionId: string, query?: TurnsQueryParams): Promise<TurnsListResult>
 }

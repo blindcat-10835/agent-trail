@@ -17,6 +17,7 @@ import {
   requireSourceScopedSession,
   type AgentToolServerAdapter,
   type SessionListResult,
+  type TurnsListResult,
 } from '../server-adapter'
 
 const SOURCE = 'claude-code'
@@ -55,10 +56,13 @@ export function createClaudeCodeAdapter(): AgentToolServerAdapter {
       )
     },
 
-    async getSessionTurns(sessionId) {
+    async getSessionTurns(sessionId, query) {
       await requireSourceScopedSession(sessionId, SOURCE)
-      return fetchIngest(
-        `/api/v1/sessions/${encodeURIComponent(sessionId)}/turns`,
+      const offset = query?.offset ?? 0
+      const limit = query?.limit ?? 50
+      const params = `offset=${offset}&limit=${limit}`
+      return fetchIngest<TurnsListResult>(
+        `/api/v1/sessions/${encodeURIComponent(sessionId)}/turns?${params}`,
         { cache: 'no-store' },
       )
     },
