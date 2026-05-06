@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAgentTool, useSessionDetail, useSessionTurns } from '@/lib/agent-tools/client-hooks'
 import { ReplayHeader } from '@/components/replay/replay-header'
 import { ReplayRightRail } from '@/components/replay/replay-right-rail'
+import { TurnTimeline } from '@/components/replay/turn-timeline'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { TraceTurn } from '@/types/trace'
 
@@ -88,24 +89,17 @@ export default function SessionReplayPage({
               <Skeleton className="h-32 w-full" />
               <Skeleton className="h-32 w-full" />
             </div>
-          ) : (
-            <div className="h-full flex items-center justify-center text-muted-foreground text-xs">
-              {/* TurnTimeline will be rendered here — Plan 03 */}
-              {turns.length === 0 ? (
-                <div className="flex flex-col items-center gap-3">
-                  <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
-                    NO TURNS
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    This session contains no parsed turns. The file may be empty or still processing.
-                  </div>
-                </div>
-              ) : (
-                <div className="text-xs text-muted-foreground">
-                  {turns.length} turns loaded — TurnTimeline pending (Plan 03)
-                </div>
-              )}
+          ) : turns.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3">
+              <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+                NO TURNS
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                This session contains no parsed turns. The file may be empty or still processing.
+              </div>
             </div>
+          ) : (
+            <TurnTimeline turns={turns} />
           )}
         </div>
 
