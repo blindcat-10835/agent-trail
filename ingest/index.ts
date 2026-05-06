@@ -9,6 +9,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { loadConfig } from './config/index.js';
 import { openDatabase, initSchema, closeDatabase } from './db/index.js';
+import { sourcesRoutes } from './api/sources.js';
 import type { ServiceContext, HealthStatus, VersionInfo } from './types.js';
 import type { TraceSource } from '../types/trace.js';
 
@@ -49,6 +50,9 @@ app.get('/version', (c) => {
 
   return c.json(version);
 });
+
+// Mount sources API routes
+app.route('/', sourcesRoutes);
 
 // ============================================================================
 // Service Lifecycle
