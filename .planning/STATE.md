@@ -166,9 +166,16 @@ Trace Contract
 
 ## Session Continuity
 
-**Last Session**: 2026-05-06 — Completed Phase 2 Plan 04: Development Workflow.
+**Last Session**: 2026-05-06 — Quick Fix 20260506-001: Dev compile storm resolved.
 
 **What Was Done**:
+
+- Quick Fix 20260506-001: Diagnosed the `pnpm dev` compile storm/high-CPU failure and switched local Next.js dev to `next dev --webpack`.
+- Restored missing frontend state/type files required by the dashboard shell and gateway components.
+- Verified `pnpm build`, `pnpm typecheck`, `pnpm test:run`, and `pnpm dev` route requests after the fix.
+- Details: `.planning/quick/20260506-001-dev-compile-storm-fix/20260506-001-SUMMARY.md`
+
+**Previous Session**:
 
 - Installed concurrently, tsx, ts-node as dev dependencies
 - Updated package.json scripts with concurrent dev workflow (pnpm dev starts both services)
