@@ -258,7 +258,7 @@ Plans:
 - [x] 03-02-PLAN.md — Claude Code JSONL parser (DAG, dedup, compact, subagent)
 - [x] 03-03-PLAN.md — Codex JSONL parser (turn_context, function_call, spawn_agent)
 - [x] 03-04-PLAN.md — Enhanced turn assembler + sync pipeline wiring
-- [ ] 03-05-PLAN.md — Parser fixture tests (Claude + Codex golden outputs)
+- [x] 03-05-PLAN.md — Parser fixture tests (Claude + Codex golden outputs)
 
 **UI hint**: no
 
