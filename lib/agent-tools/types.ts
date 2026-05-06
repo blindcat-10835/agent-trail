@@ -12,10 +12,16 @@
 // ============================================================================
 
 /**
- * Supported agent tool sources.
+ * Concrete ingest-backed agent tool sources.
  * Must remain compatible with TraceSource in types/trace.ts.
  */
-export type AgentToolId = 'openclaw' | 'claude-code' | 'codex'
+export type SourceToolId = 'openclaw' | 'claude-code' | 'codex'
+
+/**
+ * Supported tool scopes in the shell.
+ * `all` is a synthetic aggregate scope, not an ingest source.
+ */
+export type AgentToolId = 'all' | SourceToolId
 
 // ============================================================================
 // Session Column Definitions

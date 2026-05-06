@@ -98,6 +98,12 @@ export function sanitizeError(err: unknown): { error: string; code: number } {
     return { error: err.message, code: err.code }
   }
   if (err instanceof Error) {
+    if (
+      err.message.startsWith('Invalid source tool ID') ||
+      err.message.startsWith('Invalid agent tool ID')
+    ) {
+      return { error: err.message, code: 400 }
+    }
     // Never expose stack traces or internal paths to frontend
     return { error: 'Ingest service unreachable', code: 502 }
   }

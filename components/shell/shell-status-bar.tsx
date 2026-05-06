@@ -4,7 +4,7 @@ import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useGatewayStore } from '@/stores/gateway/gateway-store'
 
 export function ShellStatusBar() {
-  const { definition } = useAgentTool()
+  const { definition, capabilities } = useAgentTool()
   const connectionStatus = useGatewayStore((s) => s.connectionStatus)
   const isDashboardLoading = useGatewayStore((s) => s.isDashboardLoading)
   const agentCount = useGatewayStore((s) => s.agents.size)
@@ -17,9 +17,13 @@ export function ShellStatusBar() {
 
       {/* Left section */}
       <div className="flex items-center gap-4">
-        <span>
-          WS <b className={connectionStatus === 'connected' ? 'text-accent' : ''}>{connectionStatus.toUpperCase()}</b>
-        </span>
+        {capabilities.liveGateway ? (
+          <span>
+            WS <b className={connectionStatus === 'connected' ? 'text-accent' : ''}>{connectionStatus.toUpperCase()}</b>
+          </span>
+        ) : (
+          <span>INDEX <b>LOCAL</b></span>
+        )}
         {isStale && (
           <span className="text-[oklch(0.76_0.17_145)] animate-pulse">
             SYNCING

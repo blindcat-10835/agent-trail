@@ -7,7 +7,8 @@
  * Pure TypeScript — no React, no IO, no side effects.
  */
 
-import type { AgentToolDefinition, AgentToolId } from './types'
+import type { AgentToolDefinition, AgentToolId, SourceToolId } from './types'
+import allDef from './all/definition'
 import openclawDef from './openclaw/definition'
 import claudeCodeDef from './claude-code/definition'
 import codexDef from './codex/definition'
@@ -17,16 +18,22 @@ import codexDef from './codex/definition'
  * Used by getDefinition() for O(1) lookup.
  */
 export const AGENT_TOOL_DEFINITIONS: Record<AgentToolId, AgentToolDefinition> = {
+  'all': allDef,
   'openclaw': openclawDef,
   'claude-code': claudeCodeDef,
   'codex': codexDef,
 }
 
 /**
- * Ordered array of all valid AgentToolId values.
- * Useful for iteration (e.g. source switcher, aggregate queries).
+ * Ordered array of source tool IDs.
+ * Kept source-only for aggregate queries.
  */
-export const TOOL_IDS: AgentToolId[] = ['openclaw', 'claude-code', 'codex']
+export const TOOL_IDS: SourceToolId[] = ['openclaw', 'claude-code', 'codex']
+
+/**
+ * Ordered array of all shell scopes, including synthetic aggregate views.
+ */
+export const SHELL_TOOL_IDS: AgentToolId[] = ['all', ...TOOL_IDS]
 
 /**
  * Look up a tool definition by its ID.
@@ -41,7 +48,7 @@ export function getDefinition(toolId: AgentToolId): AgentToolDefinition {
  * Order: openclaw, claude-code, codex.
  */
 export function getAllDefinitions(): AgentToolDefinition[] {
-  return [openclawDef, claudeCodeDef, codexDef]
+  return [allDef, openclawDef, claudeCodeDef, codexDef]
 }
 
 /**
@@ -53,11 +60,20 @@ export function getAllDefinitions(): AgentToolDefinition[] {
  * downstream code only sees valid AgentToolId values.
  */
 export function assertAgentToolId(raw: string): AgentToolId {
-  const validIds: AgentToolId[] = ['openclaw', 'claude-code', 'codex']
+  const validIds: AgentToolId[] = SHELL_TOOL_IDS
   if (validIds.includes(raw as AgentToolId)) {
     return raw as AgentToolId
   }
   throw new Error(
-    `Invalid agent tool ID: "${raw}". Expected one of: openclaw, claude-code, codex.`,
+    `Invalid agent tool ID: "${raw}". Expected one of: ${validIds.join(', ')}.`,
+  )
+}
+
+export function assertSourceToolId(raw: string): SourceToolId {
+  if (TOOL_IDS.includes(raw as SourceToolId)) {
+    return raw as SourceToolId
+  }
+  throw new Error(
+    `Invalid source tool ID: "${raw}". Expected one of: ${TOOL_IDS.join(', ')}.`,
   )
 }

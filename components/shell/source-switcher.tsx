@@ -13,10 +13,23 @@ export function SourceSwitcher() {
   const tools = getAllDefinitions()
 
   function handleSwitch(targetToolId: AgentToolId) {
+    const targetDef = tools.find((def) => def.id === targetToolId)
+    if (!targetDef) return
+
     // Replace the [tool] segment in the current path
     // e.g., /openclaw/dashboard -> /codex/dashboard
     const segments = pathname.split('/').filter(Boolean)
-    // segments[0] is the current tool, replace it
+    const currentSection = segments[1] ?? targetDef.defaultRoute.replace('/', '')
+    const targetSupportsSection = targetDef.nav.some((item) => {
+      const itemPath = item.href(targetToolId).split('?')[0]
+      return itemPath === `/${targetToolId}/${currentSection}`
+    })
+
+    if (!targetSupportsSection) {
+      router.push(`/${targetToolId}${targetDef.defaultRoute}`)
+      return
+    }
+
     segments[0] = targetToolId
     router.push('/' + segments.join('/'))
   }

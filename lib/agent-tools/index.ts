@@ -21,6 +21,7 @@
 // Types
 export type {
   AgentToolId,
+  SourceToolId,
   AgentToolDefinition,
   AgentToolCapabilities,
   AgentToolUIProfile,
@@ -36,12 +37,15 @@ export type {
 export {
   getDefinition,
   assertAgentToolId,
+  assertSourceToolId,
   getAllDefinitions,
   AGENT_TOOL_DEFINITIONS,
   TOOL_IDS,
+  SHELL_TOOL_IDS,
 } from './registry'
 
 // Per-tool definitions
+export { default as allDefinition } from './all/definition'
 export { default as openclawDefinition } from './openclaw/definition'
 export { default as claudeCodeDefinition } from './claude-code/definition'
 export { default as codexDefinition } from './codex/definition'

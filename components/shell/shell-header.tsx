@@ -7,7 +7,7 @@ import { StatusIndicator } from '@/components/hud/status-indicator'
 import { ThemeToggle } from '@/components/hud/theme-toggle'
 
 export function ShellHeader() {
-  const { definition } = useAgentTool()
+  const { definition, capabilities } = useAgentTool()
   const rightRailOpen = useUIStore((s) => s.rightRailOpen)
   const toggleRightRail = useUIStore((s) => s.toggleRightRail)
   const brand = definition.ui.brand
@@ -34,7 +34,14 @@ export function ShellHeader() {
 
       {/* Controls — preserved from existing header */}
       <div className="flex items-center gap-3.5 text-xs tracking-[0.12em]">
-        <StatusIndicator />
+        {capabilities.liveGateway ? (
+          <StatusIndicator />
+        ) : (
+          <div className="hud-clip-sm flex items-center gap-1.5 border border-border/40 px-2.5 py-1 text-[11px] font-semibold">
+            <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+            <span>LOCAL</span>
+          </div>
+        )}
         <ThemeToggle />
         <button
           onClick={toggleRightRail}

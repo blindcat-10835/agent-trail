@@ -14,11 +14,15 @@ interface ToolLayoutClientProps {
 
 export function ToolLayoutClient({ toolId, children }: ToolLayoutClientProps) {
   const setSelectedToolId = useToolStore((s) => s.setSelectedToolId)
+  const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
 
   // Sync tool store on mount and tool change
   useEffect(() => {
     setSelectedToolId(toolId)
-  }, [toolId, setSelectedToolId])
+    if (toolId === 'all') {
+      setSelectedSessionId(null)
+    }
+  }, [toolId, setSelectedToolId, setSelectedSessionId])
 
   return (
     <AgentToolProvider toolId={toolId}>

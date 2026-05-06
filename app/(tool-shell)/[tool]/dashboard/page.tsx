@@ -1,6 +1,7 @@
 'use client'
 
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { AggregateSessionsView } from '@/components/sessions/aggregate-sessions-view'
 import { OpenClawDashboard } from './openclaw-dashboard'
 import { SessionStatsDashboard } from './session-stats-dashboard'
 
@@ -14,6 +15,10 @@ import { SessionStatsDashboard } from './session-stats-dashboard'
  */
 export default function ToolDashboardPage() {
   const { toolId } = useAgentTool()
+
+  if (toolId === 'all') {
+    return <AggregateSessionsView />
+  }
 
   if (toolId === 'openclaw') {
     return <OpenClawDashboard />

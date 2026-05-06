@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useToolSessions } from '@/lib/agent-tools/client-hooks'
 import { useToolStore } from '@/stores/tool-store'
+import { AggregateSessionsView } from '@/components/sessions/aggregate-sessions-view'
 import { SessionExplorerTable } from '@/components/sessions/session-explorer-table'
 import {
   SessionsFilterBar,
@@ -12,6 +13,16 @@ import {
 import { SessionsStatsBar } from '@/components/sessions/sessions-stats-bar'
 
 export default function ToolSessionsPage() {
+  const { toolId } = useAgentTool()
+
+  if (toolId === 'all') {
+    return <AggregateSessionsView />
+  }
+
+  return <SourceToolSessionsPage />
+}
+
+function SourceToolSessionsPage() {
   const { toolId } = useAgentTool()
   const [filters, setFilters] = useState<SessionFilters>({})
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)

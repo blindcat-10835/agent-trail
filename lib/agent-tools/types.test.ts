@@ -2,12 +2,15 @@ import { describe, it, expect } from 'vitest'
 import {
   getDefinition,
   assertAgentToolId,
+  assertSourceToolId,
   getAllDefinitions,
   AGENT_TOOL_DEFINITIONS,
   TOOL_IDS,
+  SHELL_TOOL_IDS,
 } from './registry'
 import type {
   AgentToolId,
+  SourceToolId,
   AgentToolDefinition,
   AgentToolCapabilities,
   AgentToolUIProfile,
@@ -17,18 +20,18 @@ import type {
 } from './types'
 
 describe('AgentToolId', () => {
-  it('is the literal union of openclaw, claude-code, and codex', () => {
+  it('is the literal union of all, openclaw, claude-code, and codex', () => {
     // Type-level check: if the union is correct, this array is valid
-    const ids: AgentToolId[] = ['openclaw', 'claude-code', 'codex']
-    expect(ids).toHaveLength(3)
+    const ids: AgentToolId[] = ['all', 'openclaw', 'claude-code', 'codex']
+    expect(ids).toHaveLength(4)
+    expect(ids).toContain('all')
     expect(ids).toContain('openclaw')
     expect(ids).toContain('claude-code')
     expect(ids).toContain('codex')
   })
 
-  it('is compatible with TraceSource from types/trace.ts', () => {
-    // AgentToolId must be assignable to TraceSource
-    const toolIds: AgentToolId[] = ['openclaw', 'claude-code', 'codex']
+  it('has source IDs compatible with TraceSource from types/trace.ts', () => {
+    const toolIds: SourceToolId[] = ['openclaw', 'claude-code', 'codex']
     // Verify each can be used where TraceSource is expected
     toolIds.forEach((id) => {
       expect(typeof id).toBe('string')
@@ -81,6 +84,7 @@ describe('AgentToolCapabilities', () => {
 
 describe('assertAgentToolId', () => {
   it('returns the tool ID for valid inputs', () => {
+    expect(assertAgentToolId('all')).toBe('all')
     expect(assertAgentToolId('openclaw')).toBe('openclaw')
     expect(assertAgentToolId('claude-code')).toBe('claude-code')
     expect(assertAgentToolId('codex')).toBe('codex')
@@ -95,6 +99,7 @@ describe('assertAgentToolId', () => {
       assertAgentToolId('nonsense')
     } catch (e) {
       const msg = (e as Error).message
+      expect(msg).toMatch(/all/)
       expect(msg).toMatch(/openclaw/)
       expect(msg).toMatch(/claude-code/)
       expect(msg).toMatch(/codex/)
@@ -102,15 +107,28 @@ describe('assertAgentToolId', () => {
   })
 })
 
-describe('getAllDefinitions', () => {
-  it('returns an array of 3 definitions', () => {
-    const defs = getAllDefinitions()
-    expect(defs).toHaveLength(3)
+describe('assertSourceToolId', () => {
+  it('returns the source tool ID for ingest-backed inputs', () => {
+    expect(assertSourceToolId('openclaw')).toBe('openclaw')
+    expect(assertSourceToolId('claude-code')).toBe('claude-code')
+    expect(assertSourceToolId('codex')).toBe('codex')
   })
 
-  it('includes definitions with ids openclaw, claude-code, codex', () => {
+  it('rejects the synthetic all scope', () => {
+    expect(() => assertSourceToolId('all')).toThrow()
+  })
+})
+
+describe('getAllDefinitions', () => {
+  it('returns an array of 4 definitions', () => {
+    const defs = getAllDefinitions()
+    expect(defs).toHaveLength(4)
+  })
+
+  it('includes definitions with ids all, openclaw, claude-code, codex', () => {
     const defs = getAllDefinitions()
     const ids = defs.map((d) => d.id)
+    expect(ids).toContain('all')
     expect(ids).toContain('openclaw')
     expect(ids).toContain('claude-code')
     expect(ids).toContain('codex')
@@ -118,6 +136,15 @@ describe('getAllDefinitions', () => {
 })
 
 describe('getDefinition', () => {
+  it('returns all definition with aggregate label and no live gateway', () => {
+    const def = getDefinition('all')
+    expect(def.label).toBe('All Sources')
+    expect(def.shortLabel).toBe('ALL')
+    expect(def.capabilities.liveGateway).toBe(false)
+    expect(def.capabilities.sessions).toBe(true)
+    expect(def.ui.sessionColumns.some((col) => col.id === 'project')).toBe(true)
+  })
+
   it('returns openclaw definition with correct label and shortLabel', () => {
     const def = getDefinition('openclaw')
     expect(def.label).toBe('OpenClaw')
@@ -170,16 +197,24 @@ describe('getDefinition', () => {
 })
 
 describe('TOOL_IDS', () => {
-  it('contains all three valid IDs', () => {
+  it('contains only ingest-backed source IDs', () => {
     expect(TOOL_IDS).toHaveLength(3)
     expect(TOOL_IDS).toEqual(['openclaw', 'claude-code', 'codex'])
   })
 })
 
+describe('SHELL_TOOL_IDS', () => {
+  it('contains all four shell tool scopes', () => {
+    expect(SHELL_TOOL_IDS).toHaveLength(4)
+    expect(SHELL_TOOL_IDS).toEqual(['all', 'openclaw', 'claude-code', 'codex'])
+  })
+})
+
 describe('AGENT_TOOL_DEFINITIONS', () => {
-  it('has entries for all three tools', () => {
+  it('has entries for all four shell tool scopes', () => {
     const keys = Object.keys(AGENT_TOOL_DEFINITIONS)
-    expect(keys).toHaveLength(3)
+    expect(keys).toHaveLength(4)
+    expect(keys).toContain('all')
     expect(keys).toContain('openclaw')
     expect(keys).toContain('claude-code')
     expect(keys).toContain('codex')

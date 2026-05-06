@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { assertAgentToolId } from '@/lib/agent-tools/registry'
+import { assertSourceToolId } from '@/lib/agent-tools/registry'
 import { openclawAdapter } from '@/lib/agent-tools/openclaw/server-adapter'
 import { claudeCodeAdapter } from '@/lib/agent-tools/claude-code/server-adapter'
 import { codexAdapter } from '@/lib/agent-tools/codex/server-adapter'
@@ -36,7 +36,7 @@ export async function GET(
 
   try {
     // Validate tool param at the trust boundary (T-04-03)
-    const toolId = assertAgentToolId(tool)
+    const toolId = assertSourceToolId(tool)
     const adapter = adapters[toolId]
 
     // Forward all query params to ingest (the adapter injects source=toolId)
