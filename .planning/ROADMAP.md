@@ -268,7 +268,7 @@ Plans:
 
 **Goal**: Reshape the Next.js frontend into a reusable multi-source dashboard shell and connect session browsing to the ingest API.
 
-**Status**: Pending
+**Status**: Planned
 
 **Depends on**: Phase 1, Phase 2
 
@@ -282,7 +282,14 @@ Plans:
 4. Shared Session Explorer lists and filters sessions from ingest API by source, project/workspace, model, status, time, search and failure/tool/subagent facets.
 5. OpenClaw overview remains available and retains existing Agent/KPI/Sessions/Cron/Skills/Activity information.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Define AgentTool types, registry, and per-tool definitions
+- [ ] 04-02-PLAN.md — BFF API proxy routes and legacy redirects
+- [ ] 04-03-PLAN.md — Shell migration, source switcher, and profile-driven navigation
+- [ ] 04-04-PLAN.md — Shared Session Explorer with BFF-backed data hooks
+- [ ] 04-05-PLAN.md — Aggregate landing page and per-tool dashboard pages
 
 **UI hint**: yes
 
