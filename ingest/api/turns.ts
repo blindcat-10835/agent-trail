@@ -17,7 +17,7 @@ export const turnsRoutes = new Hono();
 // GET /api/v1/sessions/:id/turns - Get turns for a session
 // ============================================================================
 
-turnsRoutes.get('/api/v1/sessions/:id/turns', (c) => {
+turnsRoutes.get('/api/v1/sessions/:id/turns', async (c) => {
   const db = getDatabase();
   const sessionId = c.req.param('id');
 
@@ -48,7 +48,7 @@ turnsRoutes.get('/api/v1/sessions/:id/turns', (c) => {
   const totalTurns = getTurnCount(sessionId, db);
 
   // Assemble turns
-  const allTurns = assembleTurns(sessionId, db);
+  const allTurns = await assembleTurns(sessionId, db);
 
   // Apply pagination
   const paginatedTurns = allTurns.slice(offset, offset + cappedLimit);
@@ -69,7 +69,7 @@ turnsRoutes.get('/api/v1/sessions/:id/turns', (c) => {
 // GET /api/v1/sessions/:id/turns/:index - Get specific turn
 // ============================================================================
 
-turnsRoutes.get('/api/v1/sessions/:id/turns/:index', (c) => {
+turnsRoutes.get('/api/v1/sessions/:id/turns/:index', async (c) => {
   const db = getDatabase();
   const sessionId = c.req.param('id');
   const turnIndex = parseInt(c.req.param('index'), 10);
@@ -92,7 +92,7 @@ turnsRoutes.get('/api/v1/sessions/:id/turns/:index', (c) => {
   }
 
   // Assemble turns and find by index
-  const turns = assembleTurns(sessionId, db);
+  const turns = await assembleTurns(sessionId, db);
   const turn = turns.find(t => t.index === turnIndex);
 
   if (!turn) {
