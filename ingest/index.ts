@@ -10,6 +10,8 @@ import { Hono } from 'hono';
 import { loadConfig } from './config/index.js';
 import { openDatabase, initSchema, closeDatabase } from './db/index.js';
 import { sourcesRoutes } from './api/sources.js';
+import { sessionsRoutes } from './api/sessions.js';
+import { turnsRoutes } from './api/turns.js';
 import type { ServiceContext, HealthStatus, VersionInfo } from './types.js';
 import type { TraceSource } from '../types/trace.js';
 
@@ -53,6 +55,10 @@ app.get('/version', (c) => {
 
 // Mount sources API routes
 app.route('/', sourcesRoutes);
+
+// Mount sessions and turns API routes
+app.route('/', sessionsRoutes);
+app.route('/', turnsRoutes);
 
 // ============================================================================
 // Service Lifecycle
