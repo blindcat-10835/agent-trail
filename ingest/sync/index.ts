@@ -11,7 +11,6 @@
 import Database from 'better-sqlite3';
 import { getDatabase } from '../db';
 import { ParseResult } from '../parser/types';
-import { TraceSession, TraceMessage, TraceActivity } from '@/types/trace';
 
 // ============================================================================
 // Types

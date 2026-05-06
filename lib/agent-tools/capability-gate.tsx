@@ -4,7 +4,7 @@
  * Capability Gate Utilities
  *
  * Conditional rendering based on agent tool capabilities.
- * Use CapabilityGate to show/hide UI elements per tool, and requiresCapability
+ * Use CapabilityGate to show/hide UI elements per tool, and useRequiresCapability
  * as a lightweight boolean check for imperative logic.
  */
 
@@ -55,8 +55,8 @@ export function CapabilityGate({
  * @example
  * ```tsx
  * function NavBar() {
- *   const showOffice = requiresCapability('office')
- *   const showCost = requiresCapability('cost')
+ *   const showOffice = useRequiresCapability('office')
+ *   const showCost = useRequiresCapability('cost')
  *   return (
  *     <nav>
  *       {showOffice && <OfficeLink />}
@@ -66,7 +66,7 @@ export function CapabilityGate({
  * }
  * ```
  */
-export function requiresCapability(
+export function useRequiresCapability(
   capability: keyof AgentToolCapabilities,
 ): boolean {
   const { capabilities } = useAgentTool()

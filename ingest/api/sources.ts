@@ -8,10 +8,40 @@
  */
 
 import { Hono } from 'hono';
-import { discoverOpenClawSources, getSourceConfig } from '../sync/sources';
+import type { TraceSource } from '@/types/trace';
+import {
+  discoverClaudeSources,
+  discoverCodexSources,
+  discoverOpenClawSources,
+  type DiscoveredSource,
+} from '../sync/sources';
 import { syncSource } from '../sync';
 
 export const sourcesRoutes = new Hono();
+
+const SOURCE_TYPES: TraceSource[] = ['openclaw', 'claude-code', 'codex'];
+
+function isTraceSource(type: string): type is TraceSource {
+  return SOURCE_TYPES.includes(type as TraceSource);
+}
+
+async function discoverByType(type: TraceSource): Promise<DiscoveredSource[]> {
+  if (type === 'openclaw') return discoverOpenClawSources();
+  if (type === 'claude-code') return discoverClaudeSources();
+  return discoverCodexSources();
+}
+
+function toSourceResponse(s: DiscoveredSource) {
+  return {
+    type: s.type,
+    path: s.path,
+    sessionCount: s.sessionCount,
+    lastSyncAt: s.lastSyncAt || null,
+    error: s.error || null,
+    // Source health status taxonomy per FOUND-05/DATA-03:
+    healthStatus: s.error ? 'error' : (s.sessionCount > 0 ? 'configured' : 'empty'),
+  };
+}
 
 // ============================================================================
 // GET /api/v1/sources - List all discovered sources
@@ -19,21 +49,8 @@ export const sourcesRoutes = new Hono();
 
 sourcesRoutes.get('/api/v1/sources', async (c) => {
   try {
-    const openclawSources = await discoverOpenClawSources();
-
-    const sources = openclawSources.map(s => ({
-      type: s.type,
-      path: s.path,
-      sessionCount: s.sessionCount,
-      lastSyncAt: s.lastSyncAt || null,
-      error: s.error || null,
-      // Source health status taxonomy per FOUND-05/DATA-03:
-      healthStatus: s.error ? 'error' : (s.sessionCount > 0 ? 'configured' : 'empty'),
-      // 'configured' = path exists, sessions found
-      // 'empty' = path exists, no sessions
-      // 'error' = discovery or parse error occurred
-      // Phase 3 will add 'indexing', 'parser-warning'
-    }));
+    const discovered = await Promise.all(SOURCE_TYPES.map(discoverByType));
+    const sources = discovered.flat().map(toSourceResponse);
 
     return c.json({
       sources,
@@ -54,24 +71,19 @@ sourcesRoutes.get('/api/v1/sources', async (c) => {
 sourcesRoutes.get('/api/v1/sources/:type', async (c) => {
   const type = c.req.param('type');
 
-  if (type !== 'openclaw') {
+  if (!isTraceSource(type)) {
     return c.json({
       error: 'Unsupported source type',
-      message: `Type '${type}' not supported in Phase 2`
+      message: `Type '${type}' not supported`
     }, 400);
   }
 
   try {
-    const sources = await discoverOpenClawSources();
+    const sources = await discoverByType(type);
 
     return c.json({
       type,
-      sources: sources.map(s => ({
-        path: s.path,
-        sessionCount: s.sessionCount,
-        lastSyncAt: s.lastSyncAt || null,
-        error: s.error || null
-      }))
+      sources: sources.map(toSourceResponse)
     });
   } catch (err) {
     return c.json({
@@ -88,15 +100,15 @@ sourcesRoutes.get('/api/v1/sources/:type', async (c) => {
 sourcesRoutes.post('/api/v1/sources/:type/sync', async (c) => {
   const type = c.req.param('type');
 
-  if (type !== 'openclaw') {
+  if (!isTraceSource(type)) {
     return c.json({
       error: 'Unsupported source type',
-      message: `Type '${type}' not supported in Phase 2`
+      message: `Type '${type}' not supported`
     }, 400);
   }
 
   try {
-    const result = await syncSource('openclaw');
+    const result = await syncSource(type);
 
     return c.json({
       type,

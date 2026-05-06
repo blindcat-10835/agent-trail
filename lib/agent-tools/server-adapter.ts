@@ -15,6 +15,7 @@
  */
 
 import type { TraceSession } from '@/types/trace'
+import type { SourceToolId } from './types'
 
 // ============================================================================
 // Configuration
@@ -78,6 +79,63 @@ export function sanitizeLimit(raw: string | undefined): number {
   const parsed = parseInt(raw || '50', 10)
   if (isNaN(parsed) || parsed < 1) return 50
   return Math.min(parsed, MAX_LIMIT)
+}
+
+/**
+ * Build source-scoped session query params.
+ *
+ * Caller-provided `source` is intentionally ignored so URL query params cannot
+ * override the adapter-owned source boundary.
+ */
+export function buildSourceScopedSessionParams(
+  source: SourceToolId,
+  query: Record<string, string>,
+): URLSearchParams {
+  const sanitizedQuery = { ...query }
+  delete sanitizedQuery.source
+
+  return new URLSearchParams({
+    ...sanitizedQuery,
+    source,
+    limit: String(sanitizeLimit(query.limit)),
+  })
+}
+
+/**
+ * Fetch a session only if it belongs to the requested source.
+ */
+export async function getSourceScopedSession(
+  sessionId: string,
+  source: SourceToolId,
+): Promise<TraceSession | null> {
+  validateSessionId(sessionId)
+
+  try {
+    const session = await fetchIngest<TraceSession>(
+      `/api/v1/sessions/${encodeURIComponent(sessionId)}`,
+      { cache: 'no-store' },
+    )
+    return session.source === source ? session : null
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Session not found') {
+      return null
+    }
+    throw err
+  }
+}
+
+/**
+ * Require a source-owned session before proxying child resources.
+ */
+export async function requireSourceScopedSession(
+  sessionId: string,
+  source: SourceToolId,
+): Promise<TraceSession> {
+  const session = await getSourceScopedSession(sessionId, source)
+  if (!session) {
+    throw new SessionValidationError('Session not found', 404)
+  }
+  return session
 }
 
 // ============================================================================

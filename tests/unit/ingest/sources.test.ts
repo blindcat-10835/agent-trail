@@ -11,6 +11,11 @@ vi.mock('os', () => ({
 // Mock fs/promises for deterministic file system tests
 const mockAccess = vi.fn();
 const mockReaddir = vi.fn();
+const dirent = (name: string, kind: 'file' | 'dir') => ({
+  name,
+  isFile: () => kind === 'file',
+  isDirectory: () => kind === 'dir',
+});
 
 vi.mock('fs/promises', () => ({
   default: {
@@ -50,7 +55,7 @@ describe('Claude Code Source Discovery', () => {
       expect(sources[0].type).toBe('claude-code');
     });
 
-    it('should use default path ~/.claude/sessions/', async () => {
+    it('should use default path ~/.claude/projects/', async () => {
       mockAccess.mockResolvedValue(undefined);
       mockReaddir.mockResolvedValue(['session1.jsonl']);
 
@@ -60,7 +65,7 @@ describe('Claude Code Source Discovery', () => {
       expect(mockAccess).toHaveBeenCalled();
       const accessedPath = mockAccess.mock.calls[0][0];
       expect(accessedPath).toContain('.claude');
-      expect(accessedPath).toContain('sessions');
+      expect(accessedPath).toContain('projects');
     });
 
     it('should use CLAUDE_SESSIONS_PATH env var when set', async () => {
@@ -129,6 +134,41 @@ describe('Claude Code Source Discovery', () => {
       const sources = await discoverClaudeSources();
 
       expect(sources[0].sessionCount).toBe(5);
+    });
+
+    it('should discover nested project and subagent session directories', async () => {
+      mockAccess.mockResolvedValue(undefined);
+      mockReaddir.mockImplementation(async (path: string) => {
+        if (path === '/mock/home/user/.claude/projects') {
+          return [dirent('project-a', 'dir')];
+        }
+        if (path === '/mock/home/user/.claude/projects/project-a') {
+          return [
+            dirent('main.jsonl', 'file'),
+            dirent('notes.txt', 'file'),
+            dirent('subagents', 'dir'),
+          ];
+        }
+        if (path === '/mock/home/user/.claude/projects/project-a/subagents') {
+          return [dirent('agent-1.jsonl', 'file'), dirent('agent-2.jsonl', 'file')];
+        }
+        return [];
+      });
+
+      const sources = await discoverClaudeSources();
+
+      expect(sources).toEqual([
+        {
+          type: 'claude-code',
+          path: '/mock/home/user/.claude/projects/project-a',
+          sessionCount: 1,
+        },
+        {
+          type: 'claude-code',
+          path: '/mock/home/user/.claude/projects/project-a/subagents',
+          sessionCount: 2,
+        },
+      ]);
     });
   });
 });
@@ -203,6 +243,35 @@ describe('Codex Source Discovery', () => {
       expect(sources[0].error).toBeDefined();
       expect(sources[0].sessionCount).toBe(0);
     });
+
+    it('should discover recursively nested year/month/day session directories', async () => {
+      mockAccess.mockResolvedValue(undefined);
+      mockReaddir.mockImplementation(async (path: string) => {
+        if (path === '/mock/home/user/.codex/sessions') {
+          return [dirent('2026', 'dir')];
+        }
+        if (path === '/mock/home/user/.codex/sessions/2026') {
+          return [dirent('05', 'dir')];
+        }
+        if (path === '/mock/home/user/.codex/sessions/2026/05') {
+          return [dirent('07', 'dir')];
+        }
+        if (path === '/mock/home/user/.codex/sessions/2026/05/07') {
+          return [dirent('rollout-a.jsonl', 'file'), dirent('rollout-b.jsonl', 'file')];
+        }
+        return [];
+      });
+
+      const sources = await discoverCodexSources();
+
+      expect(sources).toEqual([
+        {
+          type: 'codex',
+          path: '/mock/home/user/.codex/sessions/2026/05/07',
+          sessionCount: 2,
+        },
+      ]);
+    });
   });
 });
 
@@ -265,8 +334,8 @@ describe('getSourcePath', () => {
     const path = getSourcePath('claude-code');
 
     expect(path).toContain('.claude');
-    expect(path).toContain('sessions');
-    expect(path).toBe('/mock/home/user/.claude/sessions');
+    expect(path).toContain('projects');
+    expect(path).toBe('/mock/home/user/.claude/projects');
   });
 
   it('should return correct path for claude-code (env var)', () => {

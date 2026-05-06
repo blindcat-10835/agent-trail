@@ -37,6 +37,69 @@ export interface DiscoveredSource {
   error?: string;
 }
 
+async function discoverJsonlDirectories(
+  type: TraceSource,
+  rootPath: string,
+  missingMessage: string
+): Promise<DiscoveredSource[]> {
+  try {
+    await fs.access(rootPath);
+    const directories = await collectJsonlDirectories(rootPath);
+
+    if (directories.length === 0) {
+      return [{ type, path: rootPath, sessionCount: 0 }];
+    }
+
+    return directories.map((source) => ({
+      type,
+      path: source.path,
+      sessionCount: source.sessionCount,
+    }));
+  } catch (err) {
+    return [
+      {
+        type,
+        path: rootPath,
+        sessionCount: 0,
+        error: err instanceof Error ? err.message : missingMessage,
+      },
+    ];
+  }
+}
+
+async function collectJsonlDirectories(
+  rootPath: string
+): Promise<Array<{ path: string; sessionCount: number }>> {
+  const entries = await fs.readdir(rootPath, { withFileTypes: true }) as Array<
+    string | { name: string; isDirectory(): boolean; isFile(): boolean }
+  >;
+  let sessionCount = 0;
+  const nestedSources: Array<{ path: string; sessionCount: number }> = [];
+
+  for (const entry of entries) {
+    const name = typeof entry === 'string' ? entry : entry.name;
+    const entryPath = path.join(rootPath, name);
+    const isDirectory =
+      typeof entry === 'string' ? false : entry.isDirectory();
+    const isFile = typeof entry === 'string' ? true : entry.isFile();
+
+    if (isFile && name.endsWith('.jsonl')) {
+      sessionCount += 1;
+      continue;
+    }
+
+    if (isDirectory) {
+      nestedSources.push(...await collectJsonlDirectories(entryPath));
+    }
+  }
+
+  if (sessionCount > 0) {
+    return [{ path: rootPath, sessionCount }, ...nestedSources];
+  }
+
+  return nestedSources;
+}
+
 /**
  * Discover OpenClaw sources from workspace configuration
  *
@@ -125,12 +188,13 @@ export async function discoverOpenClawSources(config?: {
 }
 
 /**
- * Discover Claude Code sources from sessions directory
+ * Discover Claude Code sources from projects/session directories
  *
- * Uses CLAUDE_SESSIONS_PATH environment variable or defaults to ~/.claude/sessions/.
- * Lists all .jsonl files in the sessions directory and returns a single discovered source.
+ * Uses CLAUDE_SESSIONS_PATH environment variable or defaults to
+ * ~/.claude/projects/. Recursively discovers directories containing .jsonl
+ * transcripts so both project sessions and subagent sessions can be synced.
  *
- * Per D-12: Default path ~/.claude/sessions/, overridable via CLAUDE_SESSIONS_PATH env var.
+ * Per D-12: overridable via CLAUDE_SESSIONS_PATH env var.
  *
  * @param config - Optional sessions path override
  * @returns Array of discovered Claude Code sources
@@ -138,44 +202,24 @@ export async function discoverOpenClawSources(config?: {
 export async function discoverClaudeSources(config?: {
   sessionsPath?: string;
 }): Promise<DiscoveredSource[]> {
-  const sources: DiscoveredSource[] = [];
-
   // Resolve path: config override > env var > default
   let sessionsPath = config?.sessionsPath || process.env.CLAUDE_SESSIONS_PATH || '';
   if (!sessionsPath) {
-    sessionsPath = path.join(os.homedir(), '.claude', 'sessions');
+    sessionsPath = path.join(os.homedir(), '.claude', 'projects');
   }
 
-  try {
-    // Check if sessions directory exists
-    await fs.access(sessionsPath);
-
-    // List all JSONL files
-    const files = await fs.readdir(sessionsPath);
-    const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
-
-    sources.push({
-      type: 'claude-code',
-      path: sessionsPath,
-      sessionCount: sessionFiles.length,
-    });
-  } catch (err) {
-    sources.push({
-      type: 'claude-code',
-      path: sessionsPath,
-      sessionCount: 0,
-      error: err instanceof Error ? err.message : 'Claude sessions directory not found',
-    });
-  }
-
-  return sources;
+  return discoverJsonlDirectories(
+    'claude-code',
+    sessionsPath,
+    'Claude sessions directory not found'
+  );
 }
 
 /**
  * Discover Codex sources from sessions directory
  *
  * Uses CODEX_SESSIONS_PATH environment variable or defaults to ~/.codex/sessions/.
- * Lists all .jsonl files in the sessions directory and returns a single discovered source.
+ * Recursively discovers directories containing .jsonl transcripts.
  *
  * Per D-13: Default path ~/.codex/sessions/, overridable via CODEX_SESSIONS_PATH env var.
  *
@@ -185,37 +229,17 @@ export async function discoverClaudeSources(config?: {
 export async function discoverCodexSources(config?: {
   sessionsPath?: string;
 }): Promise<DiscoveredSource[]> {
-  const sources: DiscoveredSource[] = [];
-
   // Resolve path: config override > env var > default
   let sessionsPath = config?.sessionsPath || process.env.CODEX_SESSIONS_PATH || '';
   if (!sessionsPath) {
     sessionsPath = path.join(os.homedir(), '.codex', 'sessions');
   }
 
-  try {
-    // Check if sessions directory exists
-    await fs.access(sessionsPath);
-
-    // List all JSONL files
-    const files = await fs.readdir(sessionsPath);
-    const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
-
-    sources.push({
-      type: 'codex',
-      path: sessionsPath,
-      sessionCount: sessionFiles.length,
-    });
-  } catch (err) {
-    sources.push({
-      type: 'codex',
-      path: sessionsPath,
-      sessionCount: 0,
-      error: err instanceof Error ? err.message : 'Codex sessions directory not found',
-    });
-  }
-
-  return sources;
+  return discoverJsonlDirectories(
+    'codex',
+    sessionsPath,
+    'Codex sessions directory not found'
+  );
 }
 
 /**
@@ -276,7 +300,7 @@ export function getSourcePath(sourceType: TraceSource): string {
       parts.pop();
       return path.join(parts.join('/'), 'agents');
     case 'claude-code':
-      return process.env.CLAUDE_SESSIONS_PATH || path.join(os.homedir(), '.claude', 'sessions');
+      return process.env.CLAUDE_SESSIONS_PATH || path.join(os.homedir(), '.claude', 'projects');
     case 'codex':
       return process.env.CODEX_SESSIONS_PATH || path.join(os.homedir(), '.codex', 'sessions');
     default:

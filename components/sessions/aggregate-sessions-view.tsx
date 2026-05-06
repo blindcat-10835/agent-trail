@@ -8,13 +8,51 @@ import { SessionsFilterBar, type SessionFilters } from '@/components/sessions/se
 import { SessionsStatsBar } from '@/components/sessions/sessions-stats-bar'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import { useToolStore } from '@/stores/tool-store'
+import type { AggregateSourceStatus } from '@/lib/agent-tools/client-hooks'
+
+function sourceLabel(toolId: AggregateSourceStatus['toolId']): string {
+  switch (toolId) {
+    case 'openclaw':
+      return 'OPENCLAW'
+    case 'claude-code':
+      return 'CLAUDE:CODE'
+    case 'codex':
+      return 'CODEX'
+  }
+}
+
+function SourceStatusStrip({ sources }: { sources: AggregateSourceStatus[] }) {
+  if (sources.length === 0) return null
+
+  return (
+    <div className="grid grid-cols-3 border border-border bg-card">
+      {sources.map((source) => (
+        <div
+          key={source.toolId}
+          className="px-3 py-2 border-r border-border last:border-r-0"
+        >
+          <div className="text-[9px] text-muted-foreground tracking-[0.18em] uppercase">
+            {sourceLabel(source.toolId)}
+          </div>
+          <div className="mt-1 text-[11px] font-mono">
+            {source.status === 'error' ? (
+              <span className="text-destructive">ERR</span>
+            ) : (
+              <span>{source.total.toLocaleString()} indexed</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export function AggregateSessionsView() {
   const router = useRouter()
   const [filters, setFilters] = useState<SessionFilters>({})
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
 
-  const { sessions, loading, error } = useAggregateSessions(
+  const { sessions, totalCount, sources, loading, error } = useAggregateSessions(
     filters as Record<string, string>,
   )
 
@@ -49,11 +87,14 @@ export function AggregateSessionsView() {
 
   if (sessions.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <EmptyState
-          heading="NO SESSIONS INDEXED"
-          body="START AN AGENT SESSION IN ANY SUPPORTED TOOL TO SEE IT APPEAR HERE."
-        />
+      <div className="flex flex-col h-full min-h-0 p-4 gap-4">
+        <SourceStatusStrip sources={sources} />
+        <div className="flex flex-1 items-center justify-center">
+          <EmptyState
+            heading="NO SESSIONS INDEXED"
+            body="START AN AGENT SESSION IN ANY SUPPORTED TOOL TO SEE IT APPEAR HERE."
+          />
+        </div>
       </div>
     )
   }
@@ -63,7 +104,12 @@ export function AggregateSessionsView() {
       <h1 className="text-base font-bold text-foreground">
         ALL SESSIONS
       </h1>
-      <SessionsStatsBar sessions={sessions} totalCount={sessions.length} />
+      <SourceStatusStrip sources={sources} />
+      <SessionsStatsBar
+        sessions={sessions}
+        totalCount={totalCount}
+        totalLabel="TOTAL INDEXED"
+      />
       <SessionsFilterBar filters={filters} onFiltersChange={setFilters} />
       <div className="flex-1 min-h-0 overflow-auto">
         <SessionExplorerTable
