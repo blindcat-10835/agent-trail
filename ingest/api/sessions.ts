@@ -1,0 +1,183 @@
+/**
+ * Sessions API Routes
+ *
+ * REST API endpoints for session listing and detail retrieval.
+ * Provides filtering by source, project, status with pagination and sorting.
+ *
+ * @module ingest/api/sessions
+ */
+
+import { Hono } from 'hono';
+import { getDatabase } from '../db';
+import { TraceSession, SessionStatus, TraceSource } from '@/types/trace';
+
+export const sessionsRoutes = new Hono();
+
+// ============================================================================
+// GET /api/v1/sessions - List sessions
+// ============================================================================
+
+sessionsRoutes.get('/api/v1/sessions', (c) => {
+  const db = getDatabase();
+
+  // Parse query parameters
+  const source = c.req.query('source') as TraceSource | null;
+  const project = c.req.query('project') || null;
+  const status = c.req.query('status') as SessionStatus | null;
+  const sort = c.req.query('sort') || 'started_at'; // started_at or ended_at
+  const order = c.req.query('order') || 'desc'; // asc or desc
+
+  // Parse and validate limit/offset (T-02-14: reject negative values)
+  const limit = parseInt(c.req.query('limit') || '50', 10);
+  const offset = parseInt(c.req.query('offset') || '0', 10);
+
+  if (isNaN(limit) || limit < 0) {
+    return c.json({ error: 'Invalid limit parameter, must be non-negative integer' }, 400);
+  }
+  if (isNaN(offset) || offset < 0) {
+    return c.json({ error: 'Invalid offset parameter, must be non-negative integer' }, 400);
+  }
+
+  // Cap limit to prevent resource exhaustion (T-02-14)
+  const cappedLimit = Math.min(limit, 1000);
+
+  // Validate sort parameter (only allow safe column names)
+  if (sort !== 'started_at' && sort !== 'ended_at') {
+    return c.json({ error: 'Invalid sort parameter. Must be "started_at" or "ended_at"' }, 400);
+  }
+
+  // Validate order parameter
+  if (order !== 'asc' && order !== 'desc') {
+    return c.json({ error: 'Invalid order parameter. Must be "asc" or "desc"' }, 400);
+  }
+
+  // Build query conditions
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  if (source) {
+    conditions.push('source = ?');
+    params.push(source);
+  }
+
+  if (project) {
+    conditions.push('project = ?');
+    params.push(project);
+  }
+
+  if (status) {
+    conditions.push('status = ?');
+    params.push(status);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Get total count
+  const countResult = db.prepare(`
+    SELECT COUNT(*) as total
+    FROM sessions
+    ${whereClause}
+  `).get(...params) as { total: number };
+
+  // Get sessions
+  const orderBy = sort === 'ended_at' ? 'ended_at' : 'started_at';
+  const orderDir = order === 'asc' ? 'ASC' : 'DESC';
+
+  const sessions = db.prepare(`
+    SELECT
+      id, source, project, started_at, ended_at, status,
+      message_count, user_message_count, total_output_tokens, has_tool_calls,
+      parser_malformed_lines, is_truncated, termination_status
+    FROM sessions
+    ${whereClause}
+    ORDER BY ${orderBy} ${orderDir}
+    LIMIT ? OFFSET ?
+  `).all(...params, cappedLimit, offset) as SessionRow[];
+
+  return c.json({
+    sessions: sessions.map(row => parseSessionRow(row)),
+    pagination: {
+      total: countResult.total,
+      limit: cappedLimit,
+      offset,
+      hasMore: offset + cappedLimit < countResult.total
+    }
+  });
+});
+
+// ============================================================================
+// GET /api/v1/sessions/:id - Get session by ID
+// ============================================================================
+
+sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
+  const db = getDatabase();
+  const sessionId = c.req.param('id');
+
+  // Validate session ID format (T-02-13: prevent injection via prepared statements + format check)
+  if (!/^[a-zA-Z0-9:\-_.]{1,256}$/.test(sessionId)) {
+    return c.json({ error: 'Invalid session ID format', sessionId }, 400);
+  }
+
+  const session = db.prepare(`
+    SELECT
+      id, source, project, started_at, ended_at, status,
+      message_count, user_message_count, total_output_tokens, has_tool_calls,
+      parser_malformed_lines, is_truncated, termination_status
+    FROM sessions
+    WHERE id = ?
+  `).get(sessionId) as SessionRow | undefined;
+
+  if (!session) {
+    return c.json({
+      error: 'Session not found',
+      sessionId
+    }, 404);
+  }
+
+  return c.json(parseSessionRow(session));
+});
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface SessionRow {
+  id: string;
+  source: string;
+  project: string;
+  started_at: string | null;
+  ended_at: string | null;
+  status: string;
+  message_count: number;
+  user_message_count: number;
+  total_output_tokens: number;
+  has_tool_calls: number;
+  parser_malformed_lines: number;
+  is_truncated: number;
+  termination_status: string | null;
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function parseSessionRow(row: SessionRow): TraceSession {
+  return {
+    id: row.id,
+    source: row.source as TraceSource,
+    project: row.project,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    status: row.status as SessionStatus,
+    metrics: {
+      messageCount: row.message_count,
+      userMessageCount: row.user_message_count,
+      totalTokens: row.total_output_tokens,
+      hasToolCalls: row.has_tool_calls === 1,
+      terminationStatus: row.termination_status || undefined,
+      parserMalformedLines: row.parser_malformed_lines,
+      isTruncated: row.is_truncated === 1
+    },
+    turns: [] // Turns loaded separately via /sessions/:id/turns
+  };
+}
