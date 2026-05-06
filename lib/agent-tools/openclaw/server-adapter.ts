@@ -11,13 +11,15 @@
  */
 
 import {
+  buildSourceScopedSessionParams,
   fetchIngest,
-  validateSessionId,
-  sanitizeLimit,
+  getSourceScopedSession,
+  requireSourceScopedSession,
   type AgentToolServerAdapter,
   type SessionListResult,
 } from '../server-adapter'
-import type { TraceSession } from '@/types/trace'
+
+const SOURCE = 'openclaw'
 
 /**
  * Create an OpenClaw ingest adapter.
@@ -27,19 +29,14 @@ import type { TraceSession } from '@/types/trace'
  */
 export function createOpenClawAdapter(): AgentToolServerAdapter {
   return {
-    toolId: 'openclaw',
+    toolId: SOURCE,
 
     async health() {
       return fetchIngest('/health')
     },
 
     async listSessions(query) {
-      const limit = sanitizeLimit(query.limit)
-      const params = new URLSearchParams({
-        source: 'openclaw',
-        ...query,
-        limit: String(limit),
-      })
+      const params = buildSourceScopedSessionParams(SOURCE, query)
       return fetchIngest<SessionListResult>(
         `/api/v1/sessions?${params}`,
         { next: { revalidate: 30 } },
@@ -47,15 +44,11 @@ export function createOpenClawAdapter(): AgentToolServerAdapter {
     },
 
     async getSession(sessionId) {
-      validateSessionId(sessionId)
-      return fetchIngest<TraceSession>(
-        `/api/v1/sessions/${encodeURIComponent(sessionId)}`,
-        { cache: 'no-store' },
-      )
+      return getSourceScopedSession(sessionId, SOURCE)
     },
 
     async getSessionMessages(sessionId) {
-      validateSessionId(sessionId)
+      await requireSourceScopedSession(sessionId, SOURCE)
       return fetchIngest(
         `/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
         { cache: 'no-store' },
@@ -63,7 +56,7 @@ export function createOpenClawAdapter(): AgentToolServerAdapter {
     },
 
     async getSessionTurns(sessionId) {
-      validateSessionId(sessionId)
+      await requireSourceScopedSession(sessionId, SOURCE)
       return fetchIngest(
         `/api/v1/sessions/${encodeURIComponent(sessionId)}/turns`,
         { cache: 'no-store' },
