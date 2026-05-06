@@ -318,10 +318,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Data Foundation (BFF pagination, useSessionTurns hook, useReplayStore, dependencies)
-- [ ] 05-02-PLAN.md — Page Shell + Header + Status + Right Rail (route, ReplayHeader, ReplayRightRail, navigation wiring)
-- [ ] 05-03-PLAN.md — Turn Cards + Activity Blocks (TurnCard, TurnTimeline, ToolBlock, SkillBlock, SubagentBlock, ThinkingBlock, SystemEventBlock)
-- [ ] 05-04-PLAN.md — Virtualization + Search + Filters + Navigation (@tanstack/react-virtual, ReplaySearchBar, ReplayFilterBar, TurnNavigator)
+- [x] 05-01-PLAN.md — Data Foundation (BFF pagination, useSessionTurns hook, useReplayStore, dependencies)
+- [x] 05-02-PLAN.md — Page Shell + Header + Status + Right Rail (route, ReplayHeader, ReplayRightRail, navigation wiring)
+- [x] 05-03-PLAN.md — Turn Cards + Activity Blocks (TurnCard, TurnTimeline, ToolBlock, SkillBlock, SubagentBlock, ThinkingBlock, SystemEventBlock)
+- [x] 05-04-PLAN.md — Virtualization + Search + Filters + Navigation (@tanstack/react-virtual, ReplaySearchBar, ReplayFilterBar, TurnNavigator)
 
 **UI hint**: yes
 
