@@ -254,7 +254,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 **Plans**: 5 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Parser types extension + source discovery functions
+- [x] 03-01-PLAN.md — Parser types extension + source discovery functions
 - [ ] 03-02-PLAN.md — Claude Code JSONL parser (DAG, dedup, compact, subagent)
 - [ ] 03-03-PLAN.md — Codex JSONL parser (turn_context, function_call, spawn_agent)
 - [ ] 03-04-PLAN.md — Enhanced turn assembler + sync pipeline wiring
