@@ -1,0 +1,39 @@
+/**
+ * Agent Tools — Barrel Export
+ *
+ * Re-exports the complete agent tool type system and registry.
+ * Import from here instead of individual files for convenience.
+ *
+ * @example
+ * ```typescript
+ * import { getDefinition, assertAgentToolId, type AgentToolId } from '@/lib/agent-tools'
+ * ```
+ */
+
+// Types
+export type {
+  AgentToolId,
+  AgentToolDefinition,
+  AgentToolCapabilities,
+  AgentToolUIProfile,
+  ToolNavItem,
+  SessionColumnDef,
+  AgentToolContextValue,
+  NormalizedSession,
+  NormalizedToolCall,
+  ReplayBlockRegistry,
+} from './types'
+
+// Registry
+export {
+  getDefinition,
+  assertAgentToolId,
+  getAllDefinitions,
+  AGENT_TOOL_DEFINITIONS,
+  TOOL_IDS,
+} from './registry'
+
+// Per-tool definitions
+export { default as openclawDefinition } from './openclaw/definition'
+export { default as claudeCodeDefinition } from './claude-code/definition'
+export { default as codexDefinition } from './codex/definition'
