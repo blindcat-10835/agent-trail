@@ -6,6 +6,9 @@ import { useAgentTool, useSessionDetail, useSessionTurns } from '@/lib/agent-too
 import { ReplayHeader } from '@/components/replay/replay-header'
 import { ReplayRightRail } from '@/components/replay/replay-right-rail'
 import { TurnTimeline } from '@/components/replay/turn-timeline'
+import { ReplaySearchBar } from '@/components/replay/replay-search-bar'
+import { ReplayFilterBar } from '@/components/replay/replay-filter-bar'
+import { TurnNavigator } from '@/components/replay/turn-navigator'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { TraceTurn } from '@/types/trace'
 
@@ -116,6 +119,19 @@ export default function SessionReplayPage({
       {/* Status indicator bar (prominent focal point below header) */}
       {derivedStatus && derivedStatus !== 'idle' && (
         <SessionStatusBar status={derivedStatus} />
+      )}
+
+      {/* Search and filters */}
+      <div className="flex-shrink-0 space-y-0 border-b border-border">
+        <div className="px-4 py-2">
+          <ReplaySearchBar turns={turns} />
+        </div>
+        <ReplayFilterBar />
+      </div>
+
+      {/* Turn navigator */}
+      {turns.length > 0 && (
+        <TurnNavigator turns={turns} />
       )}
 
       {/* Main content area: turn timeline + right rail toggle */}
