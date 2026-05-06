@@ -123,6 +123,8 @@ export interface TraceTurn {
   endedAt: string | null;
   durationMs: number | null;
   tokenUsage?: TokenUsage;
+  /** True if turn was truncated by a compact boundary (D-10) */
+  isTruncated?: boolean;
 }
 
 // ============================================================================
