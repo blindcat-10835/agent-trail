@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState } from 'react'
+import { use, useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAgentTool, useSessionDetail, useSessionTurns } from '@/lib/agent-tools/client-hooks'
 import { ReplayHeader } from '@/components/replay/replay-header'
@@ -18,7 +18,48 @@ export default function SessionReplayPage({
   const router = useRouter()
   const { toolId, href } = useAgentTool()
   const { session, loading: sessionLoading, error: sessionError } = useSessionDetail(toolId, sessionId)
-  const { turns, pagination, loading: turnsLoading, error: turnsError, refetch } = useSessionTurns(toolId, sessionId)
+
+  // Pagination state management
+  const [turnsOffset, setTurnsOffset] = useState(0)
+  const [allTurns, setAllTurns] = useState<TraceTurn[]>([])
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  const { turns: pageTurns, pagination, loading: turnsLoading, error: turnsError, refetch } = useSessionTurns(
+    toolId,
+    sessionId,
+    { offset: turnsOffset, limit: 50 },
+  )
+
+  // Reset accumulated turns when sessionId changes
+  useEffect(() => {
+    setAllTurns([])
+    setTurnsOffset(0)
+  }, [sessionId])
+
+  // Append page turns to accumulated list
+  useEffect(() => {
+    if (pageTurns.length > 0) {
+      setAllTurns((prev) => {
+        // Avoid duplicates if refetching same offset
+        const existingIds = new Set(prev.map((t) => t.id))
+        const newTurns = pageTurns.filter((t) => !existingIds.has(t.id))
+        if (turnsOffset === 0) {
+          return pageTurns
+        }
+        return [...prev, ...newTurns]
+      })
+    }
+    setLoadingMore(false)
+  }, [pageTurns, turnsOffset])
+
+  const handleLoadMore = useCallback(() => {
+    if (pagination?.hasMore && !loadingMore) {
+      setLoadingMore(true)
+      setTurnsOffset((prev) => prev + 50)
+    }
+  }, [pagination?.hasMore, loadingMore])
+
+  const turns = allTurns
   const [replayRightRailOpen, setReplayRightRailOpen] = useState(false)
 
   // Derive status from session metrics for display
@@ -81,7 +122,7 @@ export default function SessionReplayPage({
       <div
         className="flex-1 min-h-0 flex transition-all duration-200"
       >
-        {/* Turn timeline (placeholder — Plan 03/04) */}
+        {/* Turn timeline */}
         <div className="flex-1 min-w-0 min-h-0">
           {turnsLoading && turns.length === 0 ? (
             <div className="flex flex-col gap-4 p-6">
@@ -99,7 +140,13 @@ export default function SessionReplayPage({
               </div>
             </div>
           ) : (
-            <TurnTimeline turns={turns} />
+            <TurnTimeline
+              turns={turns}
+              sessionId={sessionId}
+              hasMore={pagination?.hasMore ?? false}
+              loadingMore={loadingMore}
+              onLoadMore={handleLoadMore}
+            />
           )}
         </div>
 

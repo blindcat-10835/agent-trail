@@ -23,6 +23,12 @@ interface ReplayState {
   setSearchMatches: (matches: { turnId: string; matchCount: number }[]) => void
   currentMatchIndex: number
   setCurrentMatchIndex: (index: number) => void
+
+  // Turn navigation
+  currentTurnIndex: number
+  setCurrentTurnIndex: (index: number) => void
+  focusedTurnId: string | null
+  setFocusedTurnId: (turnId: string | null) => void
 }
 
 export const useReplayStore = create<ReplayState>((set) => ({
@@ -92,4 +98,10 @@ export const useReplayStore = create<ReplayState>((set) => ({
   setSearchMatches: (matches) => set({ searchMatches: matches }),
   currentMatchIndex: 0,
   setCurrentMatchIndex: (index) => set({ currentMatchIndex: index }),
+
+  // Turn navigation
+  currentTurnIndex: 0,
+  setCurrentTurnIndex: (index) => set({ currentTurnIndex: index }),
+  focusedTurnId: null,
+  setFocusedTurnId: (turnId) => set({ focusedTurnId: turnId }),
 }))
