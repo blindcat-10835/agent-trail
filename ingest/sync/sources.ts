@@ -10,6 +10,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
 import { TraceSource } from '@/types/trace';
 
 /**
@@ -124,10 +125,104 @@ export async function discoverOpenClawSources(config?: {
 }
 
 /**
+ * Discover Claude Code sources from sessions directory
+ *
+ * Uses CLAUDE_SESSIONS_PATH environment variable or defaults to ~/.claude/sessions/.
+ * Lists all .jsonl files in the sessions directory and returns a single discovered source.
+ *
+ * Per D-12: Default path ~/.claude/sessions/, overridable via CLAUDE_SESSIONS_PATH env var.
+ *
+ * @param config - Optional sessions path override
+ * @returns Array of discovered Claude Code sources
+ */
+export async function discoverClaudeSources(config?: {
+  sessionsPath?: string;
+}): Promise<DiscoveredSource[]> {
+  const sources: DiscoveredSource[] = [];
+
+  // Resolve path: config override > env var > default
+  let sessionsPath = config?.sessionsPath || process.env.CLAUDE_SESSIONS_PATH || '';
+  if (!sessionsPath) {
+    sessionsPath = path.join(os.homedir(), '.claude', 'sessions');
+  }
+
+  try {
+    // Check if sessions directory exists
+    await fs.access(sessionsPath);
+
+    // List all JSONL files
+    const files = await fs.readdir(sessionsPath);
+    const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
+
+    sources.push({
+      type: 'claude-code',
+      path: sessionsPath,
+      sessionCount: sessionFiles.length,
+    });
+  } catch (err) {
+    sources.push({
+      type: 'claude-code',
+      path: sessionsPath,
+      sessionCount: 0,
+      error: err instanceof Error ? err.message : 'Claude sessions directory not found',
+    });
+  }
+
+  return sources;
+}
+
+/**
+ * Discover Codex sources from sessions directory
+ *
+ * Uses CODEX_SESSIONS_PATH environment variable or defaults to ~/.codex/sessions/.
+ * Lists all .jsonl files in the sessions directory and returns a single discovered source.
+ *
+ * Per D-13: Default path ~/.codex/sessions/, overridable via CODEX_SESSIONS_PATH env var.
+ *
+ * @param config - Optional sessions path override
+ * @returns Array of discovered Codex sources
+ */
+export async function discoverCodexSources(config?: {
+  sessionsPath?: string;
+}): Promise<DiscoveredSource[]> {
+  const sources: DiscoveredSource[] = [];
+
+  // Resolve path: config override > env var > default
+  let sessionsPath = config?.sessionsPath || process.env.CODEX_SESSIONS_PATH || '';
+  if (!sessionsPath) {
+    sessionsPath = path.join(os.homedir(), '.codex', 'sessions');
+  }
+
+  try {
+    // Check if sessions directory exists
+    await fs.access(sessionsPath);
+
+    // List all JSONL files
+    const files = await fs.readdir(sessionsPath);
+    const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
+
+    sources.push({
+      type: 'codex',
+      path: sessionsPath,
+      sessionCount: sessionFiles.length,
+    });
+  } catch (err) {
+    sources.push({
+      type: 'codex',
+      path: sessionsPath,
+      sessionCount: 0,
+      error: err instanceof Error ? err.message : 'Codex sessions directory not found',
+    });
+  }
+
+  return sources;
+}
+
+/**
  * Get source configuration for a specific source type
  *
  * Returns configuration for all discovered sources of the given type.
- * Claude Code and Codex sources will be added in Phase 3.
+ * Supports OpenClaw, Claude Code, and Codex sources.
  *
  * @param sourceType - Type of source to configure
  * @returns Array of source configurations
@@ -142,7 +237,24 @@ export async function getSourceConfig(sourceType: TraceSource): Promise<SourceCo
     }));
   }
 
-  // Claude Code and Codex sources will be added in Phase 3
+  if (sourceType === 'claude-code') {
+    const sources = await discoverClaudeSources();
+    return sources.map((s) => ({
+      type: s.type,
+      path: s.path,
+      enabled: !s.error,
+    }));
+  }
+
+  if (sourceType === 'codex') {
+    const sources = await discoverCodexSources();
+    return sources.map((s) => ({
+      type: s.type,
+      path: s.path,
+      enabled: !s.error,
+    }));
+  }
+
   return [];
 }
 
@@ -163,6 +275,10 @@ export function getSourcePath(sourceType: TraceSource): string {
       const parts = workspace.replace(/\/+$/, '').split('/');
       parts.pop();
       return path.join(parts.join('/'), 'agents');
+    case 'claude-code':
+      return process.env.CLAUDE_SESSIONS_PATH || path.join(os.homedir(), '.claude', 'sessions');
+    case 'codex':
+      return process.env.CODEX_SESSIONS_PATH || path.join(os.homedir(), '.codex', 'sessions');
     default:
       return '';
   }
