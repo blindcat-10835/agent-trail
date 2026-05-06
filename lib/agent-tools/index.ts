@@ -61,5 +61,5 @@ export {
 // Capability gate
 export {
   CapabilityGate,
-  requiresCapability,
+  useRequiresCapability,
 } from './capability-gate'

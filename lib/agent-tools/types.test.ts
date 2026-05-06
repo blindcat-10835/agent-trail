@@ -11,12 +11,7 @@ import {
 import type {
   AgentToolId,
   SourceToolId,
-  AgentToolDefinition,
   AgentToolCapabilities,
-  AgentToolUIProfile,
-  ToolNavItem,
-  SessionColumnDef,
-  AgentToolContextValue,
 } from './types'
 
 describe('AgentToolId', () => {

@@ -38,6 +38,34 @@ const STATUS_OPTIONS = [
   { value: 'error', label: 'ERROR' },
 ] as const
 
+function FilterChip({
+  value,
+  label,
+  currentValue,
+  onSelect,
+}: {
+  value: string | undefined
+  label: string
+  currentValue: string | undefined
+  onSelect: (value: string | undefined) => void
+}) {
+  const isSelected = currentValue === value || (!currentValue && !value)
+
+  return (
+    <button
+      onClick={() => onSelect(value)}
+      className={cn(
+        'px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] border rounded transition-all',
+        isSelected
+          ? 'bg-accent text-accent-foreground border-accent'
+          : 'bg-card text-muted-foreground border-border hover:bg-accent/5 hover:border-border/80',
+      )}
+    >
+      {label}
+    </button>
+  )
+}
+
 // ============================================================================
 // Filter Bar Component
 // ============================================================================
@@ -55,33 +83,6 @@ export function SessionsFilterBar({
     },
     [filters, onFiltersChange],
   )
-
-  function FilterChip({
-    value,
-    label,
-    group,
-  }: {
-    value: string | undefined
-    label: string
-    group: 'status' | 'model'
-  }) {
-    const currentValue = group === 'status' ? filters.status : filters.model
-    const isSelected = currentValue === value || (!currentValue && !value)
-
-    return (
-      <button
-        onClick={() => setFilter(group, value)}
-        className={cn(
-          'px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] border rounded transition-all',
-          isSelected
-            ? 'bg-accent text-accent-foreground border-accent'
-            : 'bg-card text-muted-foreground border-border hover:bg-accent/5 hover:border-border/80',
-        )}
-      >
-        {label}
-      </button>
-    )
-  }
 
   return (
     <div className="border border-border bg-card">
@@ -112,7 +113,8 @@ export function SessionsFilterBar({
                   key={opt.value ?? 'all'}
                   value={opt.value}
                   label={opt.label}
-                  group="status"
+                  currentValue={filters.status}
+                  onSelect={(value) => setFilter('status', value)}
                 />
               ))}
             </div>
@@ -125,9 +127,20 @@ export function SessionsFilterBar({
                 MODEL
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <FilterChip value={undefined} label="ALL" group="model" />
+                <FilterChip
+                  value={undefined}
+                  label="ALL"
+                  currentValue={filters.model}
+                  onSelect={(value) => setFilter('model', value)}
+                />
                 {availableModels.map((model) => (
-                  <FilterChip key={model} value={model} label={model} group="model" />
+                  <FilterChip
+                    key={model}
+                    value={model}
+                    label={model}
+                    currentValue={filters.model}
+                    onSelect={(value) => setFilter('model', value)}
+                  />
                 ))}
               </div>
             </div>

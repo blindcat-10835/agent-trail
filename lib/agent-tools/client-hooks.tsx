@@ -27,6 +27,7 @@ import type {
   AgentToolDefinition,
   AgentToolCapabilities,
   AgentToolContextValue,
+  SourceToolId,
 } from './types'
 import { getDefinition, TOOL_IDS } from './registry'
 import type { TraceSession } from '@/types/trace'
@@ -198,29 +199,37 @@ export function useToolSessions(
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const queryKey = JSON.stringify(query ?? {})
 
   const fetchSessions = useCallback(async () => {
-    setLoading(true)
-    setError(null)
     try {
+      const parsedQuery = JSON.parse(queryKey) as Record<string, string>
       const data = await fetchToolApi<{
         sessions: TraceSession[]
         pagination: { total: number; limit: number; offset: number; hasMore: boolean }
-      }>(toolId, '/sessions', { limit: '50', ...query })
+      }>(toolId, '/sessions', { limit: '50', ...parsedQuery })
       setSessions(data.sessions)
       setPagination(data.pagination)
+      setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sessions')
     } finally {
       setLoading(false)
     }
-  }, [toolId, JSON.stringify(query)])
+  }, [toolId, queryKey])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- effect intentionally starts an async BFF fetch
     fetchSessions()
   }, [fetchSessions])
 
-  return { sessions, pagination, loading, error, refetch: fetchSessions }
+  const refetch = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    void fetchSessions()
+  }, [fetchSessions])
+
+  return { sessions, pagination, loading, error, refetch }
 }
 
 /**
@@ -243,11 +252,9 @@ export function useSessionDetail(
 
   useEffect(() => {
     if (!sessionId) {
-      setSession(null)
-      setLoading(false)
-      setError(null)
       return
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- selection change should show detail loading immediately
     setLoading(true)
     setError(null)
     fetchToolApi<TraceSession>(toolId, `/sessions/${sessionId}`)
@@ -258,7 +265,7 @@ export function useSessionDetail(
       .finally(() => setLoading(false))
   }, [toolId, sessionId])
 
-  return { session, loading, error }
+  return { session: sessionId ? session : null, loading, error }
 }
 
 /**
@@ -292,44 +299,86 @@ export function useSourceStatus(toolId: AgentToolId) {
  * list. Fetches sessions from all 3 tools in parallel via the BFF proxy,
  * merges them into a single array, and sorts by startedAt descending.
  *
- * If any tool's fetch fails, that tool's sessions are silently excluded
- * (empty array fallback) — partial data is better than no data.
+ * If any tool's fetch fails, the merged list still renders with source status
+ * metadata so the UI can tell users which source is missing.
  *
  * @param query - Optional filter/sort/pagination params forwarded to each tool
- * @returns { sessions, loading, error }
+ * @returns { sessions, totalCount, sources, loading, error }
  */
+export interface AggregateSourceStatus {
+  toolId: SourceToolId
+  status: 'loaded' | 'error'
+  count: number
+  total: number
+  error?: string
+}
+
 export function useAggregateSessions(query?: Record<string, string>) {
   const [sessions, setSessions] = useState<TraceSession[]>([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [sources, setSources] = useState<AggregateSourceStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const queryKey = JSON.stringify(query ?? {})
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- query/source changes should show aggregate loading immediately
     setLoading(true)
+    setError(null)
+    const parsedQuery = JSON.parse(queryKey) as Record<string, string>
     Promise.all(
       TOOL_IDS.map((toolId) =>
-        fetchToolApi<{ sessions: TraceSession[] }>(
+        fetchToolApi<{
+          sessions: TraceSession[]
+          pagination: { total: number; limit: number; offset: number; hasMore: boolean }
+        }>(
           toolId,
           '/sessions',
-          { limit: '50', ...query },
+          { limit: '50', ...parsedQuery },
         )
-          .then((d) => d.sessions)
-          .catch(() => []),
+          .then((d) => ({
+            toolId,
+            sessions: d.sessions,
+            status: {
+              toolId,
+              status: 'loaded' as const,
+              count: d.sessions.length,
+              total: d.pagination.total,
+            },
+          }))
+          .catch((err) => ({
+            toolId,
+            sessions: [],
+            status: {
+              toolId,
+              status: 'error' as const,
+              count: 0,
+              total: 0,
+              error: err instanceof Error ? err.message : 'Failed to load source',
+            },
+          })),
       ),
     )
       .then((results) => {
-        const merged = results.flat().sort((a, b) => {
+        const merged = results.flatMap((result) => result.sessions).sort((a, b) => {
           const da = a.startedAt ? new Date(a.startedAt).getTime() : 0
           const db = b.startedAt ? new Date(b.startedAt).getTime() : 0
           return db - da
         })
+        const sourceStatuses = results.map((result) => result.status)
+        const allSourcesFailed = sourceStatuses.every((source) => source.status === 'error')
+
         setSessions(merged)
+        setSources(sourceStatuses)
+        setTotalCount(sourceStatuses.reduce((sum, source) => sum + source.total, 0))
+        setError(allSourcesFailed ? 'All ingest sources unreachable' : null)
         setLoading(false)
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : 'Failed')
         setLoading(false)
       })
-  }, [JSON.stringify(query)])
+  }, [queryKey])
 
-  return { sessions, loading, error }
+  return { sessions, totalCount, sources, loading, error }
 }

@@ -2,7 +2,7 @@
 
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useSessionDetail } from '@/lib/agent-tools/client-hooks'
-import type { TraceSession, SessionStatus } from '@/types/trace'
+import type { SessionStatus, TraceSession } from '@/types/trace'
 
 // ============================================================================
 // Props
@@ -11,6 +11,12 @@ import type { TraceSession, SessionStatus } from '@/types/trace'
 interface SessionsDetailRailProps {
   sessionId: string | null
   onClose: () => void
+}
+
+type DisplayTraceSession = TraceSession & {
+  label?: string | null
+  model?: string | null
+  kind?: string | null
 }
 
 // ============================================================================
@@ -46,7 +52,7 @@ function StatusBadge({ status }: { status: SessionStatus }) {
   }
 
   return (
-    <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: cfg.color === 'text-muted-foreground' ? undefined : undefined }}>
+    <span className="text-[10px] font-semibold uppercase tracking-wider">
       <span className={cfg.color}>{cfg.label}</span>
     </span>
   )
@@ -122,12 +128,13 @@ export function SessionsDetailRail({
   }
 
   // Derive display values from TraceSession
-  const label = (session as any).label || session.project || session.id
-  const model = (session as any).model || '-'
+  const displaySession = session as DisplayTraceSession
+  const label = displaySession.label || session.project || session.id
+  const model = displaySession.model || '-'
   const modelShort = model.split('/').pop() || '-'
   const totalTokens = session.metrics.totalTokens || 0
   const costEstimate = totalTokens * 0.000002
-  const kind = (session as any).kind || session.source
+  const kind = displaySession.kind || session.source
 
   return (
     <div className="min-h-0 overflow-y-auto">

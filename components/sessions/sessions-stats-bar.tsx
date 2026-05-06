@@ -24,6 +24,7 @@ function fmtUsd(n: number): string {
 interface SessionsStatsBarProps {
   sessions: TraceSession[]
   totalCount: number
+  totalLabel?: string
 }
 
 // ============================================================================
@@ -67,6 +68,7 @@ function KpiTile({
 export function SessionsStatsBar({
   sessions,
   totalCount,
+  totalLabel = 'TOTAL SESSIONS',
 }: SessionsStatsBarProps) {
   const stats = useMemo(() => {
     const activeCount = sessions.filter((s) => s.status === 'active').length
@@ -83,21 +85,21 @@ export function SessionsStatsBar({
   return (
     <div className="grid grid-cols-4 bg-card border border-border">
       <KpiTile
-        label="TOTAL SESSIONS"
+        label={totalLabel}
         value={totalCount.toLocaleString()}
-        sublabel={`${stats.activeCount} active now`}
+        sublabel={`${stats.activeCount} loaded active`}
       />
       <KpiTile
-        label="ACTIVE SESSIONS"
+        label="LOADED ACTIVE"
         value={String(stats.activeCount)}
       />
       <KpiTile
-        label="TOTAL TOKENS"
+        label="LOADED TOKENS"
         value={fmtNum(stats.totalTokens)}
         mono
       />
       <KpiTile
-        label="TOTAL COST"
+        label="LOADED COST"
         value={fmtUsd(stats.totalCost)}
         mono
       />

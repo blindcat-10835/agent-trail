@@ -4,6 +4,7 @@ import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useToolSessions } from '@/lib/agent-tools/client-hooks'
 import { SessionExplorerTable } from '@/components/sessions/session-explorer-table'
 import { EmptyState } from '@/components/dashboard/empty-state'
+import { useToolStore } from '@/stores/tool-store'
 
 /**
  * Session Stats Dashboard (shared by Claude Code and Codex)
@@ -19,6 +20,8 @@ import { EmptyState } from '@/components/dashboard/empty-state'
  */
 export function SessionStatsDashboard() {
   const { toolId, definition } = useAgentTool()
+  const selectedSessionId = useToolStore((s) => s.selectedSessionId)
+  const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
   const { sessions, pagination, loading, error } = useToolSessions(toolId, {
     limit: '50',
   })
@@ -80,7 +83,7 @@ export function SessionStatsDashboard() {
         </div>
         <div className="border border-border bg-card p-4">
           <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            ACTIVE SESSIONS
+            LOADED ACTIVE
           </div>
           <div className="text-3xl font-bold tabular-nums mt-1 font-mono">
             {loading ? '—' : activeSessions.toLocaleString()}
@@ -91,7 +94,7 @@ export function SessionStatsDashboard() {
       {/* Model breakdown */}
       <section>
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-3">
-          MODELS
+          LOADED MODELS
         </h2>
         <div className="border border-border bg-card">
           {Object.entries(modelBreakdown).length === 0 ? (
@@ -131,8 +134,8 @@ export function SessionStatsDashboard() {
         ) : (
           <SessionExplorerTable
             sessions={sessions.slice(0, 10)}
-            selectedSessionId={null}
-            onSelectSession={() => {}}
+            selectedSessionId={selectedSessionId}
+            onSelectSession={setSelectedSessionId}
           />
         )}
       </section>
