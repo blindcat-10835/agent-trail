@@ -198,6 +198,19 @@ export function SessionsDetailRail({
         ))}
       </div>
 
+      {/* View Session button — navigates to replay */}
+      <div className="px-4 py-2 border-b border-border">
+        <button
+          onClick={() => {
+            const url = `/${toolId}/sessions/${sessionId}`
+            window.location.href = url
+          }}
+          className="w-full px-3 py-2 text-[10px] font-semibold uppercase tracking-wider border border-border rounded hover:bg-accent/10 hover:border-accent transition-colors text-accent text-center"
+        >
+          View Session
+        </button>
+      </div>
+
       {/* Message/event list section (placeholder for Phase 5 turn replay) */}
       <div className="border-b border-border">
         <div className="px-4 py-2 bg-muted/30">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useToolSessions } from '@/lib/agent-tools/client-hooks'
 import { useToolStore } from '@/stores/tool-store'
@@ -23,7 +24,8 @@ export default function ToolSessionsPage() {
 }
 
 function SourceToolSessionsPage() {
-  const { toolId } = useAgentTool()
+  const { toolId, href } = useAgentTool()
+  const router = useRouter()
   const [filters, setFilters] = useState<SessionFilters>({})
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
   const selectedSessionId = useToolStore((s) => s.selectedSessionId)
@@ -76,7 +78,10 @@ function SourceToolSessionsPage() {
         <SessionExplorerTable
           sessions={sessions}
           selectedSessionId={selectedSessionId}
-          onSelectSession={setSelectedSessionId}
+          onSelectSession={(id) => {
+            setSelectedSessionId(id)
+            router.push(href('/sessions/' + id))
+          }}
         />
       </div>
     </div>
