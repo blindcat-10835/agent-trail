@@ -1,0 +1,4 @@
+{"type":"message","timestamp":"2025-01-06T10:00:00Z","message":{"role":"user","content":"Hello, can you help me?","model":"claude-3-5-sonnet-20241022"}}
+{"type":"message","timestamp":"2025-01-06T10:00:01Z","message":{"role":"assistant","content":"Of course! How can I assist you today?","model":"claude-3-5-sonnet-20241022","usage":{"input_tokens":10,"output_tokens":15}}}
+{"type":"message","timestamp":"2025-01-06T10:00:02Z","message":{"role":"user","content":"What's the weather like?","model":"claude-3-5-sonnet-20241022"}}
+{"type":"message","timestamp":"2025-01-06T10:00:03Z","message":{"role":"assistant","content":"I don't have access to real-time weather data. You can check a weather service for current conditions.","model":"claude-3-5-sonnet-20241022","usage":{"input_tokens":12,"output_tokens":25}}}

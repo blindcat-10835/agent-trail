@@ -12,8 +12,11 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "better-sqlite3": "^11.8.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "hono": "^4.6.16",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "radix-ui": "^1.4.3",
