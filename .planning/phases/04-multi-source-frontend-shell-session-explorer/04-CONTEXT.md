@@ -15,7 +15,7 @@ Reshape the Next.js frontend from a single-source OVAO dashboard into a reusable
 - BFF API proxy routes (`/api/agent-tools/[tool]/...`) proxying ingest
 - Legacy redirects from `/dashboard`, `/sessions`, etc. to `/openclaw/*`
 - Shared Session Explorer (table + filters + right rail detail) for all 3 sources
-- Aggregate landing page with cross-source session list
+- Aggregate ALL shell with cross-source session list and root redirect
 - Per-tool dashboard pages (OpenClaw overview skeleton, Claude/Codex session stats)
 - Profile-driven sidebar navigation
 
@@ -36,7 +36,7 @@ Reshape the Next.js frontend from a single-source OVAO dashboard into a reusable
 - **D-03:** Source switcher placement: Header brand area becomes source switcher (OpenClaw / Claude Code / Codex tabs). Sidebar provides page-level navigation, built from profile-driven nav configuration. Switcher changes the URL (e.g., from `/openclaw/dashboard` to `/codex/dashboard`).
 - **D-04:** Layout type: `[tool]/layout.tsx` is a Server Component for param validation; `AgentToolProvider` is a Client Component wrapper inside it. Single root layout — no multi-root-layout per tool (avoids full-page reload on source switch).
 - **D-05:** Legacy redirects: `/dashboard` → `/openclaw/dashboard`, `/sessions` → `/openclaw/sessions`, `/activity` → `/openclaw/activity`, `/office` → `/openclaw/office`, `/workspace` → `/openclaw/workspace`. OpenClaw remains the default entry point for existing users.
-- **D-06:** Aggregate landing page (`/`): cross-source session list (all 3 sources merged from ingest) in main area, with right rail showing session detail on click. A single view to see all sessions on the machine.
+- **D-06:** Aggregate scope: `/` redirects to `/all/dashboard`. `all` is a synthetic tool-shell scope with the same header/sidebar/status/right-rail chrome as real tools. It shows a cross-source session list (all 3 ingest-backed sources merged from ingest). `all` is not an ingest source and must not be passed to `/api/agent-tools/[tool]`.
 
 ### API Proxy Layer
 - **D-07:** Frontend data access pattern: BFF proxy via Next.js API routes at `/api/agent-tools/[tool]/...`. Frontend components never call ingest (`localhost:8078`) directly. Benefits: same-origin (no CORS), usable in Server Components, centralized error sanitization and path validation.
@@ -45,8 +45,8 @@ Reshape the Next.js frontend from a single-source OVAO dashboard into a reusable
 
 ### Session Explorer Data Source
 - **D-10:** Session Explorer queries only ingest API (indexed sessions). Real-time Gateway sessions are not merged into the session list. New sessions appear after ingest syncs them. Overview page (not Session Explorer) shows live Gateway sessions.
-- **D-11:** Cross-source aggregation: landing page (`/`) merges all 3 sources' sessions from ingest into a single list, sorted by recency. Source badge differentiates entries.
-- **D-12:** Right rail: always visible alongside any page, shows session list for the current tool (or aggregated list on the landing page). Clicking a session opens session detail in the same right rail panel.
+- **D-11:** Cross-source aggregation: `/all/dashboard` and `/all/sessions` merge all 3 source sessions from ingest into a single list, sorted by recency. Source badge differentiates entries. `/` is only the redirect entry point.
+- **D-12:** Right rail: always visible alongside any tool-shell page. In the `all` scope it starts empty; selecting an aggregate row sets the selected session and routes to that session's concrete source `/[source]/sessions`, where the source-scoped right rail can fetch detail through the correct BFF adapter.
 
 ### OpenClaw Overview Handling
 - **D-13:** OpenClaw Overview (`/openclaw/dashboard`): keep the UI skeleton structure (KPI bar, card grids, section layouts) but do NOT populate Gateway live data content. cron/skills/agents/activity modules to be filled from local file data sources in Phase 6+.
@@ -58,7 +58,7 @@ Reshape the Next.js frontend from a single-source OVAO dashboard into a reusable
 - **D-17:** Wave 2 — API proxy + redirects: implement `/api/agent-tools/[tool]/...` BFF route handlers. Create server adapter files per tool (`lib/agent-tools/[tool]/server-adapter.ts`). Add legacy route redirects (`/dashboard` → `/openclaw/dashboard`).
 - **D-18:** Wave 3 — Shell migration: extract ShellFrame from `app/(shell)/layout.tsx`. Create `app/(tool-shell)/[tool]/layout.tsx`. Build header source switcher. Convert sidebar to profile-driven nav. ShellHeader reads `AgentToolUIProfile.brand`, SidebarNav reads `definition.nav`.
 - **D-19:** Wave 4 — Session Explorer: implement shared SessionExplorer component (table with sortable/filterable columns, filter bar, detail right rail). OpenClaw first (validate against ingest data), then generalize columns/profiles for Claude/Codex.
-- **D-20:** Wave 5 — Dashboard pages + aggregate landing: implement aggregate landing page at `/`. Build per-tool dashboard pages (OpenClaw skeleton, Claude/Codex session stats). Polish navigation transitions and empty states.
+- **D-20:** Wave 5 — Dashboard pages + aggregate shell: implement aggregate ALL shell at `/all/dashboard`, with `/` redirecting there. Build per-tool dashboard pages (OpenClaw skeleton, Claude/Codex session stats). Polish navigation transitions and empty states.
 
 ### the agent's Discretion
 - AgentToolProvider internal implementation (context shape, registry lookup, href builder)
@@ -160,7 +160,7 @@ Reshape the Next.js frontend from a single-source OVAO dashboard into a reusable
 
 - Right rail is the primary session browsing surface — sessions live there, not in a separate `/sessions` page. The `/sessions` page may redirect to the landing page or become redundant.
 - OpenClaw overview skeleton is a deliberate decision — don't delete the overview UI code, just disconnect it from Gateway data for now. It will be repopulated from local file data sources in Phase 6+.
-- aggregate landing page (`/`) shows "all sessions on this machine" across all 3 sources — a quick-glance entry point before drilling into a specific source.
+- aggregate shell (`/all/dashboard`, reached from `/`) shows "all sessions on this machine" across all 3 sources — a quick-glance entry point before drilling into a specific source.
 - HUD cyberpunk design language (glow, scanline, monospace, dark-first) is preserved throughout. AgentToolProvider and profiles do not change visual identity.
 - Gateway is acknowledged as a legacy data source that should be gradually deprecated toward local file analysis, but that migration belongs to Phase 6+.
 

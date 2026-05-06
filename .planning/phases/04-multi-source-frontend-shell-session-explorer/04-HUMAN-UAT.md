@@ -15,7 +15,7 @@ updated: 2026-05-06T17:00:00.000Z
 ## Tests
 
 ### 1. Source switcher visual rendering and URL transition
-expected: Header shows OPENCLAW / CLAUDE:CODE / CODEX tabs. Clicking changes URL to /[tool]/dashboard and updates content.
+expected: Header shows ALL / OPENCLAW / CLAUDE:CODE / CODEX tabs. Clicking changes URL to /[tool]/dashboard when the target supports the current section, otherwise to that tool's default route.
 result: [pending]
 
 ### 2. OpenClaw dashboard skeleton renders all 6 sections
@@ -38,13 +38,19 @@ result: [pending]
 expected: /dashboard → /openclaw/dashboard, /sessions → /openclaw/sessions, etc.
 result: [pending]
 
-### 7. Aggregate landing page shows cross-source sessions with source badges
-expected: / shows all 3 sources' sessions merged with OPENCLAW/CLAUDE:CODE/CODEX source badges.
+### 7. Aggregate ALL shell shows cross-source sessions with source badges
+expected: / redirects to /all/dashboard. /all/dashboard shows shell chrome plus all 3 ingest-backed sources' sessions merged with OPENCLAW/CLAUDE:CODE/CODEX source badges. The ALL scope is not an ingest API source.
 result: [pending]
 
 ### 8. GatewayBootstrap only runs for OpenClaw
 expected: Gateway WebSocket connects only when viewing /openclaw/* pages. Claude/Codex pages show no Gateway indicator.
 result: [pending]
+
+## Agent-Assisted Runtime Checks
+
+### 2026-05-07 audit fixes
+result: passed
+notes: Browser verification confirmed `/` redirects to `/all/dashboard`; `/all/dashboard` renders header, source switcher, sidebar, right rail, status bar, ALL SESSIONS table, and source badges with 0 console errors. `/openclaw/dashboard` remained healthy with 0 console errors. Next.js MCP `get_errors` returned no config or session errors.
 
 ## Summary
 
