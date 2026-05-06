@@ -4,6 +4,8 @@
  * RED phase: These tests MUST fail because:
  * - stores/replay-store.ts does not exist yet
  * - useSessionTurns is not exported from client-hooks.tsx
+ *
+ * @vitest-environment jsdom
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'

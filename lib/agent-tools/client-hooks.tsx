@@ -31,6 +31,7 @@ import type {
 } from './types'
 import { getDefinition, TOOL_IDS } from './registry'
 import type { TraceSession } from '@/types/trace'
+import type { TraceTurn } from '@/types/trace'
 
 /**
  * React context for agent tool data.
@@ -381,4 +382,103 @@ export function useAggregateSessions(query?: Record<string, string>) {
   }, [queryKey])
 
   return { sessions, totalCount, sources, loading, error }
+}
+
+/**
+ * Hook: Fetch paginated turns for a session from ingest via BFF proxy.
+ *
+ * Returns turns array, pagination metadata, loading state, error state,
+ * and a refetch function for retry. Pagination params (offset, limit)
+ * are forwarded to the ingest API via the BFF proxy.
+ *
+ * No-op when sessionId is null/undefined (returns empty state).
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @param sessionId - Session ID to fetch turns for, or null for no-op
+ * @param query - Optional pagination params ({ offset, limit })
+ * @returns { turns, pagination, loading, error, refetch }
+ */
+export function useSessionTurns(
+  toolId: AgentToolId,
+  sessionId: string | null,
+  query?: { offset?: number; limit?: number },
+) {
+  const [turns, setTurns] = useState<TraceTurn[]>([])
+  const [pagination, setPagination] = useState<{
+    total: number
+    limit: number
+    offset: number
+    hasMore: boolean
+  } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const queryKey = JSON.stringify({ sessionId, ...query })
+
+  useEffect(() => {
+    if (!sessionId) {
+      setTurns([])
+      setPagination(null)
+      setLoading(false)
+      return
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true)
+    setError(null)
+    const params: Record<string, string> = {}
+    if (query?.offset !== undefined) params.offset = String(query.offset)
+    if (query?.limit !== undefined) params.limit = String(query.limit)
+
+    fetchToolApi<{
+      turns: TraceTurn[]
+      pagination: {
+        total: number
+        limit: number
+        offset: number
+        hasMore: boolean
+      }
+    }>(toolId, `/sessions/${sessionId}/turns`, params)
+      .then((data) => {
+        setTurns(data.turns)
+        setPagination(data.pagination)
+      })
+      .catch((err) =>
+        setError(
+          err instanceof Error ? err.message : 'Failed to load turns',
+        ),
+      )
+      .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolId, queryKey])
+
+  const refetch = useCallback(() => {
+    if (!sessionId) return
+    setLoading(true)
+    setError(null)
+    const params: Record<string, string> = {}
+    if (query?.offset !== undefined) params.offset = String(query.offset)
+    if (query?.limit !== undefined) params.limit = String(query.limit)
+
+    fetchToolApi<{
+      turns: TraceTurn[]
+      pagination: {
+        total: number
+        limit: number
+        offset: number
+        hasMore: boolean
+      }
+    }>(toolId, `/sessions/${sessionId}/turns`, params)
+      .then((data) => {
+        setTurns(data.turns)
+        setPagination(data.pagination)
+      })
+      .catch((err) =>
+        setError(
+          err instanceof Error ? err.message : 'Failed to load turns',
+        ),
+      )
+      .finally(() => setLoading(false))
+  }, [toolId, sessionId, query?.offset, query?.limit])
+
+  return { turns, pagination, loading, error, refetch }
 }
