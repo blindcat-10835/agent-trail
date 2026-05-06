@@ -52,7 +52,7 @@ export function openDatabase(config: DatabaseConfig): Database.Database {
     console.log(`Database opened: ${dbPath}`);
   } catch (err) {
     console.error('Failed to open database', err);
-    throw new Error(`Failed to open database: ${err.message}`);
+    throw new Error(`Failed to open database: ${(err as Error).message}`);
   }
 
   // Enable WAL mode for better concurrency
@@ -61,7 +61,7 @@ export function openDatabase(config: DatabaseConfig): Database.Database {
     console.log('WAL mode enabled');
   } catch (err) {
     console.error('Failed to enable WAL mode', err);
-    throw new Error(`Failed to enable WAL mode: ${err.message}`);
+    throw new Error(`Failed to enable WAL mode: ${(err as Error).message}`);
   }
 
   return db;
@@ -86,7 +86,7 @@ export function initSchema(): void {
     schemaContent = require('fs').readFileSync(schemaPath, 'utf-8');
   } catch (err) {
     console.error(`Failed to read schema file: ${schemaPath}`, err);
-    throw new Error(`Failed to read schema file: ${err.message}`);
+    throw new Error(`Failed to read schema file: ${(err as Error).message}`);
   }
 
   // Execute schema
@@ -95,7 +95,7 @@ export function initSchema(): void {
     console.log('Schema initialized successfully');
   } catch (err) {
     console.error('Failed to initialize schema', err);
-    throw new Error(`Failed to initialize schema: ${err.message}`);
+    throw new Error(`Failed to initialize schema: ${(err as Error).message}`);
   }
 
   // Verify tables were created
@@ -132,7 +132,7 @@ export function closeDatabase(): void {
     console.log('Database closed');
   } catch (err) {
     console.error('Failed to close database', err);
-    throw new Error(`Failed to close database: ${err.message}`);
+    throw new Error(`Failed to close database: ${(err as Error).message}`);
   }
 }
 

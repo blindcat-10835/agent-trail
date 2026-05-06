@@ -55,7 +55,7 @@ export function assembleTurns(
       // Close previous turn if it has content
       if (currentTurn && currentTurn.assistantMessages && currentTurn.assistantMessages.length > 0) {
         currentTurn.endedAt = message.timestamp || null;
-        currentTurn.durationMs = calculateDuration(currentTurn.startedAt, currentTurn.endedAt);
+        currentTurn.durationMs = calculateDuration(currentTurn.startedAt ?? null, currentTurn.endedAt ?? null);
         turns.push(finalizeTurn(currentTurn, sessionId, turnIndex));
         turnIndex++;
       }
@@ -130,9 +130,9 @@ function finalizeTurn(partial: Partial<TraceTurn>, sessionId: string, index: num
     userMessage: partial.userMessage || null,
     assistantMessages: partial.assistantMessages || [],
     activities: partial.activities || [],
-    startedAt: partial.startedAt,
-    endedAt: partial.endedAt,
-    durationMs: partial.durationMs,
+    startedAt: partial.startedAt ?? null,
+    endedAt: partial.endedAt ?? null,
+    durationMs: partial.durationMs ?? null,
     tokenUsage: partial.tokenUsage
   };
 }
