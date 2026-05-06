@@ -6,7 +6,16 @@ import { SessionExplorerTable } from '@/components/sessions/session-explorer-tab
 import { SessionsFilterBar, type SessionFilters } from '@/components/sessions/sessions-filter-bar'
 import { SessionsStatsBar } from '@/components/sessions/sessions-stats-bar'
 import { EmptyState } from '@/components/dashboard/empty-state'
+import type { SessionColumnDef } from '@/lib/agent-tools/types'
 import { useState } from 'react'
+
+const AGGREGATE_SESSION_COLUMNS: SessionColumnDef[] = [
+  { id: 'label', header: 'LABEL', accessor: 'label', sortable: true, width: 'minmax(180px,2fr)' },
+  { id: 'status', header: 'STATUS', accessor: 'status', width: '80px' },
+  { id: 'project', header: 'PROJECT', accessor: 'project', sortable: true, width: 'minmax(120px,1fr)' },
+  { id: 'model', header: 'MODEL', accessor: 'model', sortable: true, width: 'minmax(120px,1fr)' },
+  { id: 'updatedAt', header: 'UPDATED', accessor: 'updatedAt', sortable: true, width: '80px' },
+]
 
 export default function AggregateLandingPage() {
   const router = useRouter()
@@ -76,6 +85,7 @@ export default function AggregateLandingPage() {
           selectedSessionId={selectedId}
           onSelectSession={handleSelectSession}
           sourceBadge={true}
+          columns={AGGREGATE_SESSION_COLUMNS}
         />
       </div>
     </div>

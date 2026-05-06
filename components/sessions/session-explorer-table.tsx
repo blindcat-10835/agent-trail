@@ -1,7 +1,7 @@
 'use client'
 
-import { Fragment, useState } from 'react'
-import { useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { Fragment, useContext, useState } from 'react'
+import { AgentToolContext } from '@/lib/agent-tools/client-hooks'
 import type { TraceSession, SessionStatus } from '@/types/trace'
 import type { SessionColumnDef } from '@/lib/agent-tools/types'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,7 @@ interface SessionExplorerTableProps {
   selectedSessionId: string | null
   onSelectSession: (sessionId: string | null) => void
   sourceBadge?: boolean // show source badge for aggregate view (Plan 04-05)
+  columns?: SessionColumnDef[] // explicit columns for provider-free aggregate views
 }
 
 // ============================================================================
@@ -62,6 +63,15 @@ function sourceBadgeLabel(source: string): string {
   }
 }
 
+function formatUnknownCellValue(value: unknown): string {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  return '-'
+}
+
 /**
  * Render a single row value based on the accessor key.
  * Resilient: handles missing fields gracefully.
@@ -70,19 +80,24 @@ function renderCellValue(
   session: TraceSession,
   accessor: string,
 ): string {
+  const dynamicSession = session as TraceSession & {
+    label?: string | null
+    model?: string | null
+  } & Record<string, unknown>
+
   switch (accessor) {
     case 'label':
-      return (session as any).label || session.project || session.id
+      return dynamicSession.label || session.project || session.id
     case 'status':
       return session.status
     case 'model':
-      return (session as any).model || '-'
+      return dynamicSession.model || '-'
     case 'project':
       return session.project || '-'
     case 'updatedAt':
       return fmtAgo(session.endedAt || session.startedAt)
     default:
-      return (session as any)[accessor] ?? '-'
+      return formatUnknownCellValue(dynamicSession[accessor])
   }
 }
 
@@ -123,11 +138,18 @@ export function SessionExplorerTable({
   selectedSessionId,
   onSelectSession,
   sourceBadge = false,
+  columns: columnDefs,
 }: SessionExplorerTableProps) {
-  const { definition } = useAgentTool()
+  const agentTool = useContext(AgentToolContext)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
-  const columns: SessionColumnDef[] = definition.ui.sessionColumns
+  const columns = columnDefs ?? agentTool?.definition.ui.sessionColumns
+  if (!columns) {
+    throw new Error(
+      'SessionExplorerTable requires either an AgentToolProvider or an explicit columns prop.',
+    )
+  }
+  const emptySourceLabel = agentTool?.definition.shortLabel ?? 'SOURCE'
 
   // Build dynamic grid template from column widths
   const gridCols = columns.map((c) => c.width || '1fr').join(' ')
@@ -308,7 +330,7 @@ export function SessionExplorerTable({
             NO SESSIONS
           </div>
           <div className="text-[11px] text-muted-foreground max-w-sm leading-relaxed">
-            ENSURE {definition.shortLabel} SESSIONS DIRECTORY IS CONFIGURED IN INGEST.
+            ENSURE {emptySourceLabel} SESSIONS DIRECTORY IS CONFIGURED IN INGEST.
           </div>
         </div>
       )}
