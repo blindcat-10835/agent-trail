@@ -1,0 +1,2 @@
+{"uuid":"agent-1","type":"assistant","message":{"role":"assistant","content":"Spawning subagent..."},"session":{"id":"parent-sess","type":"root"}}
+{"uuid":"sub-1","type":"assistant","message":{"role":"assistant","content":"Subagent work"},"session":{"id":"child-sess","type":"subagent","parentId":"parent-sess"}}

@@ -1,0 +1,4 @@
+{"uuid":"msg-1","type":"assistant","message":{"role":"assistant","content":"partial response..."}}
+{"uuid":"msg-1","type":"assistant","message":{"role":"assistant","content":"partial response... more"}}
+{"uuid":"msg-1","type":"assistant","message":{"role":"assistant","content":"full response here"}}
+{"uuid":"msg-2","type":"user","message":{"role":"user","content":"next question"}}

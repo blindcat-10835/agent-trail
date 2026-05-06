@@ -1,0 +1,3 @@
+{"uuid":"msg-1","type":"assistant","message":{"role":"assistant","content":"Long response that will be compacted"}}
+{"uuid":"compact-1","type":"compact","message":{"role":"system","content":"[compact] Session compacted, retaining summary"},"timestamp":"2024-01-01T00:05:00Z"}
+{"uuid":"msg-3","type":"user","message":{"role":"user","content":"Question after compact"}}
