@@ -95,6 +95,7 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 ## Coverage
 
 **v1 Requirements Mapped**: 43/43 (100%)
+**Requirements Complete**: 4/43 (9%)
 
 | Requirement | Phase   | Status  |
 | ----------- | ------- | ------- |
@@ -103,14 +104,14 @@ Build agent-tracing-dashboard as a local multi-source AI agent session tracing d
 | FOUND-03    | Phase 1 | Pending |
 | FOUND-04    | Phase 1 | Pending |
 | FOUND-05    | Phase 1 | Pending |
-| DATA-01     | Phase 2 | Pending |
-| DATA-02     | Phase 2 | Pending |
-| DATA-03     | Phase 2 | Pending |
+| DATA-01     | Phase 2 | Complete |
+| DATA-02     | Phase 2 | Complete |
+| DATA-03     | Phase 2 | In Progress (OpenClaw only) |
 | DATA-04     | Phase 6 | Pending |
 | DATA-05     | Phase 2 | Pending |
 | DATA-06     | Phase 6 | Pending |
 | DATA-07     | Phase 6 | Pending |
-| SRC-01      | Phase 2 | Pending |
+| SRC-01      | Phase 2 | Complete |
 | SRC-02      | Phase 3 | Pending |
 | SRC-03      | Phase 3 | Pending |
 | SRC-04      | Phase 3 | Pending |
@@ -206,7 +207,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 **Goal**: Build the local ingest service foundation and migrate OpenClaw history parsing from request-time JSONL scanning to indexed, queryable session/turn data.
 
-**Status**: Pending
+**Status**: In Progress (2/5 plans complete)
 
 **Depends on**: Phase 1
 
@@ -220,12 +221,13 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 4. OpenClaw parser handles session headers, messages, toolResult role, usage normalization, agent-scoped session ids, and archive suffixes.
 5. REST API can list OpenClaw sessions and return turn-first replay DTOs from SQLite.
 
-**Plans**: 4 plans
+**Plans**: 5 plans
 
-- [x] 02-01-PLAN.md — Ingest service skeleton + SQLite schema + health/version endpoints
-- [ ] 02-02-PLAN.md — OpenClaw source discovery + parser + database storage
-- [ ] 02-03-PLAN.md — REST API (sessions, turns, messages) + minimal turn assembly
-- [ ] 02-04-PLAN.md — Development workflow setup (concurrently, pnpm dev)
+- [X] 02-01-PLAN.md — Ingest service skeleton + SQLite schema + health/version endpoints
+- [X] 02-02-PLAN.md — OpenClaw source discovery + parser (database storage deferred to 02-03)
+- [ ] 02-02b-PLAN.md — Turn assembler (group messages into turns, pair tool calls with results)
+- [ ] 02-03-PLAN.md — REST API (sessions, turns, messages) + database integration
+- [ ] 02-04-PLAN.md — Local file discovery + watcher + auto-ingest
 
 **UI hint**: no
 
