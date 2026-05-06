@@ -315,7 +315,13 @@ Plans:
 6. In-session search, block filters, next/previous turn navigation and copy turn/message/tool are usable.
 7. Running/awaiting-user/aborted/error/truncated/parser-warning states are visible in replay.
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Data Foundation (BFF pagination, useSessionTurns hook, useReplayStore, dependencies)
+- [ ] 05-02-PLAN.md — Page Shell + Header + Status + Right Rail (route, ReplayHeader, ReplayRightRail, navigation wiring)
+- [ ] 05-03-PLAN.md — Turn Cards + Activity Blocks (TurnCard, TurnTimeline, ToolBlock, SkillBlock, SubagentBlock, ThinkingBlock, SystemEventBlock)
+- [ ] 05-04-PLAN.md — Virtualization + Search + Filters + Navigation (@tanstack/react-virtual, ReplaySearchBar, ReplayFilterBar, TurnNavigator)
 
 **UI hint**: yes
 
