@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS turns (
 
   -- Session relationship
   session_id TEXT NOT NULL,
-  index INTEGER NOT NULL,
+  turn_index INTEGER NOT NULL,
 
   -- User message relationship
   user_message_id TEXT,
@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS turns (
   FOREIGN KEY (user_message_id) REFERENCES messages(id) ON DELETE SET NULL,
 
   -- Unique constraint
-  UNIQUE(session_id, index)
+  UNIQUE(session_id, turn_index)
 );
 
 -- ============================================================================
@@ -195,7 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_tool_result_events_tool_call_id ON tool_result_ev
 
 -- Turns indexes
 CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);
-CREATE INDEX IF NOT EXISTS idx_turns_session_index ON turns(session_id, index);
+CREATE INDEX IF NOT EXISTS idx_turns_session_index ON turns(session_id, turn_index);
 
 -- ============================================================================
 -- WAL Mode (Write-Ahead Logging)
