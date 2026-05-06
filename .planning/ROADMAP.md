@@ -190,6 +190,7 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 
 ---
 
+---
 ### Phase 2: Local Ingest Core + OpenClaw Parser
 
 **Goal**: Build the local ingest service foundation and migrate OpenClaw history parsing from request-time JSONL scanning to indexed, queryable session/turn data.
@@ -207,7 +208,12 @@ Phase 6: Sync, OpenClaw Drilldown & Hardening
 4. OpenClaw parser handles session headers, messages, toolResult role, usage normalization, agent-scoped session ids, and archive suffixes.
 5. REST API can list OpenClaw sessions and return turn-first replay DTOs from SQLite.
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+- [ ] 02-01-PLAN.md — Ingest service skeleton + SQLite schema + health/version endpoints
+- [ ] 02-02-PLAN.md — OpenClaw source discovery + parser + database storage
+- [ ] 02-03-PLAN.md — REST API (sessions, turns, messages) + minimal turn assembly
+- [ ] 02-04-PLAN.md — Development workflow setup (concurrently, pnpm dev)
 
 **UI hint**: no
 
