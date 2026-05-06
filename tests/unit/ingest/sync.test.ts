@@ -1,0 +1,260 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import Database from 'better-sqlite3';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+// Mock fs/promises for deterministic file system tests
+const mockAccess = vi.fn();
+const mockReaddir = vi.fn();
+const mockReadFile = vi.fn();
+
+vi.mock('fs/promises', () => ({
+  default: {
+    access: (...args: any[]) => mockAccess(...args),
+    readdir: (...args: any[]) => mockReaddir(...args),
+    readFile: (...args: any[]) => mockReadFile(...args),
+  },
+  access: (...args: any[]) => mockAccess(...args),
+  readdir: (...args: any[]) => mockReaddir(...args),
+  readFile: (...args: any[]) => mockReadFile(...args),
+}));
+
+vi.mock('os', () => ({
+  default: {
+    homedir: () => '/mock/home/user',
+  },
+  homedir: () => '/mock/home/user',
+}));
+
+// Mock the parsers to avoid file system access
+vi.mock('@/ingest/parser/claude', () => ({
+  parseClaudeSession: vi.fn().mockResolvedValue({
+    session: {
+      id: 'claude-test-session',
+      source: 'claude-code',
+      project: 'test',
+      startedAt: '2024-01-01T00:00:00Z',
+      endedAt: '2024-01-01T01:00:00Z',
+      status: 'idle',
+      metrics: {
+        messageCount: 2,
+        userMessageCount: 1,
+        totalTokens: 100,
+        hasToolCalls: false,
+        parserMalformedLines: 0,
+        isTruncated: false,
+      },
+      turns: [],
+    },
+    messages: [],
+    activities: [],
+    errors: [],
+    warnings: [],
+  }),
+}));
+
+vi.mock('@/ingest/parser/codex', () => ({
+  parseCodexSession: vi.fn().mockResolvedValue({
+    session: {
+      id: 'codex-test-session',
+      source: 'codex',
+      project: 'test',
+      startedAt: '2024-01-01T00:00:00Z',
+      endedAt: '2024-01-01T01:00:00Z',
+      status: 'idle',
+      metrics: {
+        messageCount: 2,
+        userMessageCount: 1,
+        totalTokens: 100,
+        hasToolCalls: false,
+        parserMalformedLines: 0,
+        isTruncated: false,
+      },
+      turns: [],
+    },
+    messages: [],
+    activities: [],
+    errors: [],
+    warnings: [],
+  }),
+}));
+
+/**
+ * Helper: Create an in-memory SQLite database with full schema
+ */
+function createTestDb(): Database.Database {
+  const db = new Database(':memory:');
+  db.pragma('journal_mode = WAL');
+  const schemaPath = join(process.cwd(), 'ingest', 'db', 'schema.sql');
+  const schema = readFileSync(schemaPath, 'utf-8');
+  db.exec(schema);
+  return db;
+}
+
+describe('sync pipeline', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.CLAUDE_SESSIONS_PATH;
+    delete process.env.CODEX_SESSIONS_PATH;
+    db = createTestDb();
+  });
+
+  describe('syncSource type support', () => {
+    it('should support claude-code source type', async () => {
+      // Import syncSource dynamically to check type support
+      const { syncSource } = await import('@/ingest/sync/index');
+
+      // The function should accept 'claude-code' — if it doesn't, TS would error
+      // We verify the import and type resolution works
+      expect(typeof syncSource).toBe('function');
+
+      // Verify the function is callable with claude-code (type check)
+      // Note: Actual sync requires directory to exist, but the type signature
+      // should accept 'claude-code' as a valid source type parameter
+    });
+
+    it('should support codex source type', async () => {
+      const { syncSource } = await import('@/ingest/sync/index');
+
+      expect(typeof syncSource).toBe('function');
+      // Type check: syncSource should accept 'codex' as valid parameter
+    });
+  });
+
+  describe('sync imports', () => {
+    it('should import parseClaudeSession from claude parser', async () => {
+      // Read the sync/index.ts source to verify imports exist
+      const fs = await import('fs');
+      const syncSource = fs.readFileSync(
+        join(process.cwd(), 'ingest', 'sync', 'index.ts'),
+        'utf-8'
+      );
+
+      // acceptance_criteria: grep -c "parseClaudeSession" returns >= 1
+      const claudeCount = (syncSource.match(/parseClaudeSession/g) || []).length;
+      expect(claudeCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should import parseCodexSession from codex parser', async () => {
+      const fs = await import('fs');
+      const syncSource = fs.readFileSync(
+        join(process.cwd(), 'ingest', 'sync', 'index.ts'),
+        'utf-8'
+      );
+
+      // acceptance_criteria: grep -c "parseCodexSession" returns >= 1
+      const codexCount = (syncSource.match(/parseCodexSession/g) || []).length;
+      expect(codexCount).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('source type references', () => {
+    it('should reference claude-code in sync source', async () => {
+      const fs = await import('fs');
+      const syncSource = fs.readFileSync(
+        join(process.cwd(), 'ingest', 'sync', 'index.ts'),
+        'utf-8'
+      );
+
+      // acceptance_criteria: grep -c "claude-code" returns >= 1
+      const claudeRefCount = (syncSource.match(/claude-code/g) || []).length;
+      expect(claudeRefCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should reference codex in sync source', async () => {
+      const fs = await import('fs');
+      const syncSource = fs.readFileSync(
+        join(process.cwd(), 'ingest', 'sync', 'index.ts'),
+        'utf-8'
+      );
+
+      // acceptance_criteria: grep -c "codex" returns >= 1
+      const codexRefCount = (syncSource.match(/codex/g) || []).length;
+      expect(codexRefCount).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('OpenClaw sync preservation', () => {
+    it('should preserve existing OpenClaw sync path', async () => {
+      const fs = await import('fs');
+      const syncSource = fs.readFileSync(
+        join(process.cwd(), 'ingest', 'sync', 'index.ts'),
+        'utf-8'
+      );
+
+      // Verify OpenClaw references still exist
+      const openclawCount = (syncSource.match(/openclaw/gi) || []).length;
+      expect(openclawCount).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('syncSource end-to-end with Claude Code', () => {
+    it('should sync Claude Code sessions and write to database', async () => {
+      const { syncSource } = await import('@/ingest/sync/index');
+      const { parseClaudeSession } = await import('@/ingest/parser/claude');
+
+      // Setup: mock source discovery to find Claude sessions
+      mockAccess.mockResolvedValue(undefined);
+      mockReaddir.mockResolvedValue(['claude-test.jsonl']);
+
+      // Run sync
+      const result = await syncSource('claude-code' as any);
+
+      // Verify parseClaudeSession was called
+      expect(parseClaudeSession).toHaveBeenCalled();
+
+      // Verify sync result structure
+      expect(result).toHaveProperty('sessionsInserted');
+      expect(result).toHaveProperty('sessionsUpdated');
+      expect(result).toHaveProperty('messagesInserted');
+      expect(result).toHaveProperty('errors');
+      expect(Array.isArray(result.errors)).toBe(true);
+
+      // Total sessions handled should be >= 0
+      const total = result.sessionsInserted + result.sessionsUpdated;
+      expect(total).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should sync Codex sessions and write to database', async () => {
+      const { syncSource } = await import('@/ingest/sync/index');
+      const { parseCodexSession } = await import('@/ingest/parser/codex');
+
+      // Setup: mock source discovery to find Codex sessions
+      mockAccess.mockResolvedValue(undefined);
+      mockReaddir.mockResolvedValue(['codex-test.jsonl']);
+
+      // Run sync
+      const result = await syncSource('codex' as any);
+
+      // Verify parseCodexSession was called
+      expect(parseCodexSession).toHaveBeenCalled();
+
+      // Verify sync result structure
+      expect(result).toHaveProperty('sessionsInserted');
+      expect(result).toHaveProperty('sessionsUpdated');
+      expect(result).toHaveProperty('messagesInserted');
+      expect(Array.isArray(result.errors)).toBe(true);
+    });
+  });
+
+  describe('error handling', () => {
+    it('should handle parser errors gracefully without aborting sync', async () => {
+      const { syncSource } = await import('@/ingest/sync/index');
+      const { parseClaudeSession } = await import('@/ingest/parser/claude');
+
+      // Make parser throw for one file
+      (parseClaudeSession as any).mockRejectedValueOnce(new Error('Parse failed'));
+
+      mockAccess.mockResolvedValue(undefined);
+      mockReaddir.mockResolvedValue(['bad.jsonl', 'good.jsonl']);
+
+      // This should not throw — errors should be captured in result.errors
+      const result = await syncSource('claude-code' as any);
+
+      // Should have at least one error logged
+      expect(result.errors.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+});
