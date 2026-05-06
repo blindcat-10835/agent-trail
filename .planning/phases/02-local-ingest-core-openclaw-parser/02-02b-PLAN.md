@@ -362,7 +362,12 @@ sourcesRoutes.get('/api/v1/sources', async (c) => {
       sessionCount: s.sessionCount,
       lastSyncAt: s.lastSyncAt || null,
       error: s.error || null,
-      ingestStatus: s.error ? 'error' : (s.sessionCount > 0 ? 'configured' : 'empty')
+      // Source health status taxonomy per FOUND-05/DATA-03:
+      healthStatus: s.error ? 'error' : (s.sessionCount > 0 ? 'configured' : 'empty'),
+      // 'configured' = path exists, sessions found
+      // 'empty' = path exists, no sessions
+      // 'error' = discovery or parse error occurred
+      // Phase 3 will add 'indexing', 'parser-warning'
     }));
 
     return c.json({

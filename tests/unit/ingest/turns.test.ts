@@ -165,7 +165,7 @@ describe('turn assembler', () => {
 
       expect(turns.length).toBe(2);
       expect(turns[0].durationMs).toBe(60000); // 60 seconds (00:00:00 → 00:01:00, next user msg)
-      expect(turns[1].durationMs).toBe(5000);  // 5 seconds (00:01:00 → 00:01:05, last msg)
+      expect(turns[1].durationMs).toBeNull();  // Last turn has no next user message to close it
     });
   });
 
