@@ -147,6 +147,8 @@ export function writeSessionToDatabase(
           parser_malformed_lines = ?,
           is_truncated = ?,
           termination_status = ?,
+          name = ?,
+          project = ?,
           file_hash = ?
         WHERE id = ?
       `).run(
@@ -158,6 +160,8 @@ export function writeSessionToDatabase(
         parseResult.session.metrics.parserMalformedLines,
         parseResult.session.metrics.isTruncated ? 1 : 0,
         parseResult.session.metrics.terminationStatus || '',
+        parseResult.session.name || '',
+        parseResult.session.project,
         fileHash,
         parseResult.session.id
       );

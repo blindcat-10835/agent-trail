@@ -133,7 +133,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 2;
+  const targetVersion = 3;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -156,6 +156,10 @@ export function runMigrations(): void {
     {
       desc: 'Add name column to sessions',
       sql: 'ALTER TABLE sessions ADD COLUMN name TEXT',
+    },
+    {
+      desc: 'Invalidate skip cache to re-extract name and project',
+      sql: "UPDATE sessions SET file_hash = NULL WHERE name IS NULL OR name = ''",
     },
   ];
 
