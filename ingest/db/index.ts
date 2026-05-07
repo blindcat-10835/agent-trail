@@ -98,6 +98,9 @@ export function initSchema(): void {
     throw new Error(`Failed to initialize schema: ${(err as Error).message}`);
   }
 
+  // Apply migrations (Phase 6: file_hash, last_sync_at)
+  runMigrations();
+
   // Verify tables were created
   const tables = db
     .prepare(
@@ -105,7 +108,7 @@ export function initSchema(): void {
     )
     .all() as { name: string }[];
 
-  const expectedTables = ['sessions', 'messages', 'tool_calls', 'tool_result_events', 'turns'];
+  const expectedTables = ['sessions', 'messages', 'tool_calls', 'tool_result_events', 'turns', 'sync_status'];
   const missingTables = expectedTables.filter(
     (t) => !tables.find((table) => table.name === t)
   );
@@ -115,6 +118,59 @@ export function initSchema(): void {
   }
 
   console.log(`Verified ${tables.length} tables created: ${tables.map((t) => t.name).join(', ')}`);
+}
+
+/**
+ * Apply schema migrations for existing databases
+ *
+ * Uses PRAGMA user_version to track migration state.
+ * Migrations are wrapped in try/catch to gracefully handle
+ * "duplicate column" errors on previously applied migrations.
+ */
+export function runMigrations(): void {
+  if (!db) {
+    throw new Error('Database not open. Call openDatabase() first.');
+  }
+
+  const currentVersion = db.pragma('user_version', { simple: true }) as number;
+  const targetVersion = 1;
+
+  if (currentVersion >= targetVersion) {
+    console.log(`Schema at version ${currentVersion}, no migrations needed`);
+    return;
+  }
+
+  console.log(`Running migrations: v${currentVersion} → v${targetVersion}`);
+
+  // Migration 1: Add file_hash and last_sync_at columns to sessions
+  const migrationSteps: Array<{ sql: string; desc: string }> = [
+    {
+      desc: 'Add file_hash column to sessions',
+      sql: 'ALTER TABLE sessions ADD COLUMN file_hash TEXT',
+    },
+    {
+      desc: 'Add last_sync_at column to sessions',
+      sql: 'ALTER TABLE sessions ADD COLUMN last_sync_at TEXT',
+    },
+  ];
+
+  for (const step of migrationSteps) {
+    try {
+      db.exec(step.sql);
+      console.log(`  ✓ ${step.desc}`);
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.includes('duplicate column name') || msg.includes('already exists')) {
+        console.log(`  ○ ${step.desc} (already applied)`);
+      } else {
+        console.error(`  ✗ ${step.desc}: ${msg}`);
+        throw err;
+      }
+    }
+  }
+
+  db.pragma(`user_version = ${targetVersion}`);
+  console.log(`Migrations complete — schema at v${targetVersion}`);
 }
 
 /**

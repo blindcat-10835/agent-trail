@@ -203,3 +203,23 @@ CREATE INDEX IF NOT EXISTS idx_turns_session_index ON turns(session_id, turn_ind
 
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
+
+-- ============================================================================
+-- Schema Migrations — Phase 6: File Watcher & Sync Status
+-- (Applied via runMigrations() in db/index.ts; here as canonical DDL)
+-- ============================================================================
+
+-- Add file_hash column for skip-cache dedup
+-- ALTER TABLE sessions ADD COLUMN file_hash TEXT;
+
+-- Add last_sync_at column to track per-session sync timestamp
+-- ALTER TABLE sessions ADD COLUMN last_sync_at TEXT;
+
+-- Sync status table: per-source tracking of sync operations
+CREATE TABLE IF NOT EXISTS sync_status (
+  source_type TEXT PRIMARY KEY,
+  last_full_sync_at TEXT,
+  last_watch_sync_at TEXT,
+  files_watched INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT
+);

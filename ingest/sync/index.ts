@@ -33,16 +33,35 @@ export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex';
 // ============================================================================
 
 /**
+ * Compute SHA-256 hash of a file for skip-cache deduplication.
+ *
+ * @param filePath - Path to the file on disk
+ * @returns Hex-encoded SHA-256 digest
+ */
+export function computeFileHash(filePath: string): string {
+  const content = fs.readFileSync(filePath);
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+/**
  * Write a parsed session to the database
  *
  * Handles session upsert (insert or update) and message insertion.
  * If session already exists, updates metadata and replaces all messages.
  *
+ * Supports skip cache: if sourceFile is provided and its hash matches the
+ * stored file_hash, skips the entire parse-and-write operation.
+ *
  * @param parseResult - Parsed session data from any parser
  * @param db - Optional database connection (defaults to getDatabase())
+ * @param sourceFile - Optional file path for hash-based skip cache and file_path column
  * @returns SyncResult with counts and errors
  */
-export function writeSessionToDatabase(parseResult: ParseResult, db?: Database.Database): SyncResult {
+export function writeSessionToDatabase(
+  parseResult: ParseResult,
+  db?: Database.Database,
+  sourceFile?: string
+): SyncResult {
   const database = db || getDatabase();
   const errors: string[] = [];
   let sessionsInserted = 0;
@@ -50,10 +69,26 @@ export function writeSessionToDatabase(parseResult: ParseResult, db?: Database.D
   let messagesInserted = 0;
 
   try {
+    // Compute file hash for skip cache (if sourceFile provided)
+    let fileHash: string | null = null;
+    if (sourceFile) {
+      fileHash = computeFileHash(sourceFile);
+    }
+
     // Check if session already exists
     const existing = database.prepare(
-      'SELECT id FROM sessions WHERE id = ?'
-    ).get(parseResult.session.id) as { id: string } | undefined;
+      'SELECT id, file_hash FROM sessions WHERE id = ?'
+    ).get(parseResult.session.id) as { id: string; file_hash: string | null } | undefined;
+
+    // Skip cache: if hash matches, skip entire parse-and-write
+    if (existing && fileHash && existing.file_hash === fileHash) {
+      return {
+        sessionsInserted: 0,
+        sessionsUpdated: 0,
+        messagesInserted: 0,
+        errors: [],
+      };
+    }
 
     if (existing) {
       // Update existing session
@@ -66,7 +101,8 @@ export function writeSessionToDatabase(parseResult: ParseResult, db?: Database.D
           has_tool_calls = ?,
           parser_malformed_lines = ?,
           is_truncated = ?,
-          termination_status = ?
+          termination_status = ?,
+          file_hash = ?
         WHERE id = ?
       `).run(
         parseResult.session.endedAt,
@@ -77,6 +113,7 @@ export function writeSessionToDatabase(parseResult: ParseResult, db?: Database.D
         parseResult.session.metrics.parserMalformedLines,
         parseResult.session.metrics.isTruncated ? 1 : 0,
         parseResult.session.metrics.terminationStatus || '',
+        fileHash,
         parseResult.session.id
       );
       sessionsUpdated++;
@@ -87,8 +124,8 @@ export function writeSessionToDatabase(parseResult: ParseResult, db?: Database.D
           id, source, project, started_at, ended_at, status,
           message_count, user_message_count, total_output_tokens, has_tool_calls,
           parser_malformed_lines, is_truncated, termination_status,
-          file_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          file_path, file_hash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         parseResult.session.id,
         parseResult.session.source,
@@ -103,7 +140,8 @@ export function writeSessionToDatabase(parseResult: ParseResult, db?: Database.D
         parseResult.session.metrics.parserMalformedLines,
         parseResult.session.metrics.isTruncated ? 1 : 0,
         parseResult.session.metrics.terminationStatus || '',
-        parseResult.session.id // Use session ID as file_path for now
+        sourceFile || parseResult.session.id, // Use actual file path or fall back to session ID
+        fileHash
       );
       sessionsInserted++;
     }
@@ -242,7 +280,7 @@ async function syncOpenClawSource(basePath?: string): Promise<SyncResult> {
 
         try {
           const parseResult = await parseOpenClawSession(filePath, project);
-          const result = writeSessionToDatabase(parseResult);
+          const result = writeSessionToDatabase(parseResult, undefined, filePath);
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
           totalResult.messagesInserted += result.messagesInserted;
@@ -302,7 +340,7 @@ async function syncClaudeCodeSource(): Promise<SyncResult> {
 
         try {
           const parseResult = await parseClaudeSession(filePath, project);
-          const result = writeSessionToDatabase(parseResult);
+          const result = writeSessionToDatabase(parseResult, undefined, filePath);
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
           totalResult.messagesInserted += result.messagesInserted;
@@ -366,7 +404,7 @@ async function syncCodexSource(): Promise<SyncResult> {
 
         try {
           const parseResult = await parseCodexSession(filePath, project);
-          const result = writeSessionToDatabase(parseResult);
+          const result = writeSessionToDatabase(parseResult, undefined, filePath);
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
           totalResult.messagesInserted += result.messagesInserted;

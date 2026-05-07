@@ -13,6 +13,8 @@ export interface IngestConfig {
   port: number;
   dbPath: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  resyncIntervalMs: number;   // default 300000 (5 min)
+  debounceMs: number;         // default 500
 }
 
 // ============================================================================
@@ -68,16 +70,34 @@ export function loadConfig(): IngestConfig {
 
   const logLevel = logLevelStr as IngestConfig['logLevel'];
 
+  // Parse resync interval (default 5 minutes)
+  const resyncIntervalStr = process.env.INGEST_RESYNC_INTERVAL_MS || '300000';
+  const resyncIntervalMs = parseInt(resyncIntervalStr, 10);
+  if (isNaN(resyncIntervalMs) || resyncIntervalMs < 5000) {
+    throw new Error(`Invalid INGEST_RESYNC_INTERVAL_MS: "${resyncIntervalStr}" must be at least 5000ms`);
+  }
+
+  // Parse debounce (default 500ms)
+  const debounceMsStr = process.env.INGEST_DEBOUNCE_MS || '500';
+  const debounceMs = parseInt(debounceMsStr, 10);
+  if (isNaN(debounceMs) || debounceMs < 100) {
+    throw new Error(`Invalid INGEST_DEBOUNCE_MS: "${debounceMsStr}" must be at least 100ms`);
+  }
+
   const config: IngestConfig = {
     port,
     dbPath,
     logLevel,
+    resyncIntervalMs,
+    debounceMs,
   };
 
   console.log('Configuration loaded:', {
     port: config.port,
     dbPath: config.dbPath,
     logLevel: config.logLevel,
+    resyncIntervalMs: config.resyncIntervalMs,
+    debounceMs: config.debounceMs,
   });
 
   return config;
