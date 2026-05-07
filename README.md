@@ -16,6 +16,49 @@ Developers can quickly find local agent sessions and accurately review each turn
 - **Local-first**: All data stays on your machine
 - **Cyberpunk HUD design**: Built with shadcn/ui and Tailwind v4
 
+## Quick Start
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start development servers (Next.js + ingest)
+pnpm dev
+```
+
+This starts:
+- **Next.js frontend** at [http://localhost:3000](http://localhost:3000)
+- **Ingest API** at [http://localhost:8078](http://localhost:8078)
+
+Verify everything is running:
+```bash
+# Frontend
+curl http://localhost:3000
+
+# Ingest health
+curl http://localhost:8078/health
+# → {"status":"ok","version":"0.1.0","database":"connected"}
+
+# Source discovery
+curl http://localhost:8078/api/v1/sources
+# → {"sources":[...],"total":N}
+```
+
+The shell status bar at the bottom of the dashboard shows ingest connection status
+(INGEST ONLINE / INGEST OFFLINE / INGEST RECONNECTING).
+
+## Privacy
+
+This is a **local-only developer tool**. It operates entirely on your machine:
+
+- **No data uploads.** Session data is parsed and indexed locally in SQLite. Nothing leaves your computer.
+- **No sharing.** There are no share links, public URLs, or cloud sync features.
+- **No tool execution.** The dashboard is read-only. It replays recorded tool calls — it never executes them.
+- **Local files only.** The ingest service only reads from configured session directories on your local filesystem.
+- **No telemetry.** No usage data, error reports, or analytics are collected or transmitted.
+
+All session data remains under your control. The dashboard is a viewer, not a recorder or transmitter.
+
 ## Getting Started
 
 ### Prerequisites

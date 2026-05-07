@@ -30,6 +30,7 @@ export function ShellStatusBar() {
 
       {/* Right section */}
       <div className="flex items-center gap-4">
+        <span className="text-muted-foreground/50">LOCAL ONLY · NO UPLOADS</span>
         <span>MEM <b>42.1MB</b></span>
         <span>FPS <b>60</b></span>
         <span className="text-accent font-bold tracking-[0.2em]" style={{ textShadow: '0 0 8px var(--color-accent)' }}>
