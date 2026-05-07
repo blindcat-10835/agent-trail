@@ -108,7 +108,7 @@ describe('createSSEManager', () => {
 
     readStream(globalSub.stream, globalEvents);
     readStream(sessionSub.stream, sessionEvents);
-    readStream(otherSub.stream, otherEvents);
+    readStream(otherSub.stream, otherSessionEvents);
 
     await new Promise((r) => setTimeout(r, 10));
     manager.emitSessionEvent('abc', 'turn_added', { turnIndex: 0 });
@@ -121,7 +121,7 @@ describe('createSSEManager', () => {
 
     const globalJoined = globalEvents.join('');
     const sessionJoined = sessionEvents.join('');
-    const otherJoined = otherEvents.join('');
+    const otherJoined = otherSessionEvents.join('');
 
     // Only 'abc' subscriber should receive the event
     expect(globalJoined).not.toContain('turn_added');
