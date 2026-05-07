@@ -61,6 +61,21 @@ function deriveDisplayNameFromUserMessage(content: string): string {
     if (line) return truncateDisplayName(line)
   }
 
+  // OpenClaw channel messages inject metadata blocks before the actual user text.
+  // Pattern: "Conversation info (untrusted metadata):\n```json\n...\n```\n\n<actual message>"
+  // Extract the content after the last closing code fence.
+  if (normalized.startsWith('Conversation info (untrusted metadata):')) {
+    const codeBlockEndRe = /```\s*\n/g
+    let lastIdx = 0
+    let m: RegExpExecArray | null
+    while ((m = codeBlockEndRe.exec(normalized)) !== null) {
+      lastIdx = m.index + m[0].length
+    }
+    const afterBlocks = normalized.slice(lastIdx).trim()
+    if (afterBlocks) return truncateDisplayName(firstMeaningfulLine(afterBlocks))
+    return ''
+  }
+
   const lower = normalized.toLowerCase()
   const metadataPrefixes = [
     '<environment_context',
@@ -105,10 +120,11 @@ function extractProjectFromPath(filePath: string, sourceType: SyncSourceType): s
   }
 
   if (sourceType === 'openclaw') {
-    // Path structure: {base}/agents/{agentName}/sessions/{file}.jsonl
+    // Path structure: {openclaw-dir}/agents/{agentName}/sessions/{file}.jsonl
+    // Return the openclaw dir name (e.g. ".openclaw"), not the agent name.
     const parts = path.dirname(filePath).split(path.sep)
-    const sessionsIdx = parts.lastIndexOf('sessions')
-    if (sessionsIdx > 0) return parts[sessionsIdx - 1]
+    const agentsIdx = parts.lastIndexOf('agents')
+    if (agentsIdx > 0) return parts[agentsIdx - 1]
     return 'default'
   }
 
@@ -186,18 +202,20 @@ export function writeSessionToDatabase(
 
     // Check if session already exists
     const existing = database.prepare(
-      'SELECT id, file_hash FROM sessions WHERE id = ?'
-    ).get(parseResult.session.id) as { id: string; file_hash: string | null } | undefined;
+      'SELECT id, file_hash, name, project FROM sessions WHERE id = ?'
+    ).get(parseResult.session.id) as { id: string; file_hash: string | null; name: string | null; project: string | null } | undefined;
 
-    // Skip cache: if hash matches, skip entire parse-and-write
+    // Skip cache: if hash matches, skip full re-parse but still patch name/project if empty.
     if (existing && fileHash && existing.file_hash === fileHash) {
       database.prepare(`
         UPDATE sessions SET
           file_size = ?,
           file_mtime = ?,
-          last_sync_at = ?
+          last_sync_at = ?,
+          name = CASE WHEN (name IS NULL OR name = '') THEN ? ELSE name END,
+          project = CASE WHEN (project IS NULL OR project = '' OR project = 'default') THEN ? ELSE project END
         WHERE id = ?
-      `).run(fileSize, fileMtime, lastSyncAt, parseResult.session.id);
+      `).run(fileSize, fileMtime, lastSyncAt, parseResult.session.name || '', parseResult.session.project || '', parseResult.session.id);
 
       return {
         sessionsInserted: 0,
