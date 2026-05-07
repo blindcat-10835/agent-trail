@@ -205,6 +205,7 @@ export interface ClaudeCompactBoundary {
  */
 export interface CodexJsonlLine {
   type: string; // 'session_meta', 'turn_context', 'response_item', 'event_msg', 'spawn_agent', etc.
+  payload?: any;
   session_meta?: {
     session_id: string;
     cwd?: string;

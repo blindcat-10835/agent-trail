@@ -66,6 +66,29 @@ describe('Codex parser — parseCodexSession()', () => {
     });
   });
 
+  describe('Current Codex payload JSONL format', () => {
+    it('should parse payload-based session_meta, turn_context, and message response items', async () => {
+      const jsonl = [
+        '{"timestamp":"2026-05-07T01:00:00.000Z","type":"session_meta","payload":{"id":"codex-payload-001","cwd":"/Users/alice/code/my-api","model_provider":"openai"}}',
+        '{"timestamp":"2026-05-07T01:00:01.000Z","type":"turn_context","payload":{"cwd":"/Users/alice/code/my-api","model":"gpt-5-codex"}}',
+        '{"timestamp":"2026-05-07T01:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Build the dashboard"}]}}',
+        '{"timestamp":"2026-05-07T01:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I will build it."}]}}',
+      ].join('\n');
+
+      const filePath = writeFixture('payload-format.jsonl', jsonl);
+      const result = await parseCodexSession(filePath, '01');
+
+      expect(result.session.id).toBe('codex-payload-001');
+      expect(result.session.project).toBe('/Users/alice/code/my-api');
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[0].role).toBe('user');
+      expect(result.messages[0].content).toBe('Build the dashboard');
+      expect(result.messages[0].sourceMetadata.cwd).toBe('/Users/alice/code/my-api');
+      expect(result.messages[1].role).toBe('assistant');
+      expect(result.messages[1].model).toBe('gpt-5-codex');
+    });
+  });
+
   describe('Test 3: text → TraceMessage (assistant)', () => {
     it('should map text response_item to role="assistant"', async () => {
       const jsonl = [

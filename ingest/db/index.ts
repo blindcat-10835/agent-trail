@@ -133,7 +133,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 3;
+  const targetVersion = 5;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -160,6 +160,29 @@ export function runMigrations(): void {
     {
       desc: 'Invalidate skip cache to re-extract name and project',
       sql: "UPDATE sessions SET file_hash = NULL WHERE name IS NULL OR name = ''",
+    },
+    {
+      desc: 'Invalidate stale project/name cache for repaired metadata extraction',
+      sql: `
+        UPDATE sessions
+        SET file_hash = NULL
+        WHERE name IS NULL
+           OR name = ''
+           OR project = 'default'
+           OR project LIKE '//%'
+      `,
+    },
+    {
+      desc: 'Invalidate v4-stale metadata rows after parser cwd fixes',
+      sql: `
+        UPDATE sessions
+        SET file_hash = NULL
+        WHERE name IS NULL
+           OR name = ''
+           OR project = 'default'
+           OR project LIKE '//%'
+           OR file_path NOT LIKE '/%'
+      `,
     },
   ];
 

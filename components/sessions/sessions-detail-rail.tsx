@@ -129,7 +129,8 @@ export function SessionsDetailRail({
 
   // Derive display values from TraceSession
   const displaySession = session as DisplayTraceSession
-  const label = displaySession.label || session.project || session.id
+  const label = session.name || displaySession.label || session.id
+  const project = session.project && session.project !== 'default' ? session.project : '-'
   const model = displaySession.model || '-'
   const modelShort = model.split('/').pop() || '-'
   const totalTokens = session.metrics.totalTokens || 0
@@ -239,7 +240,7 @@ export function SessionsDetailRail({
           <span className="block text-[9px] text-muted-foreground uppercase tracking-[0.2em] mb-1">
             PROJECT
           </span>
-          <div className="text-sm">{session.project || '-'}</div>
+          <div className="text-sm">{project}</div>
         </div>
         {session.startedAt && (
           <div>

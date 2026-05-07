@@ -41,7 +41,7 @@ export function createClaudeCodeAdapter(): AgentToolServerAdapter {
       const params = buildSourceScopedSessionParams(SOURCE, query)
       return fetchIngest<SessionListResult>(
         `/api/v1/sessions?${params}`,
-        { next: { revalidate: 30 } },
+        { cache: 'no-store' },
       )
     },
 

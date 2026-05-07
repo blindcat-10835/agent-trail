@@ -9,7 +9,7 @@ interface ReplayHeaderProps {
 }
 
 export function ReplayHeader({ session, derivedStatus, onBackToSessions }: ReplayHeaderProps) {
-  const sessionName = session?.project || session?.id || 'Unknown Session'
+  const sessionName = session?.name || session?.id || 'Unknown Session'
 
   return (
     <header className="flex-shrink-0 border-b border-border bg-card">

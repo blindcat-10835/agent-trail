@@ -7,7 +7,7 @@
  * Per D-07: BFF proxy — frontend never calls ingest directly.
  * Per D-08: Unified per-tool routing — single handler for all 3 tools.
  *
- * Caching: ISR revalidate every 30 seconds (per UI-SPEC session list strategy).
+ * Caching: disabled so local sync/reindex changes are visible immediately.
  */
 
 import { NextRequest, NextResponse } from 'next/server'

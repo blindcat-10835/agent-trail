@@ -36,6 +36,87 @@ import {
   SessionContext,
 } from './types';
 
+type CodexPayload = Record<string, any>;
+
+function getCodexPayload(parsed: CodexJsonlLine): CodexPayload | undefined {
+  return parsed.payload && typeof parsed.payload === 'object'
+    ? parsed.payload as CodexPayload
+    : undefined;
+}
+
+function getCodexSessionMeta(parsed: CodexJsonlLine): {
+  session_id?: string;
+  cwd?: string;
+  git_branch?: string;
+  model?: string;
+} | undefined {
+  if (parsed.session_meta) return parsed.session_meta;
+  const payload = getCodexPayload(parsed);
+  if (!payload) return undefined;
+
+  return {
+    session_id: payload.session_id || payload.id,
+    cwd: payload.cwd,
+    git_branch: payload.git_branch || payload.gitBranch,
+    model: payload.model,
+  };
+}
+
+function getCodexTurnContext(parsed: CodexJsonlLine): {
+  turn_id?: string;
+  model?: string;
+  started_at?: string;
+  cwd?: string;
+  git_branch?: string;
+} | undefined {
+  if (parsed.turn_context) return parsed.turn_context;
+  const payload = getCodexPayload(parsed);
+  if (!payload) return undefined;
+
+  return {
+    turn_id: payload.turn_id,
+    model: payload.model,
+    started_at: payload.started_at,
+    cwd: payload.cwd,
+    git_branch: payload.git_branch || payload.gitBranch,
+  };
+}
+
+function getCodexResponseItem(parsed: CodexJsonlLine): CodexPayload | undefined {
+  if (parsed.response_item) return parsed.response_item as CodexPayload;
+  return getCodexPayload(parsed);
+}
+
+function getCodexEventMsg(parsed: CodexJsonlLine): CodexPayload | undefined {
+  if (parsed.event_msg) return parsed.event_msg as CodexPayload;
+  return getCodexPayload(parsed);
+}
+
+function extractCodexMessageContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+
+  return content
+    .map((block) => {
+      if (!block || typeof block !== 'object') return '';
+      const value = block as { text?: unknown; input_text?: unknown; output_text?: unknown };
+      if (typeof value.text === 'string') return value.text;
+      if (typeof value.input_text === 'string') return value.input_text;
+      if (typeof value.output_text === 'string') return value.output_text;
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function mapCodexRole(role: unknown): MessageRole | null {
+  if (role === 'user') return 'user';
+  if (role === 'assistant') return 'assistant';
+  if (role === 'system') return 'system';
+  if (role === 'tool_result') return 'tool_result';
+  return null;
+}
+
 // ============================================================================
 // Main Entry Point — parseCodexSession
 // ============================================================================
@@ -119,21 +200,19 @@ export async function parseCodexSession(
       const parsed: CodexJsonlLine = JSON.parse(line);
 
       // Handle session_meta — extract metadata from first line
-      if (
-        parsed.type === 'session_meta' &&
-        parsed.session_meta
-      ) {
-        if (parsed.session_meta.session_id) {
-          sessionId = parsed.session_meta.session_id;
+      const sessionMeta = getCodexSessionMeta(parsed);
+      if (parsed.type === 'session_meta' && sessionMeta) {
+        if (sessionMeta.session_id) {
+          sessionId = sessionMeta.session_id;
         }
-        if (parsed.session_meta.cwd) {
-          sessionCwd = parsed.session_meta.cwd;
+        if (sessionMeta.cwd) {
+          sessionCwd = sessionMeta.cwd;
         }
-        if (parsed.session_meta.git_branch) {
-          sessionGitBranch = parsed.session_meta.git_branch;
+        if (sessionMeta.git_branch) {
+          sessionGitBranch = sessionMeta.git_branch;
         }
-        if (parsed.session_meta.model) {
-          sessionModel = parsed.session_meta.model;
+        if (sessionMeta.model) {
+          sessionModel = sessionMeta.model;
         }
         if (parsed.timestamp && !startedAt) {
           startedAt = parsed.timestamp;
@@ -142,15 +221,15 @@ export async function parseCodexSession(
       }
 
       // Handle turn_context — extract turn boundary and model (D-06)
-      if (
-        parsed.type === 'turn_context' &&
-        parsed.turn_context
-      ) {
-        currentModel = parsed.turn_context.model || currentModel;
+      const turnContext = getCodexTurnContext(parsed);
+      if (parsed.type === 'turn_context' && turnContext) {
+        currentModel = turnContext.model || currentModel;
+        sessionCwd = turnContext.cwd || sessionCwd;
+        sessionGitBranch = turnContext.git_branch || sessionGitBranch;
         turnContexts.push({
-          turnId: parsed.turn_context.turn_id,
-          model: parsed.turn_context.model,
-          startedAt: parsed.turn_context.started_at,
+          turnId: turnContext.turn_id || `turn-${lineNum}`,
+          model: turnContext.model,
+          startedAt: turnContext.started_at || parsed.timestamp,
         });
         if (parsed.timestamp && !startedAt) {
           startedAt = parsed.timestamp;
@@ -159,11 +238,9 @@ export async function parseCodexSession(
       }
 
       // Handle response_item — the core message/activity type (D-07)
-      if (
-        parsed.type === 'response_item' &&
-        parsed.response_item
-      ) {
-        const ri = parsed.response_item;
+      const responseItem = getCodexResponseItem(parsed);
+      if (parsed.type === 'response_item' && responseItem) {
+        const ri = responseItem;
         const timestamp = parsed.timestamp;
 
         // Track timestamp boundaries
@@ -199,9 +276,45 @@ export async function parseCodexSession(
           continue;
         }
 
+        // message payloads are the shape emitted by current Codex JSONL logs:
+        // { type: "response_item", payload: { type: "message", role, content: [...] } }
+        if (ri.type === 'message') {
+          const content = extractCodexMessageContent(ri.content);
+          const role = mapCodexRole(ri.role);
+          if (!content || !role) {
+            warnings.push(
+              `Line ${lineNum}: Skipping message payload without role/content`
+            );
+            continue;
+          }
+
+          const dedupKey = `message:${role}:${content}`;
+          const tokenCount = ri.token_count ?? 0;
+          const sourceMetadata = createSourceMetadata(
+            context,
+            lineNum,
+            sessionCwd,
+            sessionGitBranch
+          );
+
+          const message: TraceMessage = {
+            id: `${sessionId}-${ordinal}`,
+            ordinal,
+            role,
+            content,
+            timestamp,
+            model: currentModel || sessionModel,
+            sourceMetadata,
+          };
+
+          handleDedup(dedupKey, tokenCount, message, messageVersions, warnings, lineNum);
+          ordinal++;
+          continue;
+        }
+
         // text → TraceMessage (assistant)
-        if (ri.type === 'text') {
-          const content = ri.text || '';
+        if (ri.type === 'text' || ri.type === 'output_text') {
+          const content = ri.text || ri.output_text || '';
           const dedupKey = `text:${content}`;
           const tokenCount = ri.token_count ?? 0;
           const sourceMetadata = createSourceMetadata(
@@ -285,8 +398,9 @@ export async function parseCodexSession(
       }
 
       // Handle event_msg — function_call_output → TraceToolResultEvent (D-07)
-      if (parsed.type === 'event_msg' && parsed.event_msg) {
-        const ev = parsed.event_msg;
+      const eventMsg = getCodexEventMsg(parsed);
+      if (parsed.type === 'event_msg' && eventMsg) {
+        const ev = eventMsg;
 
         if (ev.type === 'function_call_output') {
           const callId = ev.call_id;
@@ -369,7 +483,7 @@ export async function parseCodexSession(
   const session: TraceSession = {
     id: sessionId,
     source: 'codex',
-    project: context.project,
+    project: sessionCwd || context.project,
     startedAt,
     endedAt,
     status: endedAt ? 'idle' : 'active',
@@ -572,27 +686,33 @@ export function parseCodexMessage(
   try {
     const parsed: CodexJsonlLine = JSON.parse(line);
 
-    if (parsed.type !== 'response_item' || !parsed.response_item) {
+    const responseItem = getCodexResponseItem(parsed);
+    if (parsed.type !== 'response_item' || !responseItem) {
       return null;
     }
 
-    const ri = parsed.response_item;
+    const ri = responseItem;
 
     // Only process text-based response_items (not function_call)
     if (ri.type === 'function_call') return null;
 
-    let role: MessageRole;
+    let role: MessageRole | null;
     let content: string;
 
     if (ri.type === 'input_text') {
       role = 'user';
       content = ri.input_text || '';
-    } else if (ri.type === 'text') {
+    } else if (ri.type === 'text' || ri.type === 'output_text') {
       role = 'assistant';
-      content = ri.text || '';
+      content = ri.text || ri.output_text || '';
+    } else if (ri.type === 'message') {
+      role = mapCodexRole(ri.role);
+      content = extractCodexMessageContent(ri.content);
     } else {
       return null;
     }
+
+    if (!role || !content) return null;
 
     return {
       id: `${context.uuid}-0`,

@@ -93,6 +93,8 @@ export async function parseClaudeSession(
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let hasToolCalls = false;
+  let sessionCwd: string | undefined;
+  let sessionGitBranch: string | undefined;
   let sessionMetadata: {
     sessionId?: string;
     sessionType?: string;
@@ -114,6 +116,13 @@ export async function parseClaudeSession(
 
     try {
       const parsed: ClaudeJsonlLine = JSON.parse(line);
+
+      if (typeof parsed.cwd === 'string' && parsed.cwd.trim()) {
+        sessionCwd = parsed.cwd;
+      }
+      if (typeof parsed.gitBranch === 'string' && parsed.gitBranch.trim()) {
+        sessionGitBranch = parsed.gitBranch;
+      }
 
       // D-03: UUID deduplication — skip duplicate UUIDs, keep first occurrence
       if (seenUuids.has(parsed.uuid)) {
@@ -165,6 +174,8 @@ export async function parseClaudeSession(
             sourceFile: context.filePath,
             sourceLine: lineNum,
             sourceVersion: (context as any).sourceVersion || 'unknown',
+            cwd: sessionCwd,
+            gitBranch: sessionGitBranch,
           },
         };
         messages.push(compactMsg);
@@ -178,8 +189,8 @@ export async function parseClaudeSession(
           sessionId: parsed.session.id,
           sessionType: parsed.session.type,
           parentId: parsed.session.parentId,
-          cwd: parsed.session.cwd,
-          gitBranch: parsed.session.gitBranch,
+          cwd: parsed.session.cwd || sessionCwd,
+          gitBranch: parsed.session.gitBranch || sessionGitBranch,
         };
         // Also update DAG node with resolved session info
         const node = dagNodes.get(parsed.uuid);
@@ -194,7 +205,7 @@ export async function parseClaudeSession(
       }
 
       // Parse message
-      const message = parseMessage(parsed, ordinal, context, lineNum);
+      const message = parseMessage(parsed, ordinal, context, lineNum, sessionCwd, sessionGitBranch);
       messages.push(message);
 
       // Extract tool calls from assistant messages with content blocks
@@ -258,7 +269,7 @@ export async function parseClaudeSession(
   const session: TraceSession = {
     id: context.uuid,
     source: 'claude-code',
-    project: context.project,
+    project: sessionMetadata?.cwd || sessionCwd || context.project,
     startedAt,
     endedAt,
     status: endedAt ? 'idle' : 'active',
@@ -376,7 +387,9 @@ function parseMessage(
   parsed: ClaudeJsonlLine,
   ordinal: number,
   context: SessionContext,
-  lineNum: number
+  lineNum: number,
+  cwd?: string,
+  gitBranch?: string
 ): TraceMessage {
   const msg = parsed.message!;
 
@@ -397,6 +410,8 @@ function parseMessage(
     sourceFile: context.filePath,
     sourceLine: lineNum,
     sourceVersion: (context as any).sourceVersion || 'unknown',
+    cwd,
+    gitBranch,
   };
 
   // Map Claude role to canonical MessageRole

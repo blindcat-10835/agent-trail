@@ -38,9 +38,52 @@ export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex';
  * Extract a display name from the first user message in the parse result.
  */
 function extractSessionName(parseResult: ParseResult): string {
-  const firstUserMsg = parseResult.messages.find(m => m.role === 'user')
-  if (!firstUserMsg?.content) return ''
-  const line = firstUserMsg.content.split('\n')[0].trim()
+  for (const message of parseResult.messages) {
+    if (message.role !== 'user') continue
+
+    const candidate = deriveDisplayNameFromUserMessage(message.content)
+    if (candidate) return candidate
+  }
+
+  return ''
+}
+
+function deriveDisplayNameFromUserMessage(content: string): string {
+  const normalized = content.trim()
+  if (!normalized) return ''
+
+  const commandArgs = normalized.match(/<command-args>([\s\S]*?)<\/command-args>/i)?.[1]?.trim()
+  if (commandArgs) return truncateDisplayName(commandArgs)
+
+  const codexRequest = normalized.match(/## My request for Codex:\s*([\s\S]*)/i)?.[1]?.trim()
+  if (codexRequest) {
+    const line = firstMeaningfulLine(codexRequest)
+    if (line) return truncateDisplayName(line)
+  }
+
+  const lower = normalized.toLowerCase()
+  const metadataPrefixes = [
+    '<environment_context',
+    '<security_context',
+    '<local-command-caveat',
+    '<command-message',
+    'base directory for this skill:',
+    '# context from my ide setup:',
+  ]
+  if (metadataPrefixes.some(prefix => lower.startsWith(prefix))) return ''
+
+  const line = firstMeaningfulLine(normalized)
+  return line ? truncateDisplayName(line) : ''
+}
+
+function firstMeaningfulLine(content: string): string {
+  return content
+    .split('\n')
+    .map(line => line.trim())
+    .find(line => line.length > 0) || ''
+}
+
+function truncateDisplayName(line: string): string {
   return line.length > 80 ? line.slice(0, 77) + '...' : line
 }
 
@@ -71,6 +114,21 @@ function extractProjectFromPath(filePath: string, sourceType: SyncSourceType): s
 
   // Codex: use parent directory name
   return path.basename(path.dirname(filePath)) || 'default'
+}
+
+function extractProjectFromParsedSession(
+  parseResult: ParseResult,
+  fallbackProject: string
+): string {
+  if (parseResult.session.project && parseResult.session.project !== 'default') {
+    return parseResult.session.project
+  }
+
+  const cwd = parseResult.messages
+    .map(m => m.sourceMetadata.cwd?.trim())
+    .find((value): value is string => Boolean(value))
+
+  return cwd || fallbackProject || 'default'
 }
 
 // ============================================================================
@@ -356,7 +414,7 @@ async function syncOpenClawSource(basePath?: string): Promise<SyncResult> {
         try {
           const parseResult = await parseOpenClawSession(filePath, project);
           parseResult.session.name = extractSessionName(parseResult);
-          parseResult.session.project = project;
+          parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
           const result = writeSessionToDatabase(parseResult, undefined, filePath);
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
@@ -418,7 +476,7 @@ async function syncClaudeCodeSource(): Promise<SyncResult> {
         try {
           const parseResult = await parseClaudeSession(filePath, project);
           parseResult.session.name = extractSessionName(parseResult);
-          parseResult.session.project = project;
+          parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
           const result = writeSessionToDatabase(parseResult, undefined, filePath);
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
@@ -484,7 +542,7 @@ async function syncCodexSource(): Promise<SyncResult> {
         try {
           const parseResult = await parseCodexSession(filePath, project);
           parseResult.session.name = extractSessionName(parseResult);
-          parseResult.session.project = project;
+          parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
           const result = writeSessionToDatabase(parseResult, undefined, filePath);
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
