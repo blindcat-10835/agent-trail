@@ -43,7 +43,7 @@ const definition: AgentToolDefinition = {
       versionLabel: 'AGGREGATE',
     },
     sessionColumns: [
-      { id: 'label', header: 'LABEL', accessor: 'label', sortable: true, width: 'minmax(180px,2fr)' },
+      { id: 'label', header: 'SESSION', accessor: 'label', sortable: true, width: 'minmax(180px,2fr)' },
       { id: 'status', header: 'STATUS', accessor: 'status', width: '80px' },
       { id: 'project', header: 'PROJECT', accessor: 'project', sortable: true, width: 'minmax(120px,1fr)' },
       { id: 'model', header: 'MODEL', accessor: 'model', sortable: true, width: 'minmax(120px,1fr)' },

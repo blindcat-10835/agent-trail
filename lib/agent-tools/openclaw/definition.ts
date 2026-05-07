@@ -67,7 +67,7 @@ const definition: AgentToolDefinition = {
       versionLabel: 'GATEWAY · v3.2.1',
     },
     sessionColumns: [
-      { id: 'label', header: 'LABEL', accessor: 'label', sortable: true },
+      { id: 'label', header: 'SESSION', accessor: 'label', sortable: true },
       { id: 'status', header: 'STATUS', accessor: 'status' },
       { id: 'model', header: 'MODEL', accessor: 'model', sortable: true },
       { id: 'updatedAt', header: 'UPDATED', accessor: 'updatedAt', sortable: true },

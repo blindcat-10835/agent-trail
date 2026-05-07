@@ -77,20 +77,12 @@ function formatUnknownCellValue(value: unknown): string {
  * Resilient: handles missing fields gracefully.
  */
 function deriveLabel(session: TraceSession): string {
-  const firstMsg = session.turns?.[0]?.userMessage?.content
-  if (firstMsg) {
-    const line = firstMsg.split('\n')[0].trim()
-    return line.length > 80 ? line.slice(0, 77) + '...' : line
-  }
+  if (session.name) return session.name
   return session.id.slice(-8)
 }
 
 function deriveProject(session: TraceSession): string {
   if (session.project && session.project !== 'default') return session.project
-  const cwd =
-    session.turns?.[0]?.userMessage?.sourceMetadata?.cwd
-    ?? session.turns?.[0]?.assistantMessages?.[0]?.sourceMetadata?.cwd
-  if (cwd) return cwd.split('/').pop() || cwd
   return '-'
 }
 

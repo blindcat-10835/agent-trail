@@ -48,7 +48,7 @@ sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
   // Attempt lookup: first try exact ID match, then try source_session_id
   const session = db.prepare(`
     SELECT
-      id, source, project, started_at, ended_at, status,
+      id, source, project, name, started_at, ended_at, status,
       message_count, user_message_count, total_output_tokens, has_tool_calls,
       parser_malformed_lines, is_truncated, termination_status
     FROM sessions
@@ -139,7 +139,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
 
   const sessions = db.prepare(`
     SELECT
-      id, source, project, started_at, ended_at, status,
+      id, source, project, name, started_at, ended_at, status,
       message_count, user_message_count, total_output_tokens, has_tool_calls,
       parser_malformed_lines, is_truncated, termination_status
     FROM sessions
@@ -175,7 +175,7 @@ sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
 
   const session = db.prepare(`
     SELECT
-      id, source, project, started_at, ended_at, status,
+      id, source, project, name, started_at, ended_at, status,
       message_count, user_message_count, total_output_tokens, has_tool_calls,
       parser_malformed_lines, is_truncated, termination_status
     FROM sessions
@@ -200,6 +200,7 @@ interface SessionRow {
   id: string;
   source: string;
   project: string;
+  name: string | null;
   started_at: string | null;
   ended_at: string | null;
   status: string;
@@ -221,6 +222,7 @@ function parseSessionRow(row: SessionRow): TraceSession {
     id: row.id,
     source: row.source as TraceSource,
     project: row.project,
+    name: row.name || undefined,
     startedAt: row.started_at,
     endedAt: row.ended_at,
     status: row.status as SessionStatus,

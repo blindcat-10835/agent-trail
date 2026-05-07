@@ -11,6 +11,8 @@
 import Database from 'better-sqlite3';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { getDatabase } from '../db';
 import { ParseResult } from '../parser/types';
 import { sseManager } from '../src/sse';
@@ -27,6 +29,49 @@ export interface SyncResult {
 }
 
 export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex';
+
+// ============================================================================
+// Session Name & Project Extraction
+// ============================================================================
+
+/**
+ * Extract a display name from the first user message in the parse result.
+ */
+function extractSessionName(parseResult: ParseResult): string {
+  const firstUserMsg = parseResult.messages.find(m => m.role === 'user')
+  if (!firstUserMsg?.content) return ''
+  const line = firstUserMsg.content.split('\n')[0].trim()
+  return line.length > 80 ? line.slice(0, 77) + '...' : line
+}
+
+/**
+ * Extract project path from the session file path based on source type.
+ *
+ * - Claude Code: ~/.claude/projects/{encoded-path}/ → decode to actual cwd
+ * - OpenClaw: extract agent name from agents/{name}/sessions structure
+ * - Codex: use parent directory name
+ */
+function extractProjectFromPath(filePath: string, sourceType: SyncSourceType): string {
+  if (sourceType === 'claude-code') {
+    const projectsRoot = path.join(os.homedir(), '.claude', 'projects')
+    const relative = path.relative(projectsRoot, path.dirname(filePath))
+    if (!relative || relative.startsWith('..')) return 'default'
+    const encoded = relative.split(path.sep)[0]
+    // Claude encodes cwd by replacing '/' with '-': /Users/ebbi/work → -Users-ebbi-work
+    return '/' + encoded.replace(/-/g, '/')
+  }
+
+  if (sourceType === 'openclaw') {
+    // Path structure: {base}/agents/{agentName}/sessions/{file}.jsonl
+    const parts = path.dirname(filePath).split(path.sep)
+    const sessionsIdx = parts.lastIndexOf('sessions')
+    if (sessionsIdx > 0) return parts[sessionsIdx - 1]
+    return 'default'
+  }
+
+  // Codex: use parent directory name
+  return path.basename(path.dirname(filePath)) || 'default'
+}
 
 // ============================================================================
 // Database Write Operations
@@ -121,15 +166,16 @@ export function writeSessionToDatabase(
       // Insert new session
       database.prepare(`
         INSERT INTO sessions (
-          id, source, project, started_at, ended_at, status,
+          id, source, project, name, started_at, ended_at, status,
           message_count, user_message_count, total_output_tokens, has_tool_calls,
           parser_malformed_lines, is_truncated, termination_status,
           file_path, file_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         parseResult.session.id,
         parseResult.session.source,
         parseResult.session.project,
+        parseResult.session.name || '',
         parseResult.session.startedAt,
         parseResult.session.endedAt,
         parseResult.session.status,
@@ -301,10 +347,12 @@ async function syncOpenClawSource(basePath?: string): Promise<SyncResult> {
 
       for (const file of sessionFiles) {
         const filePath = `${source.path}/${file}`;
-        const project = 'default'; // TODO: Extract project from path or config
+        const project = extractProjectFromPath(filePath, 'openclaw');
 
         try {
           const parseResult = await parseOpenClawSession(filePath, project);
+          parseResult.session.name = extractSessionName(parseResult);
+          parseResult.session.project = project;
           const result = writeSessionToDatabase(parseResult, undefined, filePath);
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
@@ -361,10 +409,12 @@ async function syncClaudeCodeSource(): Promise<SyncResult> {
 
       for (const file of sessionFiles) {
         const filePath = `${source.path}/${file}`;
-        const project = 'default';
+        const project = extractProjectFromPath(filePath, 'claude-code');
 
         try {
           const parseResult = await parseClaudeSession(filePath, project);
+          parseResult.session.name = extractSessionName(parseResult);
+          parseResult.session.project = project;
           const result = writeSessionToDatabase(parseResult, undefined, filePath);
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
@@ -425,10 +475,12 @@ async function syncCodexSource(): Promise<SyncResult> {
 
       for (const file of sessionFiles) {
         const filePath = `${source.path}/${file}`;
-        const project = 'default';
+        const project = extractProjectFromPath(filePath, 'codex');
 
         try {
           const parseResult = await parseCodexSession(filePath, project);
+          parseResult.session.name = extractSessionName(parseResult);
+          parseResult.session.project = project;
           const result = writeSessionToDatabase(parseResult, undefined, filePath);
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;

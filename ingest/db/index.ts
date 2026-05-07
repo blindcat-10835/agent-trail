@@ -133,7 +133,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 1;
+  const targetVersion = 2;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -143,6 +143,7 @@ export function runMigrations(): void {
   console.log(`Running migrations: v${currentVersion} → v${targetVersion}`);
 
   // Migration 1: Add file_hash and last_sync_at columns to sessions
+  // Migration 2: Add name column for session display name
   const migrationSteps: Array<{ sql: string; desc: string }> = [
     {
       desc: 'Add file_hash column to sessions',
@@ -151,6 +152,10 @@ export function runMigrations(): void {
     {
       desc: 'Add last_sync_at column to sessions',
       sql: 'ALTER TABLE sessions ADD COLUMN last_sync_at TEXT',
+    },
+    {
+      desc: 'Add name column to sessions',
+      sql: 'ALTER TABLE sessions ADD COLUMN name TEXT',
     },
   ];
 

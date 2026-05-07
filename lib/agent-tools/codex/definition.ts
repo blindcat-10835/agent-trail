@@ -49,7 +49,7 @@ const definition: AgentToolDefinition = {
       versionLabel: 'CODEX',
     },
     sessionColumns: [
-      { id: 'label', header: 'LABEL', accessor: 'label', sortable: true },
+      { id: 'label', header: 'SESSION', accessor: 'label', sortable: true },
       { id: 'status', header: 'STATUS', accessor: 'status' },
       { id: 'model', header: 'MODEL', accessor: 'model', sortable: true },
       { id: 'project', header: 'PROJECT', accessor: 'project' },

@@ -93,6 +93,7 @@ export interface TraceSession {
   id: string;
   source: TraceSource;
   project: string;
+  name?: string;
   startedAt: string | null;
   endedAt: string | null;
   status: SessionStatus;

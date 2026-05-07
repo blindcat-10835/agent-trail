@@ -215,6 +215,9 @@ PRAGMA synchronous = NORMAL;
 -- Add last_sync_at column to track per-session sync timestamp
 -- ALTER TABLE sessions ADD COLUMN last_sync_at TEXT;
 
+-- Add name column for session display name (first user message or custom)
+-- ALTER TABLE sessions ADD COLUMN name TEXT;
+
 -- Sync status table: per-source tracking of sync operations
 CREATE TABLE IF NOT EXISTS sync_status (
   source_type TEXT PRIMARY KEY,
