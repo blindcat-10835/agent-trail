@@ -13,8 +13,11 @@ export interface IngestConfig {
   port: number;
   dbPath: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
-  resyncIntervalMs: number;   // default 300000 (5 min)
-  debounceMs: number;         // default 500
+  resyncIntervalMs: number;      // default 300000 (5 min)
+  debounceMs: number;            // default 500
+  rateLimitRPM: number;          // default 100
+  rateLimitEnabled: boolean;     // default true (parse from INGEST_RATE_LIMIT_ENABLED)
+  debugMode: boolean;            // default false (parse from INGEST_DEBUG)
 }
 
 // ============================================================================
@@ -84,12 +87,28 @@ export function loadConfig(): IngestConfig {
     throw new Error(`Invalid INGEST_DEBOUNCE_MS: "${debounceMsStr}" must be at least 100ms`);
   }
 
+  // Parse rate limit RPM (default 100)
+  const rateLimitRPM = parseInt(process.env.INGEST_RATE_LIMIT_RPM || '100', 10) || 100;
+
+  // Parse rate limit enabled (default true; accepts "true"/"1"/"yes")
+  const rateLimitEnabled = ['true', '1', 'yes'].includes(
+    (process.env.INGEST_RATE_LIMIT_ENABLED || 'true').toLowerCase()
+  );
+
+  // Parse debug mode (default false; accepts "true"/"1"/"yes")
+  const debugMode = ['true', '1', 'yes'].includes(
+    (process.env.INGEST_DEBUG || 'false').toLowerCase()
+  );
+
   const config: IngestConfig = {
     port,
     dbPath,
     logLevel,
     resyncIntervalMs,
     debounceMs,
+    rateLimitRPM,
+    rateLimitEnabled,
+    debugMode,
   };
 
   console.log('Configuration loaded:', {
@@ -98,6 +117,9 @@ export function loadConfig(): IngestConfig {
     logLevel: config.logLevel,
     resyncIntervalMs: config.resyncIntervalMs,
     debounceMs: config.debounceMs,
+    rateLimitRPM: config.rateLimitRPM,
+    rateLimitEnabled: config.rateLimitEnabled,
+    debugMode: config.debugMode,
   });
 
   return config;

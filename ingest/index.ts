@@ -13,6 +13,7 @@ import { sourcesRoutes } from './api/sources.js';
 import { sessionsRoutes } from './api/sessions.js';
 import { turnsRoutes } from './api/turns.js';
 import { eventsRoutes } from './api/routes/events.js';
+import { rateLimiter } from './api/middleware/rate-limit.js';
 import { createWatcher } from './src/watcher.js';
 import { sseManager } from './src/sse.js';
 import {
@@ -90,6 +91,11 @@ export async function start(): Promise<void> {
   try {
     // Load configuration
     const config = loadConfig();
+
+    // Apply rate limiter to all routes (when enabled)
+    if (config.rateLimitEnabled) {
+      app.use('*', rateLimiter);
+    }
 
     // Open database
     console.log(`Opening database: ${config.dbPath}`);
