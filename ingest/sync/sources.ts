@@ -133,28 +133,12 @@ export async function discoverOpenClawSources(config?: {
 }): Promise<DiscoveredSource[]> {
   const sources: DiscoveredSource[] = [];
 
-  // Default path: derive from WORKSPACE_PATH env var
-  // WORKSPACE_PATH=/Users/xxx/.openclaw/workspace -> parent is /Users/xxx/.openclaw
-  let basePath = process.env.WORKSPACE_PATH || '';
-  if (config?.workspacePath) {
-    basePath = config.workspacePath;
-  }
-
-  if (!basePath) {
-    return [
-      {
-        type: 'openclaw',
-        path: '',
-        sessionCount: 0,
-        error: 'WORKSPACE_PATH not configured',
-      },
-    ];
-  }
-
-  // Derive OpenClaw base directory
-  const parts = basePath.replace(/\/+$/, '').split('/');
-  parts.pop(); // remove "workspace"
-  const openclawBase = parts.join('/');
+  // Default path: ~/.openclaw/agents (overridable via WORKSPACE_PATH or config)
+  const openclawBase = config?.workspacePath
+    ? config.workspacePath.replace(/\/+$/, '').replace(/\/workspace$/, '')
+    : process.env.WORKSPACE_PATH
+      ? process.env.WORKSPACE_PATH.replace(/\/+$/, '').replace(/\/workspace$/, '')
+      : path.join(os.homedir(), '.openclaw');
   const agentsDir = path.join(openclawBase, 'agents');
 
   try {
@@ -340,12 +324,12 @@ export async function getSourceConfig(sourceType: TraceSource): Promise<SourceCo
  */
 export function getSourcePath(sourceType: TraceSource): string {
   switch (sourceType) {
-    case 'openclaw':
-      const workspace = process.env.WORKSPACE_PATH || '';
-      if (!workspace) return '';
-      const parts = workspace.replace(/\/+$/, '').split('/');
-      parts.pop();
-      return path.join(parts.join('/'), 'agents');
+    case 'openclaw': {
+      const workspace = process.env.WORKSPACE_PATH
+        ? process.env.WORKSPACE_PATH.replace(/\/+$/, '').replace(/\/workspace$/, '')
+        : path.join(os.homedir(), '.openclaw');
+      return path.join(workspace, 'agents');
+    }
     case 'claude-code':
       return process.env.CLAUDE_SESSIONS_PATH || path.join(os.homedir(), '.claude', 'projects');
     case 'codex':
