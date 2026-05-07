@@ -272,7 +272,7 @@ export async function parseClaudeSession(
       hasToolCalls,
       terminationStatus: undefined,
       parserMalformedLines: errors.length,
-      isTruncated: truncatedUuidSet.size > 0,
+      isTruncated: truncatedUuidSet.size > 0 || compactBoundaries.length > 0,
     },
     turns: [], // Will be populated by turn assembler
   };
