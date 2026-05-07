@@ -14,6 +14,60 @@ import { TraceSession, SessionStatus, TraceSource } from '@/types/trace';
 export const sessionsRoutes = new Hono();
 
 // ============================================================================
+// GET /api/v1/sessions/lookup - Look up session by external key
+// (must be BEFORE the /:id wildcard route so Hono matches it first)
+// ============================================================================
+
+sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
+  const source = c.req.query('source') as string;
+  const key = c.req.query('key') as string;
+
+  // Validate required params BEFORE accessing the database
+  if (!source || !key) {
+    return c.json({
+      error: 'source and key query parameters are required'
+    }, 400);
+  }
+
+  // Validate source (whitelisted values only)
+  if (!['openclaw', 'claude-code', 'codex'].includes(source)) {
+    return c.json({
+      error: 'Invalid source parameter'
+    }, 400);
+  }
+
+  // Validate key format (prevent injection, path traversal)
+  if (!/^[a-zA-Z0-9:\-_.]{1,256}$/.test(key)) {
+    return c.json({
+      error: 'Invalid key format'
+    }, 400);
+  }
+
+  const db = getDatabase();
+
+  // Attempt lookup: first try exact ID match, then try source_session_id
+  const session = db.prepare(`
+    SELECT
+      id, source, project, started_at, ended_at, status,
+      message_count, user_message_count, total_output_tokens, has_tool_calls,
+      parser_malformed_lines, is_truncated, termination_status
+    FROM sessions
+    WHERE source = ? AND (id = ? OR source_session_id = ?)
+    LIMIT 1
+  `).get(source, key, key) as SessionRow | undefined;
+
+  if (!session) {
+    return c.json({
+      error: 'Session not found for key',
+      source,
+      key
+    }, 404);
+  }
+
+  return c.json(parseSessionRow(session));
+});
+
+// ============================================================================
 // GET /api/v1/sessions - List sessions
 // ============================================================================
 
@@ -110,13 +164,14 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
 // ============================================================================
 
 sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
-  const db = getDatabase();
   const sessionId = c.req.param('id');
 
-  // Validate session ID format (T-02-13: prevent injection via prepared statements + format check)
+  // Validate session ID format BEFORE DB access (T-02-13: prevent injection via format check)
   if (!/^[a-zA-Z0-9:\-_.]{1,256}$/.test(sessionId)) {
     return c.json({ error: 'Invalid session ID format', sessionId }, 400);
   }
+
+  const db = getDatabase();
 
   const session = db.prepare(`
     SELECT

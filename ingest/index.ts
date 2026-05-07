@@ -7,7 +7,7 @@
 
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { loadConfig } from './config/index.js';
+import { loadConfig, getConfig } from './config/index.js';
 import { openDatabase, initSchema, closeDatabase } from './db/index.js';
 import { sourcesRoutes } from './api/sources.js';
 import { sessionsRoutes } from './api/sessions.js';
@@ -79,6 +79,29 @@ app.route('/', turnsRoutes);
 
 // Mount SSE event routes (global + per-session streams)
 app.route('/', eventsRoutes);
+
+// ============================================================================
+// Error Handling
+// ============================================================================
+
+/**
+ * Global error handler — sanitizes error responses in production mode.
+ * When INGEST_DEBUG=true, full error details (message + stack) are returned.
+ * In production, only "Internal server error" is exposed.
+ */
+app.onError((err, c) => {
+  const config = getConfig();
+  if (config.debugMode) {
+    return c.json({
+      error: err.message,
+      stack: err.stack,
+    }, 500);
+  }
+  // Production: generic error, no internals exposed
+  return c.json({
+    error: 'Internal server error',
+  }, 500);
+});
 
 // ============================================================================
 // Service Lifecycle

@@ -13,6 +13,25 @@ import * as path from 'path';
 import * as os from 'os';
 import { TraceSource } from '@/types/trace';
 
+// ============================================================================
+// Path Boundary Enforcement
+// ============================================================================
+
+/**
+ * Validate that a candidate path is within an allowed root directory.
+ * Uses resolved absolute paths to prevent traversal bypass via symlinks
+ * or `..` segments.
+ *
+ * @param candidatePath - The path to validate
+ * @param allowedRoot   - The allowed root directory
+ * @returns true if candidatePath is within allowedRoot
+ */
+export function isWithinRoot(candidatePath: string, allowedRoot: string): boolean {
+  const resolved = path.resolve(candidatePath);
+  const root = path.resolve(allowedRoot);
+  return resolved.startsWith(root + path.sep) || resolved === root;
+}
+
 /**
  * Source configuration
  *
@@ -184,7 +203,15 @@ export async function discoverOpenClawSources(config?: {
     });
   }
 
-  return sources;
+  // Validate all discovered paths are within the configured root
+  return sources.filter((s) => {
+    if (!s.path) return true;
+    if (!isWithinRoot(s.path, agentsDir)) {
+      console.warn(`[sources] Rejected path outside root: ${s.path} (root: ${agentsDir})`);
+      return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -208,11 +235,21 @@ export async function discoverClaudeSources(config?: {
     sessionsPath = path.join(os.homedir(), '.claude', 'projects');
   }
 
-  return discoverJsonlDirectories(
+  const results = await discoverJsonlDirectories(
     'claude-code',
     sessionsPath,
     'Claude sessions directory not found'
   );
+
+  // Validate all discovered paths are within the configured root
+  return results.filter((s) => {
+    if (!s.path) return true;
+    if (!isWithinRoot(s.path, sessionsPath)) {
+      console.warn(`[sources] Rejected Claude path outside root: ${s.path} (root: ${sessionsPath})`);
+      return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -235,11 +272,21 @@ export async function discoverCodexSources(config?: {
     sessionsPath = path.join(os.homedir(), '.codex', 'sessions');
   }
 
-  return discoverJsonlDirectories(
+  const results = await discoverJsonlDirectories(
     'codex',
     sessionsPath,
     'Codex sessions directory not found'
   );
+
+  // Validate all discovered paths are within the configured root
+  return results.filter((s) => {
+    if (!s.path) return true;
+    if (!isWithinRoot(s.path, sessionsPath)) {
+      console.warn(`[sources] Rejected Codex path outside root: ${s.path} (root: ${sessionsPath})`);
+      return false;
+    }
+    return true;
+  });
 }
 
 /**

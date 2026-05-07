@@ -21,6 +21,11 @@ turnsRoutes.get('/api/v1/sessions/:id/turns', async (c) => {
   const db = getDatabase();
   const sessionId = c.req.param('id');
 
+  // Validate session ID format to prevent path traversal
+  if (!/^[a-zA-Z0-9:\-_.]{1,256}$/.test(sessionId)) {
+    return c.json({ error: 'Invalid session ID format', sessionId }, 400);
+  }
+
   // Verify session exists
   const session = db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId);
   if (!session) {
@@ -74,6 +79,11 @@ turnsRoutes.get('/api/v1/sessions/:id/turns/:index', async (c) => {
   const sessionId = c.req.param('id');
   const turnIndex = parseInt(c.req.param('index'), 10);
 
+  // Validate session ID format to prevent path traversal
+  if (!/^[a-zA-Z0-9:\-_.]{1,256}$/.test(sessionId)) {
+    return c.json({ error: 'Invalid session ID format', sessionId }, 400);
+  }
+
   // Validate turn index (must be a non-negative integer)
   if (isNaN(turnIndex) || turnIndex < 0) {
     return c.json({
@@ -113,6 +123,11 @@ turnsRoutes.get('/api/v1/sessions/:id/turns/:index', async (c) => {
 turnsRoutes.get('/api/v1/sessions/:id/messages', (c) => {
   const db = getDatabase();
   const sessionId = c.req.param('id');
+
+  // Validate session ID format to prevent path traversal
+  if (!/^[a-zA-Z0-9:\-_.]{1,256}$/.test(sessionId)) {
+    return c.json({ error: 'Invalid session ID format', sessionId }, 400);
+  }
 
   // Verify session exists
   const session = db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId);
