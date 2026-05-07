@@ -62,9 +62,10 @@ function deriveDisplayNameFromUserMessage(content: string): string {
   }
 
   // OpenClaw channel messages inject metadata blocks before the actual user text.
-  // Pattern: "Conversation info (untrusted metadata):\n```json\n...\n```\n\n<actual message>"
-  // Extract the content after the last closing code fence.
-  if (normalized.startsWith('Conversation info (untrusted metadata):')) {
+  // Headers include "Conversation info (untrusted metadata):", "Sender (untrusted metadata):", etc.
+  // The actual message follows all the ```json ... ``` code blocks, optionally with a
+  // gateway-injected date prefix like "[Wed 2026-04-29 00:58 GMT+8] ".
+  if (/^.{0,100}\(untrusted metadata\):/i.test(normalized)) {
     const codeBlockEndRe = /```\s*\n/g
     let lastIdx = 0
     let m: RegExpExecArray | null
@@ -72,7 +73,12 @@ function deriveDisplayNameFromUserMessage(content: string): string {
       lastIdx = m.index + m[0].length
     }
     const afterBlocks = normalized.slice(lastIdx).trim()
-    if (afterBlocks) return truncateDisplayName(firstMeaningfulLine(afterBlocks))
+    if (afterBlocks) {
+      // Strip gateway-injected date prefix: "[Wed 2026-04-29 00:58 GMT+8] "
+      const stripped = afterBlocks.replace(/^\[[^\]]{1,60}\]\s*/, '')
+      const line = firstMeaningfulLine(stripped || afterBlocks)
+      if (line) return truncateDisplayName(line)
+    }
     return ''
   }
 
@@ -449,10 +455,17 @@ async function syncOpenClawSource(basePath?: string): Promise<SyncResult> {
     if (source.error || source.sessionCount === 0) continue;
 
     try {
-      // Find all session files in source path
+      // Find all session files in source path — include active (.jsonl) and
+      // archived (.jsonl.deleted.*, .jsonl.reset.*, .jsonl.full.bak) formats.
       const fs = await import('fs/promises');
       const files = await fs.readdir(source.path);
-      const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
+      const sessionFiles = files.filter((f) => {
+        if (f.endsWith('.jsonl')) return true;
+        const idx = f.indexOf('.jsonl.');
+        if (idx <= 0) return false;
+        const suffix = f.slice(idx + 7); // after ".jsonl."
+        return suffix.startsWith('deleted.') || suffix.startsWith('reset.') || suffix === 'full.bak';
+      });
 
       for (const file of sessionFiles) {
         const filePath = `${source.path}/${file}`;

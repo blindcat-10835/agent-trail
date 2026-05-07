@@ -5,6 +5,26 @@
  * initializes SQLite database, manages graceful shutdown.
  */
 
+// Load .env.local so env vars (e.g. WORKSPACE_PATH) are available when
+// the ingest service is started via tsx, which doesn't auto-load Next.js .env files.
+import * as fs from 'fs';
+import * as path from 'path';
+{
+  try {
+    const envPath = path.join(process.cwd(), '.env.local');
+    const lines = fs.readFileSync(envPath, 'utf-8').split('\n');
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) continue;
+      const eq = t.indexOf('=');
+      if (eq < 0) continue;
+      const k = t.slice(0, eq).trim();
+      const v = t.slice(eq + 1).trim();
+      if (k && !(k in process.env)) process.env[k] = v;
+    }
+  } catch { /* .env.local is optional */ }
+}
+
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { loadConfig, getConfig } from './config/index.js';
