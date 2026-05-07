@@ -12,6 +12,8 @@ import { openDatabase, initSchema, closeDatabase } from './db/index.js';
 import { sourcesRoutes } from './api/sources.js';
 import { sessionsRoutes } from './api/sessions.js';
 import { turnsRoutes } from './api/turns.js';
+import { eventsRoutes } from './api/routes/events.js';
+import { sseManager } from './src/sse.js';
 import type { ServiceContext, HealthStatus, VersionInfo } from './types.js';
 import type { TraceSource } from '../types/trace.js';
 
@@ -60,6 +62,9 @@ app.route('/', sourcesRoutes);
 app.route('/', sessionsRoutes);
 app.route('/', turnsRoutes);
 
+// Mount SSE event routes (global + per-session streams)
+app.route('/', eventsRoutes);
+
 // ============================================================================
 // Service Lifecycle
 // ============================================================================
@@ -87,7 +92,7 @@ export async function start(): Promise<void> {
     });
 
     // Store context
-    context = { config, db, server };
+    context = { config, db, server, sseManager };
 
     console.log(`Ingest service started on port ${config.port}`);
     console.log(`Health check: http://localhost:${config.port}/health`);

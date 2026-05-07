@@ -9,8 +9,11 @@
  */
 
 import Database from 'better-sqlite3';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
 import { getDatabase } from '../db';
 import { ParseResult } from '../parser/types';
+import { sseManager } from '../src/sse';
 
 // ============================================================================
 // Types
@@ -103,6 +106,21 @@ export function writeSessionToDatabase(parseResult: ParseResult, db?: Database.D
         parseResult.session.id // Use session ID as file_path for now
       );
       sessionsInserted++;
+    }
+
+    // Emit SSE events for real-time frontend invalidation
+    if (existing) {
+      sseManager.emit('session_updated', {
+        sessionId: parseResult.session.id,
+        source: parseResult.session.source,
+      });
+      sseManager.emitSessionEvent(parseResult.session.id, 'session_updated', {});
+    } else {
+      sseManager.emit('session_created', {
+        sessionId: parseResult.session.id,
+        source: parseResult.session.source,
+      });
+      sseManager.emitSessionEvent(parseResult.session.id, 'session_created', {});
     }
 
     // Delete existing messages for this session (if updating)
@@ -238,6 +256,13 @@ async function syncOpenClawSource(basePath?: string): Promise<SyncResult> {
     }
   }
 
+  sseManager.emit('sync_complete', {
+    source: 'openclaw',
+    sessionsInserted: totalResult.sessionsInserted,
+    sessionsUpdated: totalResult.sessionsUpdated,
+    errors: totalResult.errors.length,
+  });
+
   return totalResult;
 }
 
@@ -295,6 +320,13 @@ async function syncClaudeCodeSource(): Promise<SyncResult> {
     }
   }
 
+  sseManager.emit('sync_complete', {
+    source: 'claude-code',
+    sessionsInserted: totalResult.sessionsInserted,
+    sessionsUpdated: totalResult.sessionsUpdated,
+    errors: totalResult.errors.length,
+  });
+
   return totalResult;
 }
 
@@ -351,6 +383,13 @@ async function syncCodexSource(): Promise<SyncResult> {
       );
     }
   }
+
+  sseManager.emit('sync_complete', {
+    source: 'codex',
+    sessionsInserted: totalResult.sessionsInserted,
+    sessionsUpdated: totalResult.sessionsUpdated,
+    errors: totalResult.errors.length,
+  });
 
   return totalResult;
 }
