@@ -9,6 +9,7 @@ import type Database from 'better-sqlite3';
 import type { IngestConfig } from './config/index.js';
 import type { TraceSource } from '../types/trace.js';
 import type { SSEManager } from './src/sse.js';
+import type { WatcherInstance } from './src/watcher.js';
 
 // ============================================================================
 // Service Context
@@ -19,6 +20,7 @@ export interface ServiceContext {
   db: Database.Database;
   server: any; // Hono server type (simplified for now)
   sseManager: SSEManager;
+  watcher: WatcherInstance | null;
 }
 
 // ============================================================================

@@ -13,9 +13,16 @@ import { sourcesRoutes } from './api/sources.js';
 import { sessionsRoutes } from './api/sessions.js';
 import { turnsRoutes } from './api/turns.js';
 import { eventsRoutes } from './api/routes/events.js';
+import { createWatcher } from './src/watcher.js';
 import { sseManager } from './src/sse.js';
+import {
+  discoverOpenClawSources,
+  discoverClaudeSources,
+  discoverCodexSources,
+} from './sync/sources.js';
 import type { ServiceContext, HealthStatus, VersionInfo } from './types.js';
 import type { TraceSource } from '../types/trace.js';
+import type { SyncSourceType } from './sync/index.js';
 
 // ============================================================================
 // Module State
@@ -23,6 +30,13 @@ import type { TraceSource } from '../types/trace.js';
 
 const app = new Hono();
 let context: ServiceContext | null = null;
+
+/**
+ * Get the active service context (lazy accessor for routes)
+ */
+export function getServiceContext(): ServiceContext | null {
+  return context;
+}
 
 // ============================================================================
 // API Routes
@@ -85,6 +99,35 @@ export async function start(): Promise<void> {
     console.log('Initializing database schema...');
     initSchema();
 
+    // Discover source directories for watcher
+    console.log('Discovering source directories...');
+    const openClawSources = await discoverOpenClawSources();
+    const claudeSources = await discoverClaudeSources();
+    const codexSources = await discoverCodexSources();
+
+    const sourceDirs = new Map<SyncSourceType, string[]>();
+    sourceDirs.set('openclaw', openClawSources.filter((s) => !s.error && s.path).map((s) => s.path));
+    sourceDirs.set('claude-code', claudeSources.filter((s) => !s.error && s.path).map((s) => s.path));
+    sourceDirs.set('codex', codexSources.filter((s) => !s.error && s.path).map((s) => s.path));
+
+    // Start file watcher
+    console.log('Starting file watcher...');
+    const watcher = createWatcher({
+      sourceDirs,
+      debounceMs: config.debounceMs,
+      resyncIntervalMs: config.resyncIntervalMs,
+      fileExtensions: ['.jsonl', '.json', '.md'],
+      onSyncTrigger: async (sourceType) => {
+        try {
+          const { syncSource } = await import('./sync/index.js');
+          await syncSource(sourceType);
+        } catch (err) {
+          console.error(`[watcher] Sync failed for ${sourceType}:`, err);
+        }
+      },
+    });
+    await watcher.start();
+
     // Start HTTP server
     const server = serve({
       fetch: app.fetch,
@@ -92,7 +135,7 @@ export async function start(): Promise<void> {
     });
 
     // Store context
-    context = { config, db, server, sseManager };
+    context = { config, db, server, sseManager, watcher };
 
     console.log(`Ingest service started on port ${config.port}`);
     console.log(`Health check: http://localhost:${config.port}/health`);
@@ -108,6 +151,11 @@ export async function start(): Promise<void> {
  */
 export async function stop(): Promise<void> {
   try {
+    if (context?.watcher) {
+      console.log('Stopping file watcher...');
+      await context.watcher.stop();
+    }
+
     if (context?.server) {
       console.log('Stopping HTTP server...');
       context.server.close();

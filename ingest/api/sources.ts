@@ -16,6 +16,7 @@ import {
   type DiscoveredSource,
 } from '../sync/sources';
 import { syncSource } from '../sync';
+import { getServiceContext } from '../index.js';
 
 export const sourcesRoutes = new Hono();
 
@@ -32,6 +33,10 @@ async function discoverByType(type: TraceSource): Promise<DiscoveredSource[]> {
 }
 
 function toSourceResponse(s: DiscoveredSource) {
+  const ctx = getServiceContext();
+  const watcherStatus = ctx?.watcher?.getStatus()?.running ? 'watching' : 'stopped';
+  const filesWatched = ctx?.watcher?.getStatus()?.filesWatched ?? 0;
+
   return {
     type: s.type,
     path: s.path,
@@ -40,6 +45,8 @@ function toSourceResponse(s: DiscoveredSource) {
     error: s.error || null,
     // Source health status taxonomy per FOUND-05/DATA-03:
     healthStatus: s.error ? 'error' : (s.sessionCount > 0 ? 'configured' : 'empty'),
+    watcherStatus,  // Phase 6: real-time watcher health
+    filesWatched,   // Phase 6: files being monitored
   };
 }
 
@@ -126,5 +133,44 @@ sourcesRoutes.post('/api/v1/sources/:type/sync', async (c) => {
       message: err instanceof Error ? err.message : 'Unknown error'
     }, 500);
   }
+});
+
+// ============================================================================
+// GET /api/v1/sources/:type/status - Watcher health for a source type
+// ============================================================================
+
+sourcesRoutes.get('/api/v1/sources/:type/status', (c) => {
+  const type = c.req.param('type');
+
+  if (!isTraceSource(type)) {
+    return c.json({
+      error: 'Unsupported source type',
+      message: `Type '${type}' not supported`
+    }, 400);
+  }
+
+  const ctx = getServiceContext();
+  const status = ctx?.watcher?.getStatus();
+
+  return c.json({
+    type,
+    watcherStatus: status?.running ? 'watching' : 'stopped',
+    filesWatched: status?.filesWatched ?? 0,
+    lastSyncAt: status?.lastSyncAt ?? null,
+    lastError: status?.lastError ?? null,
+  });
+});
+
+// ============================================================================
+// GET /api/v1/events - SSE skeleton endpoint (Phase 6 will implement real push)
+// ============================================================================
+
+sourcesRoutes.get('/api/v1/events', async (c) => {
+  // Return SSE-compatible headers but no real events yet
+  return c.newResponse(null, 200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
 });
 

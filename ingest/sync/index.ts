@@ -209,6 +209,28 @@ export function writeSessionToDatabase(
 // ============================================================================
 
 /**
+ * Upsert sync status into the sync_status table after a sync operation.
+ *
+ * Tracks last sync timestamp, files watched, and error state per source type.
+ * Uses INSERT OR REPLACE for idempotent upserts.
+ */
+function upsertSyncStatus(sourceType: string, result: SyncResult): void {
+  try {
+    const database = getDatabase();
+    const filesWatched = result.sessionsInserted + result.sessionsUpdated;
+    const lastError = result.errors.length > 0 ? result.errors[0] : null;
+
+    database.prepare(`
+      INSERT OR REPLACE INTO sync_status
+        (source_type, last_full_sync_at, last_watch_sync_at, files_watched, last_error)
+      VALUES (?, datetime('now'), NULL, ?, ?)
+    `).run(sourceType, filesWatched, lastError);
+  } catch (err) {
+    console.error(`[sync_status] Failed to upsert sync status for ${sourceType}:`, err);
+  }
+}
+
+/**
  * Sync all sessions from a source type
  *
  * Orchestrates full sync pipeline: discover sources → parse files → write to database.
@@ -222,25 +244,28 @@ export async function syncSource(
   sourceType: SyncSourceType,
   basePath?: string
 ): Promise<SyncResult> {
+  let result: SyncResult;
+
   // D-21 (Plan 01): Enumerated source types only — unknown sources have no parser
   if (sourceType === 'openclaw') {
-    return syncOpenClawSource(basePath);
+    result = await syncOpenClawSource(basePath);
+  } else if (sourceType === 'claude-code') {
+    result = await syncClaudeCodeSource();
+  } else if (sourceType === 'codex') {
+    result = await syncCodexSource();
+  } else {
+    result = {
+      sessionsInserted: 0,
+      sessionsUpdated: 0,
+      messagesInserted: 0,
+      errors: [`Unknown source type: ${sourceType}`],
+    };
   }
 
-  if (sourceType === 'claude-code') {
-    return syncClaudeCodeSource();
-  }
+  // Upsert sync_status table after each sync operation (Phase 6)
+  upsertSyncStatus(sourceType, result);
 
-  if (sourceType === 'codex') {
-    return syncCodexSource();
-  }
-
-  return {
-    sessionsInserted: 0,
-    sessionsUpdated: 0,
-    messagesInserted: 0,
-    errors: [`Unknown source type: ${sourceType}`],
-  };
+  return result;
 }
 
 // ============================================================================
