@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useState } from 'react'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useUIStore } from '@/stores/ui-store'
 import { SourceSwitcher } from './source-switcher'
@@ -10,6 +11,17 @@ export function ShellHeader() {
   const { capabilities } = useAgentTool()
   const rightRailOpen = useUIStore((s) => s.rightRailOpen)
   const toggleRightRail = useUIStore((s) => s.toggleRightRail)
+  const [syncing, setSyncing] = useState(false)
+
+  const handleSync = useCallback(async () => {
+    if (syncing) return
+    setSyncing(true)
+    try {
+      await fetch('/api/sync', { method: 'POST' })
+    } finally {
+      setSyncing(false)
+    }
+  }, [syncing])
 
   return (
     <header className="grid grid-cols-[280px_1fr_auto] items-center px-5 h-12 border-b border-border bg-gradient-to-b from-card to-background relative">
@@ -36,6 +48,14 @@ export function ShellHeader() {
             <span>LOCAL</span>
           </div>
         )}
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          title="Sync all sessions"
+          className="hud-clip-sm border border-border w-7 h-7 grid place-items-center text-muted-foreground hover:text-accent hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {syncing ? '⟳' : '↻'}
+        </button>
         <ThemeToggle />
         <button
           onClick={toggleRightRail}

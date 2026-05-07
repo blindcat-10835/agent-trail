@@ -157,6 +157,18 @@ export async function start(): Promise<void> {
     });
     await watcher.start();
 
+    // Initial sync on startup to populate name/project for existing sessions
+    console.log('Running initial sync for all sources...');
+    const { syncSource } = await import('./sync/index.js');
+    for (const sourceType of ['openclaw', 'claude-code', 'codex'] as SyncSourceType[]) {
+      try {
+        const result = await syncSource(sourceType);
+        console.log(`  Initial sync ${sourceType}: +${result.sessionsInserted} new, ~${result.sessionsUpdated} updated`);
+      } catch (err) {
+        console.error(`  Initial sync failed for ${sourceType}:`, err);
+      }
+    }
+
     // Start HTTP server
     const server = serve({
       fetch: app.fetch,
