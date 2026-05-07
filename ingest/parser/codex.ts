@@ -223,16 +223,17 @@ export async function parseCodexSession(
       // Handle turn_context — extract turn boundary and model (D-06)
       const turnContext = getCodexTurnContext(parsed);
       if (parsed.type === 'turn_context' && turnContext) {
+        const turnStartedAt = turnContext.started_at || parsed.timestamp;
         currentModel = turnContext.model || currentModel;
         sessionCwd = turnContext.cwd || sessionCwd;
         sessionGitBranch = turnContext.git_branch || sessionGitBranch;
         turnContexts.push({
           turnId: turnContext.turn_id || `turn-${lineNum}`,
           model: turnContext.model,
-          startedAt: turnContext.started_at || parsed.timestamp,
+          startedAt: turnStartedAt,
         });
-        if (parsed.timestamp && !startedAt) {
-          startedAt = parsed.timestamp;
+        if (turnStartedAt && !startedAt) {
+          startedAt = turnStartedAt;
         }
         continue;
       }

@@ -1,6 +1,7 @@
 'use client'
 
 import type { TraceSession, TraceTurn } from '@/types/trace'
+import { getTurnKey } from './key-utils'
 
 interface ReplayRightRailProps {
   session: TraceSession
@@ -126,7 +127,7 @@ export function ReplayRightRail({ session, turnCount, turns, onClose }: ReplayRi
           <div className="grid grid-cols-5 gap-1">
             {turns.slice(0, 50).map((turn) => (
               <button
-                key={turn.id}
+                key={getTurnKey(turn)}
                 onClick={() => {
                   // Scroll to turn — handled by TurnTimeline (Plan 04)
                   const el = document.getElementById(`turn-${turn.index}`)

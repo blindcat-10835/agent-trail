@@ -174,8 +174,14 @@ export function writeSessionToDatabase(
   try {
     // Compute file hash for skip cache (if sourceFile provided)
     let fileHash: string | null = null;
+    let fileSize: number | null = null;
+    let fileMtime: string | null = null;
+    const lastSyncAt = new Date().toISOString();
     if (sourceFile) {
       fileHash = computeFileHash(sourceFile);
+      const stats = fs.statSync(sourceFile);
+      fileSize = stats.size;
+      fileMtime = new Date(stats.mtimeMs).toISOString();
     }
 
     // Check if session already exists
@@ -185,6 +191,14 @@ export function writeSessionToDatabase(
 
     // Skip cache: if hash matches, skip entire parse-and-write
     if (existing && fileHash && existing.file_hash === fileHash) {
+      database.prepare(`
+        UPDATE sessions SET
+          file_size = ?,
+          file_mtime = ?,
+          last_sync_at = ?
+        WHERE id = ?
+      `).run(fileSize, fileMtime, lastSyncAt, parseResult.session.id);
+
       return {
         sessionsInserted: 0,
         sessionsUpdated: 0,
@@ -197,7 +211,9 @@ export function writeSessionToDatabase(
       // Update existing session
       database.prepare(`
         UPDATE sessions SET
+          started_at = ?,
           ended_at = ?,
+          status = ?,
           message_count = ?,
           user_message_count = ?,
           total_output_tokens = ?,
@@ -207,10 +223,16 @@ export function writeSessionToDatabase(
           termination_status = ?,
           name = ?,
           project = ?,
-          file_hash = ?
+          file_path = ?,
+          file_size = ?,
+          file_mtime = ?,
+          file_hash = ?,
+          last_sync_at = ?
         WHERE id = ?
       `).run(
+        parseResult.session.startedAt,
         parseResult.session.endedAt,
+        parseResult.session.status,
         parseResult.session.metrics.messageCount,
         parseResult.session.metrics.userMessageCount,
         parseResult.session.metrics.totalTokens || 0,
@@ -220,7 +242,11 @@ export function writeSessionToDatabase(
         parseResult.session.metrics.terminationStatus || '',
         parseResult.session.name || '',
         parseResult.session.project,
+        sourceFile || parseResult.session.id,
+        fileSize,
+        fileMtime,
         fileHash,
+        lastSyncAt,
         parseResult.session.id
       );
       sessionsUpdated++;
@@ -231,8 +257,8 @@ export function writeSessionToDatabase(
           id, source, project, name, started_at, ended_at, status,
           message_count, user_message_count, total_output_tokens, has_tool_calls,
           parser_malformed_lines, is_truncated, termination_status,
-          file_path, file_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          file_path, file_size, file_mtime, file_hash, last_sync_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         parseResult.session.id,
         parseResult.session.source,
@@ -249,7 +275,10 @@ export function writeSessionToDatabase(
         parseResult.session.metrics.isTruncated ? 1 : 0,
         parseResult.session.metrics.terminationStatus || '',
         sourceFile || parseResult.session.id, // Use actual file path or fall back to session ID
-        fileHash
+        fileSize,
+        fileMtime,
+        fileHash,
+        lastSyncAt
       );
       sessionsInserted++;
     }

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useAgentTool, useSessionTurns } from '@/lib/agent-tools/client-hooks'
 import type { TraceSubagentLink } from '@/types/trace'
 import { TurnCard } from './turn-card'
+import { getTurnKey } from './key-utils'
 
 interface SubagentBlockProps {
   subagent: TraceSubagentLink
@@ -97,8 +98,8 @@ export function SubagentBlock({ subagent, parentTurnIndex, depth = 0 }: Subagent
           ) : (
             <div className="space-y-2 mt-2 ml-4 border-l-2 border-border/50 pl-4">
               {/* Mini turn cards for child turns */}
-              {childTurns.slice(0, 5).map((turn) => (
-                <TurnCard key={turn.id} turn={turn} />
+              {childTurns.slice(0, 5).map((turn, index) => (
+                <TurnCard key={getTurnKey(turn, index)} turn={turn} />
               ))}
               {/* Open full session */}
               <button

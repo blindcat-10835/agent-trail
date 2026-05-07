@@ -96,6 +96,8 @@ export interface TraceSession {
   name?: string;
   startedAt: string | null;
   endedAt: string | null;
+  updatedAt?: string;
+  lastSyncAt?: string;
   status: SessionStatus;
   rootSessionId?: string; // For forks/subagents
   parentSessionId?: string; // For subagent relationships

@@ -1,13 +1,8 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
 import { useAggregateSessions } from '@/lib/agent-tools/client-hooks'
-import { SessionExplorerTable } from '@/components/sessions/session-explorer-table'
-import { SessionsFilterBar, type SessionFilters } from '@/components/sessions/sessions-filter-bar'
 import { SessionsStatsBar } from '@/components/sessions/sessions-stats-bar'
 import { EmptyState } from '@/components/dashboard/empty-state'
-import { useToolStore } from '@/stores/tool-store'
 import type { AggregateSourceStatus } from '@/lib/agent-tools/client-hooks'
 
 function sourceLabel(toolId: AggregateSourceStatus['toolId']): string {
@@ -48,23 +43,9 @@ function SourceStatusStrip({ sources }: { sources: AggregateSourceStatus[] }) {
 }
 
 export function AggregateSessionsView() {
-  const router = useRouter()
-  const [filters, setFilters] = useState<SessionFilters>({})
-  const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-
-  const { sessions, totalCount, sources, loading, error } = useAggregateSessions(
-    filters as Record<string, string>,
-  )
-
-  function handleSelectSession(sessionId: string | null) {
-    setSelectedSessionId(sessionId)
-    if (!sessionId) return
-
-    const session = sessions.find((s) => s.id === sessionId)
-    if (session) {
-      router.push(`/${session.source}/sessions`)
-    }
-  }
+  const { sessions, totalCount, sources, loading, error } = useAggregateSessions({
+    limit: '50',
+  })
 
   if (loading && sessions.length === 0) {
     return (
@@ -85,40 +66,57 @@ export function AggregateSessionsView() {
     )
   }
 
-  if (sessions.length === 0) {
-    return (
-      <div className="flex flex-col h-full min-h-0 p-4 gap-4">
-        <SourceStatusStrip sources={sources} />
+  return (
+    <div className="flex flex-col h-full min-h-0 p-4 gap-4">
+      <h1 className="text-base font-bold text-foreground">
+        ALL SOURCES
+      </h1>
+      <SourceStatusStrip sources={sources} />
+      {sessions.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
           <EmptyState
             heading="NO SESSIONS INDEXED"
             body="START AN AGENT SESSION IN ANY SUPPORTED TOOL TO SEE IT APPEAR HERE."
           />
         </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col h-full min-h-0 p-4 gap-4">
-      <h1 className="text-base font-bold text-foreground">
-        ALL SESSIONS
-      </h1>
-      <SourceStatusStrip sources={sources} />
-      <SessionsStatsBar
-        sessions={sessions}
-        totalCount={totalCount}
-        totalLabel="TOTAL INDEXED"
-      />
-      <SessionsFilterBar filters={filters} onFiltersChange={setFilters} />
-      <div className="flex-1 min-h-0 overflow-auto">
-        <SessionExplorerTable
-          sessions={sessions}
-          selectedSessionId={null}
-          onSelectSession={handleSelectSession}
-          sourceBadge={true}
-        />
-      </div>
+      ) : (
+        <>
+          <SessionsStatsBar
+            sessions={sessions}
+            totalCount={totalCount}
+            totalLabel="TOTAL INDEXED"
+          />
+          <section>
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-3">
+              PROJECTS
+            </h2>
+            <div className="border border-border bg-card">
+              {Object.entries(projectBreakdown(sessions))
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 10)
+                .map(([project, count]) => (
+                  <div
+                    key={project}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2 border-b border-border last:border-0"
+                  >
+                    <span className="truncate text-sm font-mono">{project}</span>
+                    <span className="text-sm font-mono tabular-nums text-muted-foreground">
+                      {count}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </section>
+        </>
+      )}
     </div>
   )
+}
+
+function projectBreakdown(sessions: Array<{ project: string }>): Record<string, number> {
+  return sessions.reduce<Record<string, number>>((acc, session) => {
+    const project = session.project && session.project !== 'default' ? session.project : '-'
+    acc[project] = (acc[project] || 0) + 1
+    return acc
+  }, {})
 }

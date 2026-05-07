@@ -10,6 +10,7 @@ import { SkillBlock } from './skill-block'
 import { SubagentBlock } from './subagent-block'
 import { ThinkingBlock } from './thinking-block'
 import { SystemEventBlock } from './system-event-block'
+import { getActivityKey, getMessageKey } from './key-utils'
 
 interface TurnCardProps {
   turn: TraceTurn
@@ -118,7 +119,11 @@ export function TurnCard({ turn }: TurnCardProps) {
 
           {/* Activity blocks — rendered inline between user and assistant */}
           {turn.activities.map((activity, idx) => (
-            <ActivityBlock key={`${activity.type}-${idx}`} activity={activity} turnIndex={turn.index} />
+            <ActivityBlock
+              key={getActivityKey(activity, idx, turn.index)}
+              activity={activity}
+              turnIndex={turn.index}
+            />
           ))}
 
           {/* Assistant message(s) */}
@@ -129,8 +134,8 @@ export function TurnCard({ turn }: TurnCardProps) {
                   ASSISTANT
                 </span>
               </div>
-              {turn.assistantMessages.map((msg) => (
-                <div key={msg.id} className="group relative">
+              {turn.assistantMessages.map((msg, index) => (
+                <div key={getMessageKey(msg, index)} className="group relative">
                   <div className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap break-words">
                     {msg.content}
                   </div>

@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { getAllDefinitions } from '@/lib/agent-tools/registry'
+import { buildSourceSwitchHref } from './source-switcher-routing'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 
 export function SourceSwitcher() {
@@ -13,25 +14,8 @@ export function SourceSwitcher() {
   const tools = getAllDefinitions()
 
   function handleSwitch(targetToolId: AgentToolId) {
-    const targetDef = tools.find((def) => def.id === targetToolId)
-    if (!targetDef) return
-
-    // Replace the [tool] segment in the current path
-    // e.g., /openclaw/dashboard -> /codex/dashboard
-    const segments = pathname.split('/').filter(Boolean)
-    const currentSection = segments[1] ?? targetDef.defaultRoute.replace('/', '')
-    const targetSupportsSection = targetDef.nav.some((item) => {
-      const itemPath = item.href(targetToolId).split('?')[0]
-      return itemPath === `/${targetToolId}/${currentSection}`
-    })
-
-    if (!targetSupportsSection) {
-      router.push(`/${targetToolId}${targetDef.defaultRoute}`)
-      return
-    }
-
-    segments[0] = targetToolId
-    router.push('/' + segments.join('/'))
+    if (targetToolId === currentToolId) return
+    router.push(buildSourceSwitchHref(pathname, targetToolId, tools))
   }
 
   return (

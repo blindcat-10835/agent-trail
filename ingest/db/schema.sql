@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   -- Source identification
   source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex')),
   project TEXT NOT NULL,
+  name TEXT,
 
   -- Timestamps
   started_at TEXT,
@@ -38,6 +39,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   file_path TEXT NOT NULL,
   file_size INTEGER,
   file_mtime TEXT,
+  file_hash TEXT,
+  last_sync_at TEXT,
 
   -- Context metadata
   cwd TEXT,
@@ -208,15 +211,6 @@ PRAGMA synchronous = NORMAL;
 -- Schema Migrations — Phase 6: File Watcher & Sync Status
 -- (Applied via runMigrations() in db/index.ts; here as canonical DDL)
 -- ============================================================================
-
--- Add file_hash column for skip-cache dedup
--- ALTER TABLE sessions ADD COLUMN file_hash TEXT;
-
--- Add last_sync_at column to track per-session sync timestamp
--- ALTER TABLE sessions ADD COLUMN last_sync_at TEXT;
-
--- Add name column for session display name (first user message or custom)
--- ALTER TABLE sessions ADD COLUMN name TEXT;
 
 -- Sync status table: per-source tracking of sync operations
 CREATE TABLE IF NOT EXISTS sync_status (

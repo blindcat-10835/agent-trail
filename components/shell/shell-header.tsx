@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { notifySessionsRefresh, useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useUIStore } from '@/stores/ui-store'
 import { SourceSwitcher } from './source-switcher'
 import { StatusIndicator } from '@/components/hud/status-indicator'
@@ -18,6 +18,7 @@ export function ShellHeader() {
     setSyncing(true)
     try {
       await fetch('/api/sync', { method: 'POST' })
+      notifySessionsRefresh()
     } finally {
       setSyncing(false)
     }

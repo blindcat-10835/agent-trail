@@ -13,6 +13,9 @@ import { TraceSession, SessionStatus, TraceSource } from '@/types/trace';
 
 export const sessionsRoutes = new Hono();
 
+const UPDATED_AT_EXPR =
+  "MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(last_sync_at, ''), COALESCE(file_mtime, ''))";
+
 // ============================================================================
 // GET /api/v1/sessions/lookup - Look up session by external key
 // (must be BEFORE the /:id wildcard route so Hono matches it first)
@@ -50,7 +53,9 @@ sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
     SELECT
       id, source, project, name, started_at, ended_at, status,
       message_count, user_message_count, total_output_tokens, has_tool_calls,
-      parser_malformed_lines, is_truncated, termination_status
+      parser_malformed_lines, is_truncated, termination_status,
+      last_sync_at, file_mtime,
+      ${UPDATED_AT_EXPR} as updated_at
     FROM sessions
     WHERE source = ? AND (id = ? OR source_session_id = ?)
     LIMIT 1
@@ -78,7 +83,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   const source = c.req.query('source') as TraceSource | null;
   const project = c.req.query('project') || null;
   const status = c.req.query('status') as SessionStatus | null;
-  const sort = c.req.query('sort') || 'started_at'; // started_at or ended_at
+  const sort = c.req.query('sort') || 'updated_at'; // updated_at, started_at, or ended_at
   const order = c.req.query('order') || 'desc'; // asc or desc
 
   // Parse and validate limit/offset (T-02-14: reject negative values)
@@ -96,8 +101,8 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   const cappedLimit = Math.min(limit, 1000);
 
   // Validate sort parameter (only allow safe column names)
-  if (sort !== 'started_at' && sort !== 'ended_at') {
-    return c.json({ error: 'Invalid sort parameter. Must be "started_at" or "ended_at"' }, 400);
+  if (sort !== 'started_at' && sort !== 'ended_at' && sort !== 'updated_at') {
+    return c.json({ error: 'Invalid sort parameter. Must be "updated_at", "started_at", or "ended_at"' }, 400);
   }
 
   // Validate order parameter
@@ -134,14 +139,21 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   `).get(...params) as { total: number };
 
   // Get sessions
-  const orderBy = sort === 'ended_at' ? 'ended_at' : 'started_at';
+  const orderBy =
+    sort === 'updated_at'
+      ? UPDATED_AT_EXPR
+      : sort === 'ended_at'
+        ? 'ended_at'
+        : 'started_at';
   const orderDir = order === 'asc' ? 'ASC' : 'DESC';
 
   const sessions = db.prepare(`
     SELECT
       id, source, project, name, started_at, ended_at, status,
       message_count, user_message_count, total_output_tokens, has_tool_calls,
-      parser_malformed_lines, is_truncated, termination_status
+      parser_malformed_lines, is_truncated, termination_status,
+      last_sync_at, file_mtime,
+      ${UPDATED_AT_EXPR} as updated_at
     FROM sessions
     ${whereClause}
     ORDER BY ${orderBy} ${orderDir}
@@ -177,7 +189,9 @@ sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
     SELECT
       id, source, project, name, started_at, ended_at, status,
       message_count, user_message_count, total_output_tokens, has_tool_calls,
-      parser_malformed_lines, is_truncated, termination_status
+      parser_malformed_lines, is_truncated, termination_status,
+      last_sync_at, file_mtime,
+      ${UPDATED_AT_EXPR} as updated_at
     FROM sessions
     WHERE id = ?
   `).get(sessionId) as SessionRow | undefined;
@@ -211,6 +225,9 @@ interface SessionRow {
   parser_malformed_lines: number;
   is_truncated: number;
   termination_status: string | null;
+  last_sync_at: string | null;
+  file_mtime: string | null;
+  updated_at: string | null;
 }
 
 // ============================================================================
@@ -225,6 +242,8 @@ function parseSessionRow(row: SessionRow): TraceSession {
     name: row.name || undefined,
     startedAt: row.started_at,
     endedAt: row.ended_at,
+    updatedAt: row.updated_at || undefined,
+    lastSyncAt: row.last_sync_at || undefined,
     status: row.status as SessionStatus,
     metrics: {
       messageCount: row.message_count,

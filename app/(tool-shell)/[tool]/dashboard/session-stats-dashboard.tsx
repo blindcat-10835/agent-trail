@@ -2,9 +2,7 @@
 
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useToolSessions } from '@/lib/agent-tools/client-hooks'
-import { SessionExplorerTable } from '@/components/sessions/session-explorer-table'
 import { EmptyState } from '@/components/dashboard/empty-state'
-import { useToolStore } from '@/stores/tool-store'
 
 /**
  * Session Stats Dashboard (shared by Claude Code and Codex)
@@ -20,8 +18,6 @@ import { useToolStore } from '@/stores/tool-store'
  */
 export function SessionStatsDashboard() {
   const { toolId, definition } = useAgentTool()
-  const selectedSessionId = useToolStore((s) => s.selectedSessionId)
-  const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
   const { sessions, pagination, loading, error } = useToolSessions(toolId, {
     limit: '50',
   })
@@ -117,28 +113,43 @@ export function SessionStatsDashboard() {
         </div>
       </section>
 
-      {/* Recent sessions */}
+      {/* Project breakdown */}
       <section>
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-3">
-          RECENT SESSIONS
+          PROJECTS
         </h2>
-        {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
-          </div>
-        ) : sessions.length === 0 ? (
+        {sessions.length === 0 ? (
           <EmptyState
             heading="NO SESSIONS"
             body={`ENSURE ${definition.shortLabel} SESSIONS DIRECTORY IS CONFIGURED IN INGEST.`}
           />
         ) : (
-          <SessionExplorerTable
-            sessions={sessions.slice(0, 10)}
-            selectedSessionId={selectedSessionId}
-            onSelectSession={setSelectedSessionId}
-          />
+          <div className="border border-border bg-card">
+            {Object.entries(projectBreakdown(sessions))
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 8)
+              .map(([project, count]) => (
+                <div
+                  key={project}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2 border-b border-border last:border-0"
+                >
+                  <span className="truncate text-sm font-mono">{project}</span>
+                  <span className="text-sm font-mono tabular-nums text-muted-foreground">
+                    {count}
+                  </span>
+                </div>
+              ))}
+          </div>
         )}
       </section>
     </div>
   )
+}
+
+function projectBreakdown(sessions: Array<{ project: string }>): Record<string, number> {
+  return sessions.reduce<Record<string, number>>((acc, session) => {
+    const project = session.project && session.project !== 'default' ? session.project : '-'
+    acc[project] = (acc[project] || 0) + 1
+    return acc
+  }, {})
 }

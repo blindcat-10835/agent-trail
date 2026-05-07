@@ -5,6 +5,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import type { TraceTurn } from '@/types/trace'
 import { useReplayStore } from '@/stores/replay-store'
 import { TurnCard } from './turn-card'
+import { getTurnKey } from './key-utils'
 
 interface TurnTimelineProps {
   turns: TraceTurn[]
@@ -126,7 +127,7 @@ export function TurnTimeline({ turns, sessionId, hasMore, loadingMore, onLoadMor
               }
               return (
                 <div
-                  key={turn.id}
+                  key={getTurnKey(turn, virtualItem.index)}
                   data-index={virtualItem.index}
                   ref={virtualizer.measureElement}
                   style={{
@@ -147,7 +148,7 @@ export function TurnTimeline({ turns, sessionId, hasMore, loadingMore, onLoadMor
           // Direct rendering for short sessions
           <div className="space-y-4 pt-4">
             {turns.map((turn) => (
-              <TurnCard key={turn.id} turn={turn} />
+              <TurnCard key={getTurnKey(turn)} turn={turn} />
             ))}
           </div>
         )}

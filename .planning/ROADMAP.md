@@ -382,6 +382,27 @@ Plans:
 - **Ingest service**: 本地独立 Node/TypeScript 服务，负责发现、解析、索引和服务 session trace 数据。
 - **Gateway**: OpenClaw WebSocket/RPC 实时状态通道。
 
+### Phase 7: M1 residual dashboard bug fixes
+
+**Goal:** Stabilize the post-M1/M2 dashboard experience by fixing the user-reported residual bugs in source switching, persistent session browsing, replay rendering, Codex session freshness, manual sync refresh, and compact session-list metadata.
+
+**Requirements**: UI-01, UI-02, UI-04, UI-05, REPLAY-01, REPLAY-02, DATA-03, DATA-04, DATA-05
+**Depends on:** Phase 6
+
+**Success Criteria** (what must be TRUE):
+
+1. Switching source from a session detail page never carries an incompatible session id into another source URL.
+2. Sessions are browsed from the persistent right rail; selecting one renders the session replay/detail in the main children area; no selection leaves the overview visible.
+3. Session replay no longer emits duplicate React key warnings, including sessions with missing/legacy message ids.
+4. Codex sessions persist parser/file/sync freshness and list by the freshest available timestamp, so recent Codex sessions are discoverable.
+5. Header sync/refresh triggers ingest sync and refreshes the currently visible session list without requiring a manual page reload.
+6. The compact session list shows session name, project directory, updated time, and tool/source.
+
+**Plans:** 1 plan
+
+Plans:
+- [x] 07-01-PLAN.md — Fix session rail/navigation, replay keys, Codex freshness, and refresh behavior
+
 ---
 
 **EOF**

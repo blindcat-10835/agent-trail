@@ -1,16 +1,38 @@
+// @vitest-environment jsdom
+
 /**
- * Tests for useSSE and useIngestStatus hooks (RED phase — these exports don't exist yet).
- *
- * These tests import hooks that will be implemented in the GREEN phase.
- * Currently, the imports will fail because useSSE and useIngestStatus
- * are not yet exported from lib/agent-tools/client-hooks.tsx.
+ * Tests for client hooks exported from lib/agent-tools/client-hooks.tsx.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, waitFor } from '@testing-library/react'
 
-// RED phase: these imports will fail since the exports don't exist yet.
-// After GREEN implementation, these tests will pass.
-import { useSSE, useIngestStatus } from '@/lib/agent-tools/client-hooks'
+import {
+  SESSION_REFRESH_EVENT,
+  notifySessionsRefresh,
+  useIngestStatus,
+  useSSE,
+  useToolSessions,
+} from '@/lib/agent-tools/client-hooks'
+
+const fetchMock = vi.fn()
+
+beforeEach(() => {
+  fetchMock.mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      sessions: [],
+      pagination: { total: 0, limit: 50, offset: 0, hasMore: false },
+    }),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+})
+
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  vi.clearAllMocks()
+})
 
 describe('useSSE', () => {
   it('is an exported function from client-hooks', () => {
@@ -30,5 +52,30 @@ describe('useIngestStatus', () => {
 
   it('has the expected signature (toolId param required)', () => {
     expect(useIngestStatus.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('session refresh event', () => {
+  it('refetches tool sessions when the global refresh event is dispatched', async () => {
+    function Consumer() {
+      useToolSessions('codex', { limit: '40', sort: 'updated_at', order: 'desc' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    window.dispatchEvent(new Event(SESSION_REFRESH_EVENT))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+  })
+
+  it('dispatches the documented session refresh event name', () => {
+    const listener = vi.fn()
+    window.addEventListener(SESSION_REFRESH_EVENT, listener)
+
+    notifySessionsRefresh()
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SESSION_REFRESH_EVENT, listener)
   })
 })

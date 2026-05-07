@@ -34,6 +34,13 @@ import { getDefinition, TOOL_IDS } from './registry'
 import type { TraceSession } from '@/types/trace'
 import type { TraceTurn } from '@/types/trace'
 
+export const SESSION_REFRESH_EVENT = 'agent-tracing-dashboard:sessions-refresh'
+
+export function notifySessionsRefresh(): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new Event(SESSION_REFRESH_EVENT))
+}
+
 /**
  * React context for agent tool data.
  * Defaults to null — components must be wrapped in AgentToolProvider.
@@ -225,6 +232,17 @@ export function useToolSessions(
     fetchSessions()
   }, [fetchSessions])
 
+  useEffect(() => {
+    function handleRefresh() {
+      setLoading(true)
+      setError(null)
+      void fetchSessions()
+    }
+
+    window.addEventListener(SESSION_REFRESH_EVENT, handleRefresh)
+    return () => window.removeEventListener(SESSION_REFRESH_EVENT, handleRefresh)
+  }, [fetchSessions])
+
   const refetch = useCallback(() => {
     setLoading(true)
     setError(null)
@@ -299,7 +317,7 @@ export function useSourceStatus(toolId: AgentToolId) {
  *
  * Used by the aggregate landing page (/) to show a cross-source session
  * list. Fetches sessions from all 3 tools in parallel via the BFF proxy,
- * merges them into a single array, and sorts by startedAt descending.
+ * merges them into a single array, and sorts by freshest known timestamp.
  *
  * If any tool's fetch fails, the merged list still renders with source status
  * metadata so the UI can tell users which source is missing.
@@ -323,8 +341,7 @@ export function useAggregateSessions(query?: Record<string, string>) {
   const [error, setError] = useState<string | null>(null)
   const queryKey = JSON.stringify(query ?? {})
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- query/source changes should show aggregate loading immediately
+  const fetchAggregateSessions = useCallback(() => {
     setLoading(true)
     setError(null)
     const parsedQuery = JSON.parse(queryKey) as Record<string, string>
@@ -362,11 +379,7 @@ export function useAggregateSessions(query?: Record<string, string>) {
       ),
     )
       .then((results) => {
-        const merged = results.flatMap((result) => result.sessions).sort((a, b) => {
-          const da = a.startedAt ? new Date(a.startedAt).getTime() : 0
-          const db = b.startedAt ? new Date(b.startedAt).getTime() : 0
-          return db - da
-        })
+        const merged = results.flatMap((result) => result.sessions).sort(compareSessionsByFreshness)
         const sourceStatuses = results.map((result) => result.status)
         const allSourcesFailed = sourceStatuses.every((source) => source.status === 'error')
 
@@ -382,7 +395,44 @@ export function useAggregateSessions(query?: Record<string, string>) {
       })
   }, [queryKey])
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- query/source changes should show aggregate loading immediately
+    fetchAggregateSessions()
+  }, [fetchAggregateSessions])
+
+  useEffect(() => {
+    function handleRefresh() {
+      fetchAggregateSessions()
+    }
+
+    window.addEventListener(SESSION_REFRESH_EVENT, handleRefresh)
+    return () => window.removeEventListener(SESSION_REFRESH_EVENT, handleRefresh)
+  }, [fetchAggregateSessions])
+
   return { sessions, totalCount, sources, loading, error }
+}
+
+function compareSessionsByFreshness(a: TraceSession, b: TraceSession): number {
+  return getSessionFreshnessMs(b) - getSessionFreshnessMs(a)
+}
+
+function getSessionFreshnessMs(session: TraceSession): number {
+  const dynamicSession = session as TraceSession & {
+    updatedAt?: string | null
+    lastSyncAt?: string | null
+  }
+  return Math.max(
+    toTime(dynamicSession.updatedAt),
+    toTime(session.endedAt),
+    toTime(session.startedAt),
+    toTime(dynamicSession.lastSyncAt),
+  )
+}
+
+function toTime(value: string | null | undefined): number {
+  if (!value) return 0
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) ? time : 0
 }
 
 /**
