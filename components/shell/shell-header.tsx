@@ -20,7 +20,7 @@ export function ShellHeader() {
           ◆
         </div>
         <div className="text-base font-bold tracking-[0.3em] text-accent">
-          {brand.name.toUpperCase()}
+          AGENTS TRACING
         </div>
         {brand.versionLabel && (
           <div className="text-[10px] text-muted-foreground tracking-[0.2em] pl-2.5 border-l border-border">

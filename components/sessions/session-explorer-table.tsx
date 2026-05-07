@@ -76,6 +76,24 @@ function formatUnknownCellValue(value: unknown): string {
  * Render a single row value based on the accessor key.
  * Resilient: handles missing fields gracefully.
  */
+function deriveLabel(session: TraceSession): string {
+  const firstMsg = session.turns?.[0]?.userMessage?.content
+  if (firstMsg) {
+    const line = firstMsg.split('\n')[0].trim()
+    return line.length > 80 ? line.slice(0, 77) + '...' : line
+  }
+  return session.id.slice(-8)
+}
+
+function deriveProject(session: TraceSession): string {
+  if (session.project && session.project !== 'default') return session.project
+  const cwd =
+    session.turns?.[0]?.userMessage?.sourceMetadata?.cwd
+    ?? session.turns?.[0]?.assistantMessages?.[0]?.sourceMetadata?.cwd
+  if (cwd) return cwd.split('/').pop() || cwd
+  return '-'
+}
+
 function renderCellValue(
   session: TraceSession,
   accessor: string,
@@ -87,13 +105,13 @@ function renderCellValue(
 
   switch (accessor) {
     case 'label':
-      return dynamicSession.label || session.project || session.id
+      return deriveLabel(session)
     case 'status':
       return session.status
     case 'model':
       return dynamicSession.model || '-'
     case 'project':
-      return session.project || '-'
+      return deriveProject(session)
     case 'updatedAt':
       return fmtAgo(session.endedAt || session.startedAt)
     default:
@@ -313,7 +331,7 @@ export function SessionExplorerTable({
                       PROJECT
                     </span>
                     <div className="text-sm truncate">
-                      {session.project || '-'}
+                      {deriveProject(session)}
                     </div>
                   </div>
                 </div>
