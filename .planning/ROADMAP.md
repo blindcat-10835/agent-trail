@@ -331,7 +331,7 @@ Plans:
 
 **Goal**: Make the dashboard reliable as a local daily-use tool by adding incremental sync, SSE refresh, OpenClaw live-to-history drilldown, security boundaries and regression/performance checks.
 
-**Status**: Pending
+**Status**: Planned
 
 **Depends on**: Phase 5
 
@@ -346,7 +346,14 @@ Plans:
 5. Fixture regression covers parser edge cases; performance checks cover long sessions; privacy defaults are documented in UI and docs.
 6. Development startup flow can run/connect Next.js and ingest service, and UI clearly reports ingest disconnected/starting states.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Chokidar file watcher + incremental sync + skip cache + source status API
+- [ ] 06-02-PLAN.md — SSE infrastructure (ingest endpoints + event stream manager)
+- [ ] 06-03-PLAN.md — API safety + rate limiting + session lookup endpoint
+- [ ] 06-04-PLAN.md — Frontend SSE hooks + ingest status indicator + OpenClaw Gateway drilldown
+- [ ] 06-05-PLAN.md — Parser regression tests + performance smoke tests + privacy docs + dev UX
 
 **UI hint**: yes
 
