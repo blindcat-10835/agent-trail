@@ -20,6 +20,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react'
 import type {
@@ -481,4 +482,185 @@ export function useSessionTurns(
   }, [toolId, sessionId, query?.offset, query?.limit])
 
   return { turns, pagination, loading, error, refetch }
+}
+
+// ============================================================================
+// SSE Hook: useSSE
+// ============================================================================
+
+/**
+ * SSE event payload received from the ingest service via BFF proxy.
+ */
+export interface SSEEvent {
+  event: string
+  data: Record<string, unknown>
+}
+
+/**
+ * Hook: Subscribe to Server-Sent Events from the ingest service via BFF proxy.
+ *
+ * Opens an EventSource connection to `/api/agent-tools/[tool]/events` and
+ * auto-reconnects with exponential backoff on disconnect.
+ *
+ * When `sessionId` is provided, subscribes to per-session events instead
+ * of the global event stream.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @param sessionId - Optional session ID for per-session event subscription
+ * @param onEvent - Optional callback invoked on each SSE event received
+ * @returns { connected: boolean } — whether the SSE connection is currently open
+ */
+export function useSSE(
+  toolId: AgentToolId,
+  sessionId?: string,
+  onEvent?: (event: SSEEvent) => void,
+) {
+  const [connected, setConnected] = useState(false)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    let es: EventSource | null = null
+    let retries = 0
+    const maxRetries = 10
+
+    function connect() {
+      if (!mountedRef.current) return
+
+      const url = sessionId
+        ? `/api/agent-tools/${toolId}/events?sessionId=${encodeURIComponent(sessionId)}`
+        : `/api/agent-tools/${toolId}/events`
+
+      es = new EventSource(url)
+
+      es.onopen = () => {
+        if (!mountedRef.current) return
+        setConnected(true)
+        retries = 0
+      }
+
+      es.onmessage = (msg) => {
+        try {
+          const event: SSEEvent = {
+            event: msg.type || 'message',
+            data: JSON.parse(msg.data),
+          }
+          onEvent?.(event)
+        } catch {
+          // Ignore parse errors on malformed SSE data
+        }
+      }
+
+      // Handle named events via addEventListener for structured event types
+      const eventTypes = [
+        'session_created',
+        'session_updated',
+        'session_removed',
+        'sync_complete',
+        'turn_added',
+      ]
+      for (const eventType of eventTypes) {
+        es.addEventListener(eventType, ((msg: MessageEvent) => {
+          try {
+            onEvent?.({ event: eventType, data: JSON.parse(msg.data) })
+          } catch {
+            // Ignore parse errors
+          }
+        }) as EventListener)
+      }
+
+      es.onerror = () => {
+        if (!mountedRef.current) return
+        setConnected(false)
+        es?.close()
+        es = null
+        if (retries < maxRetries) {
+          retries++
+          // Exponential backoff: 3s, 6s, 9s, 12s, 15s max
+          const backoff = 3000 * Math.min(retries, 5)
+          reconnectTimerRef.current = setTimeout(connect, backoff)
+        }
+      }
+    }
+
+    connect()
+
+    return () => {
+      mountedRef.current = false
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+      }
+      es?.close()
+    }
+  }, [toolId, sessionId])
+
+  return { connected }
+}
+
+// ============================================================================
+// Ingest Status Hook: useIngestStatus
+// ============================================================================
+
+/**
+ * Ingest service connection status.
+ */
+export type IngestStatus = 'connected' | 'disconnected' | 'reconnecting' | 'loading'
+
+/**
+ * Hook: Monitor ingest service connection status via BFF health endpoint.
+ *
+ * Polls the BFF health endpoint periodically to determine if the ingest
+ * service is reachable. Shows reconnecting state on first failure, then
+ * disconnected on subsequent failures. Re-checks every 30s when connected,
+ * or with exponential backoff when disconnected.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @returns IngestStatus — the current ingest connection state
+ */
+export function useIngestStatus(toolId: AgentToolId): IngestStatus {
+  const [status, setStatus] = useState<IngestStatus>('loading')
+
+  useEffect(() => {
+    let attempts = 0
+    let timer: ReturnType<typeof setTimeout>
+    let mounted = true
+
+    function check() {
+      if (!mounted) return
+
+      fetchToolApi<{ status: string; version?: string }>(toolId, '/health')
+        .then((data) => {
+          if (!mounted) return
+          if (data.status === 'ok') {
+            setStatus('connected')
+          } else {
+            setStatus('disconnected')
+          }
+          attempts = 0
+          // Re-check every 30s when healthy
+          timer = setTimeout(check, 30000)
+        })
+        .catch(() => {
+          if (!mounted) return
+          attempts++
+          if (attempts <= 1) {
+            setStatus('reconnecting')
+          } else {
+            setStatus('disconnected')
+          }
+          // Exponential backoff when unhealthy: 3s, 6s, 9s, max 15s
+          timer = setTimeout(check, 3000 * Math.min(attempts, 5))
+        })
+    }
+
+    check()
+
+    return () => {
+      mounted = false
+      clearTimeout(timer)
+    }
+  }, [toolId])
+
+  return status
 }

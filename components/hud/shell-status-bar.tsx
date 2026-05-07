@@ -1,6 +1,7 @@
 'use client'
 
 import { useGatewayStore } from '@/stores/gateway/gateway-store'
+import { IngestStatus } from './ingest-status'
 
 export function ShellStatusBar() {
   const connectionStatus = useGatewayStore((s) => s.connectionStatus)
@@ -23,6 +24,7 @@ export function ShellStatusBar() {
             SYNCING
           </span>
         )}
+        <IngestStatus />
         <span>PROTO <b>v3</b></span>
         <span>CONN <b>conn_8f2e</b></span>
         <span>SCOPES <b>workspace:* · agents:rw</b></span>
