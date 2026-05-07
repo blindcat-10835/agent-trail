@@ -10,6 +10,7 @@
  * @see lib/agent-tools/server-adapter.ts for the base interface
  */
 
+import type { TraceSession } from '@/types/trace'
 import {
   buildSourceScopedSessionParams,
   fetchIngest,
@@ -65,6 +66,22 @@ export function createOpenClawAdapter(): AgentToolServerAdapter {
         `/api/v1/sessions/${encodeURIComponent(sessionId)}/turns?${params}`,
         { cache: 'no-store' },
       )
+    },
+
+    async lookupSessionByKey(key: string): Promise<TraceSession | null> {
+      try {
+        const result = await fetchIngest<TraceSession>(
+          `/api/v1/sessions/lookup?source=${SOURCE}&key=${encodeURIComponent(key)}`,
+          { cache: 'no-store' },
+        )
+        return result
+      } catch (err) {
+        // 404 "Session not found" → return null (best-effort matching)
+        if (err instanceof Error && err.message.includes('Session not found')) {
+          return null
+        }
+        throw err
+      }
     },
   }
 }

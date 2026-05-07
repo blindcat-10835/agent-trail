@@ -19,6 +19,7 @@ import {
   type SessionListResult,
   type TurnsListResult,
 } from '../server-adapter'
+import type { TraceSession } from '@/types/trace'
 
 const SOURCE = 'claude-code'
 
@@ -65,6 +66,11 @@ export function createClaudeCodeAdapter(): AgentToolServerAdapter {
         `/api/v1/sessions/${encodeURIComponent(sessionId)}/turns?${params}`,
         { cache: 'no-store' },
       )
+    },
+
+    async lookupSessionByKey(_key: string): Promise<TraceSession | null> {
+      // No Gateway integration for Claude Code (per Phase 6 scope)
+      return null
     },
   }
 }

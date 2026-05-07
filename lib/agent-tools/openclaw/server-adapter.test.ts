@@ -40,7 +40,7 @@ describe('OpenClaw adapter — lookupSessionByKey', () => {
 
     expect(result).toMatchObject({ id: 'oc-session-abc', source: 'openclaw' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const url = fetchMock.mock.calls[0][0] as string
+    const url = (fetchMock.mock.calls[0] as unknown[])[0] as string
     expect(url).toContain('/api/v1/sessions/lookup')
     expect(url).toContain('source=openclaw')
     expect(url).toContain('key=gw-key%2Fwith%3Dspecial%26chars')

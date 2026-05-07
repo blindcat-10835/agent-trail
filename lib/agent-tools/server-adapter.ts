@@ -316,4 +316,13 @@ export interface AgentToolServerAdapter {
    * @param query - Optional pagination params (offset, limit)
    */
   getSessionTurns(sessionId: string, query?: TurnsQueryParams): Promise<TurnsListResult>
+
+  /**
+   * Look up a session by external key (e.g., Gateway session key).
+   * Used for Gateway-to-ingest drilldown matching.
+   * Returns null when no match found.
+   *
+   * @param key - External session key (e.g., Gateway sessionInfo.key)
+   */
+  lookupSessionByKey(key: string): Promise<TraceSession | null>
 }
