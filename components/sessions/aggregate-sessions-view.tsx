@@ -44,7 +44,7 @@ function SourceStatusStrip({ sources }: { sources: AggregateSourceStatus[] }) {
 
 export function AggregateSessionsView() {
   const { sessions, totalCount, sources, loading, error } = useAggregateSessions({
-    limit: '50',
+    limit: '500',
   })
 
   if (loading && sessions.length === 0) {
