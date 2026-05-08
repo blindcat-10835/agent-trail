@@ -49,7 +49,7 @@ function AggregateSessionsRightRail({
   const { definition } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const aggregateSessions = useAggregateSessions({ limit: '40' })
+  const aggregateSessions = useAggregateSessions({ limit: '500' })
 
   function handleRefresh() {
     notifySessionsRefresh()
@@ -86,7 +86,7 @@ function SourceSessionsRightRail({
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
   const sourceSessions = useToolSessions(
     sourceToolId,
-    { limit: '40', sort: 'updated_at', order: 'desc' },
+    { limit: '500', sort: 'updated_at', order: 'desc' },
   )
 
   function handleRefresh() {
