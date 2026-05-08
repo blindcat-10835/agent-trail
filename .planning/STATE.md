@@ -153,6 +153,7 @@ Trace Contract
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260508-18t | Fix session update times all showing same value - use updatedAt from API instead of endedAt/startedAt | 2026-05-07 | 33502dd | [260508-18t-fix-session-update-times-all-showing-sam](./quick/260508-18t-fix-session-update-times-all-showing-sam/) |
+| 260508-fkt | Fix session updated_at computation: remove last_sync_at from UPDATED_AT_EXPR, and lastSyncAt from client-side freshness | 2026-05-08 | 1a89b1c | [260508-fkt-fix-session-updated-at-computation-remov](./quick/260508-fkt-fix-session-updated-at-computation-remov/) |
 
 ### Todos
 
@@ -201,4 +202,4 @@ Trace Contract
 
 *State created: 2026-05-06*
 *Last updated: 2026-05-07 after project initialization*
-*Last activity: 2026-05-07 - Completed quick task 260508-18t: Fix session update times all showing same value*
+*Last activity: 2026-05-08 - Completed quick task 260508-fkt: Fix session updated_at computation - remove last_sync_at from UPDATED_AT_EXPR*
