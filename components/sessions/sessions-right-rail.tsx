@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { RefreshCw, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import {
@@ -7,6 +8,8 @@ import {
   useAggregateSessions,
   useToolSessions,
   notifySessionsRefresh,
+  syncToolSessions,
+  syncAllSessions,
 } from '@/lib/agent-tools/client-hooks'
 import { useToolStore } from '@/stores/tool-store'
 import { cn } from '@/lib/utils'
@@ -50,9 +53,21 @@ function AggregateSessionsRightRail({
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
   const aggregateSessions = useAggregateSessions({ limit: '500' })
+  const [syncing, setSyncing] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
-  function handleRefresh() {
-    notifySessionsRefresh()
+  async function handleRefresh() {
+    if (syncing) return
+    setSyncing(true)
+    setSyncError(null)
+    try {
+      await syncAllSessions()
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Sync failed')
+    } finally {
+      setSyncing(false)
+      notifySessionsRefresh()
+    }
   }
 
   function handleSelect(session: TraceSession) {
@@ -64,14 +79,15 @@ function AggregateSessionsRightRail({
     <SessionsRailContent
       definitionLabel={definition.shortLabel}
       sessions={aggregateSessions.sessions}
-      loading={aggregateSessions.loading}
-      error={aggregateSessions.error}
+      loading={aggregateSessions.loading || syncing}
+      error={syncError ?? aggregateSessions.error}
       total={aggregateSessions.totalCount}
       selectedSessionId={selectedSessionId}
       onClearSelection={onClearSelection}
       onRefresh={handleRefresh}
       onSelect={handleSelect}
       currentToolId="all"
+      syncing={syncing}
     />
   )
 }
@@ -88,9 +104,21 @@ function SourceSessionsRightRail({
     sourceToolId,
     { limit: '500', sort: 'updated_at', order: 'desc' },
   )
+  const [syncing, setSyncing] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
-  function handleRefresh() {
-    sourceSessions.refetch()
+  async function handleRefresh() {
+    if (syncing) return
+    setSyncing(true)
+    setSyncError(null)
+    try {
+      await syncToolSessions(sourceToolId)
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Sync failed')
+    } finally {
+      setSyncing(false)
+      sourceSessions.refetch()
+    }
   }
 
   function handleSelect(session: TraceSession) {
@@ -102,14 +130,15 @@ function SourceSessionsRightRail({
     <SessionsRailContent
       definitionLabel={definition.shortLabel}
       sessions={sourceSessions.sessions}
-      loading={sourceSessions.loading}
-      error={sourceSessions.error}
+      loading={sourceSessions.loading || syncing}
+      error={syncError ?? sourceSessions.error}
       total={sourceSessions.pagination?.total}
       selectedSessionId={selectedSessionId}
       onClearSelection={onClearSelection}
       onRefresh={handleRefresh}
       onSelect={handleSelect}
       currentToolId={sourceToolId}
+      syncing={syncing}
     />
   )
 }
@@ -125,6 +154,7 @@ function SessionsRailContent({
   onRefresh,
   onSelect,
   currentToolId,
+  syncing,
 }: {
   definitionLabel: string
   sessions: TraceSession[]
@@ -136,6 +166,7 @@ function SessionsRailContent({
   onRefresh: () => void
   onSelect: (session: TraceSession) => void
   currentToolId: AgentToolId
+  syncing?: boolean
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -162,11 +193,15 @@ function SessionsRailContent({
         <button
           type="button"
           onClick={onRefresh}
-          className="grid h-7 w-7 place-items-center border border-border text-muted-foreground transition-colors hover:border-accent hover:text-accent"
-          aria-label="Refresh sessions"
-          title="Refresh sessions"
+          disabled={syncing}
+          className={cn(
+            'grid h-7 w-7 place-items-center border border-border text-muted-foreground transition-colors hover:border-accent hover:text-accent',
+            syncing && 'cursor-not-allowed opacity-50',
+          )}
+          aria-label={syncing ? 'Syncing…' : 'Refresh sessions'}
+          title={syncing ? 'Syncing…' : 'Refresh sessions'}
         >
-          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+          <RefreshCw className={cn('h-3.5 w-3.5', (loading || syncing) && 'animate-spin')} />
         </button>
       </div>
 

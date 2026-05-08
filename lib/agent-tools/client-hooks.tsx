@@ -166,6 +166,82 @@ export function isAgentToolCapabilities(
 // Per D-10: These hooks only call the BFF proxy at /api/agent-tools/[tool]/...
 // They NEVER call ingest directly. They do NOT read Gateway store.
 
+// ============================================================================
+// Sync Helper
+// ============================================================================
+
+/**
+ * Options for syncToolSessions.
+ */
+export interface SyncToolOptions {
+  /** Force re-parse even when file hash is unchanged. */
+  force?: boolean
+}
+
+/**
+ * Per-source sync helper.
+ *
+ * Calls the BFF sync route for the specified tool source. Returns the raw
+ * ingest sync result so callers can decide how to surface error details.
+ *
+ * Usage pattern (sync-first refresh):
+ * ```ts
+ * const syncResult = await syncToolSessions(toolId, { force: false })
+ * // then trigger refetch / notifySessionsRefresh()
+ * ```
+ *
+ * Per D-10: Only calls BFF proxy routes — never calls ingest directly.
+ *
+ * @param toolId - Source tool to sync (not 'all' — use /api/sync for aggregate)
+ * @param options - Optional force flag to bypass file-hash caching
+ * @returns Raw sync result from the BFF, or throws on network/validation error
+ */
+export async function syncToolSessions(
+  toolId: string,
+  options?: SyncToolOptions,
+): Promise<{ type?: string; syncResult?: unknown; status?: string; error?: string }> {
+  const query = options?.force ? '?force=true' : ''
+  const res = await fetch(`/api/agent-tools/${toolId}/sync${query}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>
+    throw new Error(
+      typeof body.error === 'string' ? body.error : `Sync failed: ${res.status}`,
+    )
+  }
+  return res.json() as Promise<{ type?: string; syncResult?: unknown; status?: string; error?: string }>
+}
+
+/**
+ * Aggregate sync helper.
+ *
+ * Calls the BFF aggregate sync route (POST /api/sync) to trigger ingest sync
+ * for all source types. Returns the per-source results array.
+ *
+ * Per D-10: Only calls BFF proxy routes — never calls ingest directly.
+ *
+ * @param options - Optional force flag to bypass file-hash caching
+ * @returns Aggregate sync result per source, or throws on network error
+ */
+export async function syncAllSessions(
+  options?: SyncToolOptions,
+): Promise<{ results: unknown[]; force?: boolean }> {
+  const query = options?.force ? '?force=true' : ''
+  const res = await fetch(`/api/sync${query}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>
+    throw new Error(
+      typeof body.error === 'string' ? body.error : `Aggregate sync failed: ${res.status}`,
+    )
+  }
+  return res.json() as Promise<{ results: unknown[]; force?: boolean }>
+}
+
 /**
  * Shared fetch utility for BFF proxy calls.
  * All data hooks route through this function — never call ingest directly.

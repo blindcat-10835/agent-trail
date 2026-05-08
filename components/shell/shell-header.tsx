@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { notifySessionsRefresh, useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { notifySessionsRefresh, syncAllSessions, useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useUIStore } from '@/stores/ui-store'
 import { SourceSwitcher } from './source-switcher'
 import { StatusIndicator } from '@/components/hud/status-indicator'
@@ -17,7 +17,10 @@ export function ShellHeader() {
     if (syncing) return
     setSyncing(true)
     try {
-      await fetch('/api/sync', { method: 'POST' })
+      await syncAllSessions()
+      notifySessionsRefresh()
+    } catch {
+      // Sync errors are non-fatal for the header — sessions list still refetches
       notifySessionsRefresh()
     } finally {
       setSyncing(false)
