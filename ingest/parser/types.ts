@@ -153,6 +153,12 @@ export interface ClaudeJsonlLine {
           name?: string;
           input?: any;
           id?: string;
+          // thinking block fields (Claude extended thinking)
+          thinking?: string;
+          // tool_result block fields
+          tool_use_id?: string;
+          content?: string | Array<any>;
+          is_error?: boolean;
         }>;
     model?: string;
     usage?: { input_tokens?: number; output_tokens?: number };
@@ -250,4 +256,24 @@ export interface CodexTurnContext {
   turnId: string;
   model?: string;
   startedAt?: string;
+}
+
+// ============================================================================
+// Parser Activity Metadata Helpers
+// ============================================================================
+
+/**
+ * Parser-level metadata for tool call creation
+ *
+ * Carries message-level context (ordinal, source line) so the sync layer can
+ * write tool_calls.message_ordinal and tool_calls.source_line into the DB.
+ * This avoids adding parser-internal fields directly to the canonical model
+ * (TraceToolCall) where possible; for sync correctness, messageOrdinal IS
+ * promoted to TraceToolCall as an optional field.
+ */
+export interface ParserToolCallMeta {
+  /** Ordinal of the message that owns this tool call */
+  messageOrdinal: number;
+  /** Source line number in the JSONL file for diagnostics */
+  sourceLine: number;
 }

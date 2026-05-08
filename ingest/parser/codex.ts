@@ -340,10 +340,40 @@ export async function parseCodexSession(
           continue;
         }
 
+        // function_call_output as a response_item payload — some Codex versions emit this
+        // as { type: "response_item", payload: { type: "function_call_output", call_id, output } }
+        if (ri.type === 'function_call_output') {
+          const callId = ri.call_id;
+          if (callId && toolCallMap.has(callId)) {
+            const toolCall = toolCallMap.get(callId)!;
+            const resultEvent: TraceToolResultEvent = {
+              type: 'result_event',
+              timestamp: parsed.timestamp,
+              content: ri.output || ri.content || '',
+              isPartial: ri.status !== 'completed',
+            };
+            toolCall.resultEvents.push(resultEvent);
+            if (ri.status === 'completed') {
+              toolCall.status = 'success';
+            }
+          } else {
+            warnings.push(
+              `Line ${lineNum}: function_call_output response_item for unknown call_id: ${callId}`
+            );
+          }
+          continue;
+        }
+
         // function_call → TraceToolCall (D-07)
         if (ri.type === 'function_call') {
           const callId = ri.call_id || `call-${lineNum}`;
           const name = ri.name || 'unknown';
+          // Normalize arguments from either 'arguments' (string) or 'input' (object)
+          const inputJson = ri.arguments
+            ? ri.arguments
+            : ri.input
+              ? JSON.stringify(ri.input)
+              : '{}';
 
           // Dedup function calls by token_count too (D-09)
           const tokenCount = ri.token_count ?? 0;
@@ -370,9 +400,11 @@ export async function parseCodexSession(
             id: callId,
             name,
             category: inferToolCategory(name),
-            inputJson: ri.arguments || '{}',
+            inputJson,
             resultEvents: [],
             status: 'pending',
+            messageOrdinal: ordinal,
+            sourceLine: lineNum,
           };
 
           toolCallMap.set(callId, toolCall);
@@ -395,6 +427,12 @@ export async function parseCodexSession(
         if (ri.type === 'custom_tool_call') {
           const callId = ri.call_id || `call-${lineNum}`;
           const name = ri.name || 'unknown';
+          // Normalize arguments from either 'arguments' (string) or 'input' (object)
+          const inputJson = ri.arguments
+            ? ri.arguments
+            : ri.input
+              ? JSON.stringify(ri.input)
+              : '{}';
 
           const tokenCount = ri.token_count ?? 0;
           const dedupKey = `ctc:${callId}`;
@@ -415,9 +453,11 @@ export async function parseCodexSession(
             id: callId,
             name,
             category: inferToolCategory(name),
-            inputJson: ri.arguments || '{}',
+            inputJson,
             resultEvents: [],
             status: 'pending',
+            messageOrdinal: ordinal,
+            sourceLine: lineNum,
           };
 
           toolCallMap.set(callId, toolCall);

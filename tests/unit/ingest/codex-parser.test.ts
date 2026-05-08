@@ -3,12 +3,11 @@ import { writeFileSync, mkdtempSync, unlinkSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-// We'll import the parser once it exists — TypeScript will error at compile time
-// until then, which is exactly the RED phase expectation.
 import {
   parseCodexSession,
   parseCodexMessage,
 } from '@/ingest/parser/codex';
+import type { TraceToolCall } from '@/types/trace';
 
 let tempDir: string;
 let tempFile: string;
@@ -294,5 +293,70 @@ describe('Codex parser — parseCodexMessage()', () => {
       const result = parseCodexMessage(line, context);
       expect(result).toBeNull();
     });
+  });
+});
+
+// ============================================================================
+// Plan 08-02 repair tests — fail on OLD code, pass after repair
+// ============================================================================
+
+describe('Codex parser — 08-02 repair: function_call_output as response_item', () => {
+  it('should pair function_call_output response_item to matching tool call (08-02)', async () => {
+    // This shape: response_item.type = "function_call_output" (not event_msg)
+    const jsonl = [
+      '{"type":"session_meta","session_meta":{"session_id":"codex-rp-001","model":"gpt-5"}}',
+      '{"type":"response_item","response_item":{"type":"function_call","call_id":"call-rp-01","name":"read_file","arguments":"{\\"path\\":\\"/x\\"}","token_count":10}}',
+      '{"type":"response_item","response_item":{"type":"function_call_output","call_id":"call-rp-01","output":"file contents here","status":"completed"}}',
+    ].join('\n');
+
+    const filePath = writeFixture('fc-output-response-item.jsonl', jsonl);
+    const result = await parseCodexSession(filePath, 'test-project');
+
+    const toolCalls = result.activities.filter(a => a.type === 'tool_call') as TraceToolCall[];
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].id).toBe('call-rp-01');
+    // Result event should come from the response_item function_call_output
+    expect(toolCalls[0].resultEvents).toHaveLength(1);
+    expect(toolCalls[0].resultEvents[0].content).toBe('file contents here');
+    expect(toolCalls[0].status).toBe('success');
+  });
+});
+
+describe('Codex parser — 08-02 repair: inputJson normalization', () => {
+  it('should normalize arguments from input object field (not arguments string) (08-02)', async () => {
+    // When Codex sends input as an object, not a stringified arguments field
+    const jsonl = [
+      '{"type":"session_meta","session_meta":{"session_id":"codex-rp-002","model":"gpt-5"}}',
+      '{"type":"response_item","response_item":{"type":"function_call","call_id":"call-rp-02","name":"bash","input":{"command":"ls -la"},"token_count":8}}',
+    ].join('\n');
+
+    const filePath = writeFixture('fc-input-normalize.jsonl', jsonl);
+    const result = await parseCodexSession(filePath, 'test-project');
+
+    const toolCalls = result.activities.filter(a => a.type === 'tool_call') as TraceToolCall[];
+    expect(toolCalls).toHaveLength(1);
+    // inputJson should be JSON.stringify of the input object
+    const parsed = JSON.parse(toolCalls[0].inputJson);
+    expect(parsed.command).toBe('ls -la');
+  });
+});
+
+describe('Codex parser — 08-02 repair: messageOrdinal on tool calls', () => {
+  it('should set messageOrdinal on function_call tool calls (08-02)', async () => {
+    const jsonl = [
+      '{"type":"session_meta","session_meta":{"session_id":"codex-rp-003","model":"gpt-5"}}',
+      '{"type":"response_item","response_item":{"type":"input_text","input_text":"Do something","token_count":2}}',
+      '{"type":"response_item","response_item":{"type":"function_call","call_id":"call-rp-03","name":"read_file","arguments":"{}","token_count":5}}',
+    ].join('\n');
+
+    const filePath = writeFixture('fc-ordinal.jsonl', jsonl);
+    const result = await parseCodexSession(filePath, 'test-project');
+
+    const toolCalls = result.activities.filter(a => a.type === 'tool_call') as TraceToolCall[];
+    expect(toolCalls).toHaveLength(1);
+    // messageOrdinal should be defined (1, after the input_text at 0)
+    expect(toolCalls[0].messageOrdinal).toBeDefined();
+    expect(typeof toolCalls[0].messageOrdinal).toBe('number');
+    expect(typeof toolCalls[0].sourceLine).toBe('number');
   });
 });

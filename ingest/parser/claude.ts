@@ -16,6 +16,7 @@ import {
   TraceMessage,
   TraceToolCall,
   TraceToolResultEvent,
+  TraceThinkingBlock,
   TraceSubagentLink,
   TraceActivity,
   ToolCategory,
@@ -84,6 +85,8 @@ export async function parseClaudeSession(
   const dagNodes = new Map<string, ClaudeDAGNode>();           // D-01: DAG tracking
   const compactBoundaries: ClaudeCompactBoundary[] = [];       // D-02: compact tracking
   const truncatedUuidSet = new Set<string>();                  // UUIDs marked as truncated
+  // Tool call registry for pairing tool_use with tool_result (D-11)
+  const toolCallMap = new Map<string, TraceToolCall>();
 
   // Session-level accumulators
   let ordinal = 0;
@@ -151,9 +154,16 @@ export async function parseClaudeSession(
       }
 
       // D-02: Compact boundary handling
-      if (parsed.type === 'compact') {
+      // Real Claude logs emit isCompactSummary: true (not just type: "compact")
+      const isCompact =
+        parsed.type === 'compact' ||
+        (parsed as any).isCompactSummary === true;
+      if (isCompact) {
+        // Prefer compact.truncatedUuids; fall back to top-level truncatedUuids array
         const truncatedUuids: string[] =
-          (parsed as any).compact?.truncatedUuids || [];
+          (parsed as any).compact?.truncatedUuids ||
+          (parsed as any).truncatedUuids ||
+          [];
         compactBoundaries.push({
           lineNumber: lineNum,
           truncatedUuids,
@@ -204,14 +214,92 @@ export async function parseClaudeSession(
         continue;
       }
 
+      const role = parsed.message.role;
+
+      // User messages: check if this is a tool_result-only record
+      // tool_result-only user records should NOT become full user turn messages —
+      // instead, pair the results with the matching tool calls.
+      if (role === 'user' && Array.isArray(parsed.message.content)) {
+        const blocks = parsed.message.content as any[];
+        const toolResultBlocks = blocks.filter(b => b.type === 'tool_result');
+        const nonToolResultBlocks = blocks.filter(b => b.type !== 'tool_result');
+
+        // Attach result events to pending tool calls
+        for (const tb of toolResultBlocks) {
+          const toolUseId: string | undefined = tb.tool_use_id;
+          if (toolUseId && toolCallMap.has(toolUseId)) {
+            const toolCall = toolCallMap.get(toolUseId)!;
+            const resultContent = typeof tb.content === 'string'
+              ? tb.content
+              : Array.isArray(tb.content)
+                ? tb.content
+                    .map((c: any) => (typeof c === 'string' ? c : c.text || JSON.stringify(c)))
+                    .join('\n')
+                : JSON.stringify(tb.content ?? '');
+            const resultEvent: TraceToolResultEvent = {
+              type: 'result_event',
+              timestamp: parsed.timestamp,
+              content: resultContent,
+              isPartial: false,
+            };
+            toolCall.resultEvents.push(resultEvent);
+            if (tb.is_error) {
+              toolCall.status = 'error';
+              toolCall.error = resultContent;
+            } else {
+              toolCall.status = 'success';
+            }
+          } else if (toolUseId) {
+            warnings.push(
+              `Line ${lineNum}: tool_result for unknown tool_use_id: ${toolUseId}`
+            );
+          }
+        }
+
+        // If there are no non-tool_result blocks, this is a tool-result-only record
+        // — produce a tool_result role message rather than a user turn message
+        if (nonToolResultBlocks.length === 0 && toolResultBlocks.length > 0) {
+          const toolResultMsg: TraceMessage = {
+            id: `${context.uuid}-${ordinal}`,
+            ordinal,
+            role: 'tool_result',
+            content: toolResultBlocks
+              .map(tb => typeof tb.content === 'string' ? tb.content : JSON.stringify(tb.content))
+              .join('\n'),
+            timestamp: parsed.timestamp,
+            sourceMetadata: {
+              sourceType: 'claude-code',
+              sourceFile: context.filePath,
+              sourceLine: lineNum,
+              sourceVersion: (context as any).sourceVersion || 'unknown',
+              cwd: sessionCwd,
+              gitBranch: sessionGitBranch,
+            },
+          };
+          messages.push(toolResultMsg);
+          ordinal++;
+          // Accumulate token usage
+          if (parsed.message.usage) {
+            totalInputTokens += parsed.message.usage.input_tokens || 0;
+            totalOutputTokens += parsed.message.usage.output_tokens || 0;
+          }
+          continue;
+        }
+        // Fall through to normal message parsing for mixed user messages
+      }
+
       // Parse message
       const message = parseMessage(parsed, ordinal, context, lineNum, sessionCwd, sessionGitBranch);
       messages.push(message);
 
-      // Extract tool calls from assistant messages with content blocks
-      if (parsed.message.role === 'assistant' || parsed.type === 'assistant') {
-        const toolCalls = extractClaudeToolCalls(parsed, context, lineNum);
-        activities.push(...toolCalls);
+      // Extract tool calls and thinking blocks from assistant messages
+      if (role === 'assistant' || parsed.type === 'assistant') {
+        const { toolCalls, thinkingBlocks } = extractClaudeActivities(parsed, context, lineNum, ordinal);
+        // Register tool calls for result pairing
+        for (const tc of toolCalls) {
+          toolCallMap.set(tc.id, tc);
+        }
+        activities.push(...toolCalls, ...thinkingBlocks);
         if (toolCalls.length > 0) hasToolCalls = true;
       }
 
@@ -441,30 +529,36 @@ function parseMessage(
 }
 
 // ============================================================================
-// Tool Call Extraction
+// Activity Extraction (tool calls + thinking blocks)
 // ============================================================================
 
 /**
- * Extract tool calls from Claude Code assistant message content blocks
+ * Extract tool calls and thinking blocks from Claude Code assistant message content blocks
  *
- * Scans raw.message.content array for type='tool_use' blocks.
+ * Scans raw.message.content array for:
+ * - type='tool_use': emits TraceToolCall with messageOrdinal for sync
+ * - type='thinking': emits TraceThinkingBlock for replay-accessible data
+ *
  * Per D-11: Uses block.id as the tool_use_id for result pairing in assembler.
  * Per T-03-09: Tool input stored as JSON.stringify — never evaluated.
  *
  * @param raw - Parsed ClaudeJsonlLine
  * @param context - Session context
- * @param lineNum - Line number for ID generation
- * @returns Array of TraceToolCall activities
+ * @param lineNum - Line number for ID generation and sourceLine metadata
+ * @param messageOrdinal - Ordinal of the owning message for sync persistence
+ * @returns Object with toolCalls and thinkingBlocks arrays
  */
-function extractClaudeToolCalls(
+function extractClaudeActivities(
   raw: ClaudeJsonlLine,
   context: SessionContext,
-  lineNum: number
-): TraceToolCall[] {
+  lineNum: number,
+  messageOrdinal: number
+): { toolCalls: TraceToolCall[]; thinkingBlocks: TraceThinkingBlock[] } {
   const toolCalls: TraceToolCall[] = [];
+  const thinkingBlocks: TraceThinkingBlock[] = [];
 
   const msg = raw.message;
-  if (!msg || !Array.isArray(msg.content)) return toolCalls;
+  if (!msg || !Array.isArray(msg.content)) return { toolCalls, thinkingBlocks };
 
   for (const block of msg.content) {
     if (block.type === 'tool_use') {
@@ -479,11 +573,32 @@ function extractClaudeToolCalls(
         inputJson: JSON.stringify(block.input || {}),
         resultEvents: [],
         status: 'pending',
+        messageOrdinal,
+        sourceLine: lineNum,
+      });
+    } else if (block.type === 'thinking') {
+      // Retain thinking blocks for replay — not silently dropped
+      thinkingBlocks.push({
+        type: 'thinking',
+        content: typeof block.thinking === 'string' ? block.thinking : '',
+        isRedacted: block.thinking == null || block.thinking === '',
       });
     }
   }
 
-  return toolCalls;
+  return { toolCalls, thinkingBlocks };
+}
+
+/**
+ * @deprecated Use extractClaudeActivities instead.
+ * Kept for backward compatibility — delegates to extractClaudeActivities.
+ */
+function extractClaudeToolCalls(
+  raw: ClaudeJsonlLine,
+  context: SessionContext,
+  lineNum: number
+): TraceToolCall[] {
+  return extractClaudeActivities(raw, context, lineNum, 0).toolCalls;
 }
 
 /**
