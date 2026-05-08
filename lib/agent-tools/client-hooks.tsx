@@ -419,13 +419,11 @@ function compareSessionsByFreshness(a: TraceSession, b: TraceSession): number {
 function getSessionFreshnessMs(session: TraceSession): number {
   const dynamicSession = session as TraceSession & {
     updatedAt?: string | null
-    lastSyncAt?: string | null
   }
   return Math.max(
     toTime(dynamicSession.updatedAt),
     toTime(session.endedAt),
     toTime(session.startedAt),
-    toTime(dynamicSession.lastSyncAt),
   )
 }
 

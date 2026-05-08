@@ -270,13 +270,11 @@ function deriveProject(session: TraceSession): string {
 function getSessionFreshness(session: TraceSession): string | null {
   const dynamicSession = session as TraceSession & {
     updatedAt?: string | null
-    lastSyncAt?: string | null
   }
   return getFreshestIso([
     dynamicSession.updatedAt,
     session.endedAt,
     session.startedAt,
-    dynamicSession.lastSyncAt,
   ])
 }
 
