@@ -1,0 +1,3 @@
+{"uuid":"rs-msg-before-01","type":"assistant","message":{"role":"assistant","content":"[REDACTED]"},"timestamp":"2025-01-01T00:00:00Z"}
+{"uuid":"rs-compact-01","type":"compact","compact":{"truncatedUuids":["rs-msg-before-01"]},"message":{"role":"system","content":"[compact] Context compacted"},"isCompactSummary":true,"timestamp":"2025-01-01T00:01:00Z"}
+{"uuid":"rs-msg-after-01","type":"user","message":{"role":"user","content":"[REDACTED]"},"timestamp":"2025-01-01T00:02:00Z"}

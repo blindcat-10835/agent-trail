@@ -391,6 +391,63 @@ export async function parseCodexSession(
           continue;
         }
 
+        // custom_tool_call → TraceToolCall (same pipeline as function_call)
+        if (ri.type === 'custom_tool_call') {
+          const callId = ri.call_id || `call-${lineNum}`;
+          const name = ri.name || 'unknown';
+
+          const tokenCount = ri.token_count ?? 0;
+          const dedupKey = `ctc:${callId}`;
+
+          const existing = messageVersions.get(dedupKey);
+          if (existing) {
+            if (existing.tokenCount >= tokenCount) {
+              warnings.push(
+                `Line ${lineNum}: Duplicate custom_tool_call with same/lower token_count — keeping previous`
+              );
+              continue;
+            }
+            toolCallMap.delete(callId);
+          }
+
+          const toolCall: TraceToolCall = {
+            type: 'tool_call',
+            id: callId,
+            name,
+            category: inferToolCategory(name),
+            inputJson: ri.arguments || '{}',
+            resultEvents: [],
+            status: 'pending',
+          };
+
+          toolCallMap.set(callId, toolCall);
+          messageVersions.set(dedupKey, {
+            tokenCount,
+            message: {
+              id: callId,
+              ordinal,
+              role: 'assistant',
+              content: `[custom_tool_call: ${name}]`,
+              timestamp,
+              model: currentModel || sessionModel,
+              sourceMetadata: createSourceMetadata(context, lineNum, sessionCwd, sessionGitBranch),
+            },
+          });
+          hasToolCalls = true;
+          ordinal++;
+          continue;
+        }
+
+        // reasoning → silently skip (internal model reasoning, no canonical message)
+        if (ri.type === 'reasoning') {
+          continue;
+        }
+
+        // web_search_call → silently skip (tool invocation logged separately by event_msg)
+        if (ri.type === 'web_search_call') {
+          continue;
+        }
+
         // Unknown response_item type
         warnings.push(
           `Line ${lineNum}: Skipping unknown response_item type: ${ri.type}`
@@ -403,14 +460,15 @@ export async function parseCodexSession(
       if (parsed.type === 'event_msg' && eventMsg) {
         const ev = eventMsg;
 
-        if (ev.type === 'function_call_output') {
+        if (ev.type === 'function_call_output' || ev.type === 'custom_tool_call_output') {
           const callId = ev.call_id;
           if (callId && toolCallMap.has(callId)) {
             const toolCall = toolCallMap.get(callId)!;
             const resultEvent: TraceToolResultEvent = {
               type: 'result_event',
               timestamp: parsed.timestamp,
-              content: ev.content || '',
+              // Real Codex logs use 'output' field; synthetic fixtures may use 'content'
+              content: ev.output || ev.content || '',
               isPartial: ev.status !== 'completed',
             };
             toolCall.resultEvents.push(resultEvent);
@@ -420,9 +478,9 @@ export async function parseCodexSession(
               toolCall.status = 'success';
             }
           } else {
-            // Orphan function_call_output
+            // Orphan function_call_output / custom_tool_call_output
             warnings.push(
-              `Line ${lineNum}: function_call_output for unknown call_id: ${callId}`
+              `Line ${lineNum}: ${ev.type} for unknown call_id: ${callId}`
             );
           }
         }

@@ -1,0 +1,1 @@
+{"uuid":"rs-think-01","parentUuid":"rs-user-01","type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"[REDACTED thinking block]"},{"type":"text","text":"[REDACTED]"}],"model":"claude-opus-4-5"},"timestamp":"2025-01-01T00:00:03Z"}
