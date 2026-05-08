@@ -1,175 +1,176 @@
-# Data Flow: JSON Files → Sessions → Turns
+# 数据流：JSON 文件 → Sessions → Turns
 
-This document explains the full data pipeline — from raw JSONL files written by AI tools on disk, through the ingest service, into SQLite, and finally assembled into turns for the frontend.
+本文档说明完整的数据管道——从 AI 工具写到本地磁盘的原始 JSONL 文件，经过 ingest 服务处理、写入 SQLite，最终被组装成 turns 返回给前端。
 
 ---
 
-## Overview
+## 总览
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        LOCAL DISK (source files)                    │
-│  ~/.claude/projects/{project}/{uuid}.jsonl  (Claude Code)           │
-│  .openclaw/agents/{name}/sessions/*.jsonl   (OpenClaw)              │
-│  {codex-dir}/*.jsonl                        (Codex)                 │
+│                     本地磁盘（source 文件）                          │
+│  ~/.claude/projects/{project}/{uuid}.jsonl   (Claude Code)          │
+│  .openclaw/agents/{name}/sessions/*.jsonl    (OpenClaw)             │
+│  {codex-dir}/*.jsonl                         (Codex)                │
 └──────────────────────────────┬──────────────────────────────────────┘
-                               │  chokidar file watcher + periodic resync
+                               │  chokidar 文件监听 + 定时全量 resync
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                   INGEST SERVICE (port 8078)                        │
+│                   INGEST 服务（port 8078）                           │
 │                                                                     │
-│  1. Parser (claude.ts / openclaw.ts / codex.ts)                     │
-│     JSONL line-by-line → ParseResult                                │
+│  1. Parser（claude.ts / openclaw.ts / codex.ts）                    │
+│     JSONL 逐行解析 → ParseResult                                    │
 │     { session, messages[], activities[], errors[] }                 │
 │                                                                     │
-│  2. Sync Layer (sync/index.ts)                                      │
+│  2. Sync 层（sync/index.ts）                                        │
 │     SHA-256 skip cache → writeSessionToDatabase()                   │
-│     Emits SSE events: session_created / session_updated             │
+│     发出 SSE 事件：session_created / session_updated                │
 │                                                                     │
-│  3. SQLite DB (data/ingest.db, WAL mode)                            │
-│     sessions / messages / tool_calls / turns / sync_status          │
+│  3. SQLite DB（data/ingest.db，WAL 模式）                           │
+│     sessions / messages / tool_calls / turns / sync_status         │
 │                                                                     │
-│  4. REST API (Hono)                                                 │
+│  4. REST API（Hono）                                                │
 │     GET /api/v1/sessions                                            │
-│     GET /api/v1/sessions/:id/turns  ← runs assembler on demand     │
-│     GET /api/v1/events              ← SSE invalidation stream       │
+│     GET /api/v1/sessions/:id/turns  ← 按需运行 assembler            │
+│     GET /api/v1/events              ← SSE 失效推送流                │
 └──────────────────────────────┬──────────────────────────────────────┘
-                               │  HTTP (BFF proxy, never direct)
+                               │  HTTP（经 BFF 代理，前端不直连）
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│              NEXT.JS BFF (app/api/agent-tools/[tool]/...)           │
-│  Proxies to ingest; injects source= filter; caps limit to 100       │
+│           NEXT.JS BFF（app/api/agent-tools/[tool]/...）             │
+│  代理到 ingest；注入 source= 过滤；限流 limit 上限为 100            │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │  fetch()
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        FRONTEND (React)                             │
-│  Renders sessions list, session detail, turn-by-turn replay         │
-│  Re-fetches on SSE invalidation events                              │
+│                       前端（React）                                  │
+│  渲染 sessions 列表、session 详情、turn-by-turn replay              │
+│  收到 SSE 失效事件后重新 fetch                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Stage 1: Source Files
+## 阶段 1：Source 文件
 
-Each AI tool writes its conversation history as JSONL files (one JSON object per line). The ingest service discovers these directories on startup via `ingest/sync/sources.ts`:
+每个 AI 工具将对话历史写成 JSONL 文件（每行一个 JSON 对象）。Ingest 服务在启动时通过 `ingest/sync/sources.ts` 发现这些目录：
 
-| Source | File location | Session ID |
-|--------|--------------|------------|
-| Claude Code | `~/.claude/projects/{encoded-cwd}/{uuid}.jsonl` | UUID extracted from filename |
-| OpenClaw | `.openclaw/agents/{name}/sessions/{key}.jsonl` | `agent:{name}:{uuid}` key |
-| Codex | `~/.codex/sessions/*.jsonl` | Filename-derived |
+| Source | 文件路径 | Session ID |
+| --- | --- | --- |
+| Claude Code | `~/.claude/projects/{encoded-cwd}/{uuid}.jsonl` | 从文件名提取 UUID |
+| OpenClaw | `.openclaw/agents/{name}/sessions/{key}.jsonl` | `agent:{name}:{uuid}` |
+| Codex | `~/.codex/sessions/*.jsonl` | 从文件名派生 |
 
-Each JSONL line carries a message with role (`user`, `assistant`, `system`, `tool_result`), content, timestamp, and optionally tool use blocks. Claude Code lines additionally carry a `uuid` and `parentUuid` for DAG relationship tracking.
+每行 JSONL 包含一条消息，具有 role（`user`、`assistant`、`system`、`tool_result`）、content、timestamp，以及可选的工具调用块。Claude Code 的行还携带 `uuid` 和 `parentUuid`，用于 DAG 关系追踪。
 
 ---
 
-## Stage 2: Parser
+## 阶段 2：Parser
 
-`ingest/parser/claude.ts`, `openclaw.ts`, `codex.ts` each implement the same contract: read a JSONL file line by line and produce a `ParseResult`:
+`ingest/parser/claude.ts`、`openclaw.ts`、`codex.ts` 各自实现同一接口：逐行读取 JSONL 文件并产出 `ParseResult`：
 
 ```typescript
 interface ParseResult {
-  session: TraceSession      // metadata: id, source, project, timestamps, metrics
-  messages: TraceMessage[]   // flat ordered list of all messages
-  activities: TraceActivity[] // tool calls extracted from assistant content blocks
-  errors: ParseError[]       // malformed line records
+  session: TraceSession      // 元数据：id、source、project、时间戳、统计指标
+  messages: TraceMessage[]   // 全部消息的有序平铺列表
+  activities: TraceActivity[] // 从 assistant content blocks 提取的工具调用
+  errors: ParseError[]       // 格式错误行记录
   warnings: string[]
 }
 ```
 
-**Key per-source handling:**
-- **Claude Code**: UUID dedup (skip duplicate UUIDs), DAG resolution (`parentUuid` → relationship type), compact boundary detection (context window compression events)
-- **OpenClaw**: Content block extraction, gateway-injected metadata stripping for display name extraction
-- **Codex**: `turn_context` boundary detection for native turn markers
+**各 source 的特殊处理：**
 
-The parser does not touch the database — it only transforms bytes on disk into typed objects in memory.
+- **Claude Code**：UUID 去重（跳过重复 UUID）、DAG 解析（`parentUuid` → 关系类型）、compact 边界检测（上下文窗口压缩事件）
+- **OpenClaw**：content block 提取、去除 gateway 注入的元数据前缀以提取展示名
+- **Codex**：`turn_context` 边界检测，利用原生 turn 标记
+
+Parser 不操作数据库——它只将磁盘上的字节转换为内存中的类型化对象。
 
 ---
 
-## Stage 3: Sync Layer
+## 阶段 3：Sync 层
 
-`ingest/sync/index.ts:writeSessionToDatabase()` takes a `ParseResult` and writes it to SQLite. Before doing the full write, it checks a **skip cache**:
+`ingest/sync/index.ts` 中的 `writeSessionToDatabase()` 接收 `ParseResult` 并写入 SQLite。在执行完整写入前，它会检查 **skip cache**：
 
-```
-fileHash = SHA-256(file on disk)
+```text
+fileHash = SHA-256（磁盘上的文件）
 
 if sessions.file_hash === fileHash:
-    skip re-parse, only patch name/project if blank
-    return early
+    跳过重新解析，仅在 name/project 为空时补充填充
+    提前返回
 else:
-    upsert session row
-    delete + re-insert all messages for that session
+    upsert session 行
+    删除并重新插入该 session 的所有 messages
 ```
 
-The skip cache prevents re-parsing unchanged files during periodic resyncs. A session's hash entry is deliberately NULLed by migrations when metadata schema changes (e.g., project path extraction was fixed) — this forces a re-parse on next sync.
+Skip cache 防止定时 resync 时重复解析未变化的文件。当元数据 schema 发生变更时（如 project 路径提取逻辑修复），迁移脚本会将对应 session 的 `file_hash` 置为 NULL，强制下次同步时重新解析。
 
-After each write, the sync layer emits SSE events (`session_created` or `session_updated`) so connected browsers know to re-fetch.
+每次写入后，sync 层都会发出 SSE 事件（`session_created` 或 `session_updated`），通知已连接的浏览器重新 fetch。
 
 ---
 
-## Stage 4: SQLite Database
+## 阶段 4：SQLite 数据库
 
-`data/ingest.db` is a SQLite database with WAL mode enabled. WAL allows concurrent readers and a single writer — the file watcher can write while the HTTP API serves reads without blocking.
+`data/ingest.db` 是一个启用了 WAL 模式的 SQLite 数据库。WAL 允许多个并发读取者和单个写入者——文件监听器在写入时不会阻塞 HTTP API 的读取服务。
 
-### Why the DB exists
+### 为什么需要 DB
 
-Parsing JSONL files on every HTTP request would be far too slow and wasteful. The DB is the read model:
+如果每次 HTTP 请求都从头解析 JSONL 文件，速度会极慢。DB 是读取模型（read model）：
 
-| Need | How DB solves it |
-|------|-----------------|
-| Fast session list with filters/sorting | Indexed `sessions` table — O(log n) queries with `source`, `project`, `started_at` indexes |
-| Pagination across hundreds of sessions | SQL `LIMIT / OFFSET` with count query |
-| Cross-session relationships | `parent_session_id` / `root_session_id` foreign keys enable subagent tree queries |
-| Skip cache for incremental sync | `file_hash` column stores SHA-256; unchanged files are skipped entirely |
-| Sync health tracking | `sync_status` table records last sync time and error per source type |
-| Turn assembly input | `messages` table stores the flat ordered message list that the assembler reads |
-| Tool call pairing | `tool_calls` and `tool_result_events` tables store tool invocations separately from messages |
+| 需求 | DB 的解决方式 |
+| --- | --- |
+| 快速的 session 列表过滤/排序 | `sessions` 表上有 `source`、`project`、`started_at` 索引，O(log n) 查询 |
+| 跨数百个 session 的分页 | SQL `LIMIT / OFFSET` 配合 count 查询 |
+| 跨 session 的关系查询 | `parent_session_id` / `root_session_id` 外键支持 subagent 树查询 |
+| 增量同步的 skip cache | `file_hash` 列存储 SHA-256；未变化的文件直接跳过 |
+| 同步健康状态追踪 | `sync_status` 表按 source 类型记录上次同步时间和错误 |
+| Turn 组装的输入 | `messages` 表存储平铺的有序消息列表，供 assembler 读取 |
+| 工具调用配对 | `tool_calls` 和 `tool_result_events` 表独立存储工具调用与其输出 |
 
-### Schema summary
+### Schema 概览
 
-```
-sessions          — one row per session file, with metadata and file provenance
-messages          — flat ordered messages (session_id + ordinal), foreign key to sessions
-tool_calls        — tool invocations linked to message_ordinal
-tool_result_events — output events from tool calls
-turns             — pre-computed turn rows (populated separately; assembler also builds on-demand)
-sync_status       — per-source sync bookkeeping
+```text
+sessions            — 每个 session 文件一行，含元数据和文件溯源信息
+messages            — 平铺有序的消息（session_id + ordinal），外键关联 sessions
+tool_calls          — 工具调用，关联到 message_ordinal
+tool_result_events  — 工具调用的输出事件
+turns               — 预计算的 turn 行（也可由 assembler 按需构建）
+sync_status         — 每个 source 的同步状态记录
 ```
 
 ---
 
-## Stage 5: Turn Assembler
+## 阶段 5：Turn Assembler
 
-Turns are not stored in the JSON files — they are a derived view. The assembler (`ingest/turns/assembler.ts`) runs **at query time** when the frontend requests `/sessions/:id/turns`.
+Turns 不存储在 JSON 文件中——它们是一个派生视图。Assembler（`ingest/turns/assembler.ts`）在**查询时**运行，即前端请求 `/sessions/:id/turns` 时触发。
 
-**Assembly algorithm:**
+**组装算法：**
 
+```text
+messages（按 ordinal 排序）
+  ↓ 逐条遍历
+  user 消息      → 关闭前一个 turn（若有 assistant 响应），开启新 turn
+  assistant 消息 → 追加到当前 turn 的 assistantMessages[]
+  tool_result    → 追加到当前 turn 的 assistantMessages[]
+  system/compact → 作为 activity 事件添加；若为 compact 则标记 turn 为 isTruncated
+  queued user    → 合并到当前 user 消息（D-05：连续 user 消息合并）
+  ↓ 后处理
+  pairToolCalls()   → JOIN tool_calls + tool_result_events，附加到对应 turn
+  linkSubagents()   → 查找子 session，在第一个 turn 上添加 subagent_link activity
 ```
-messages (ordered by ordinal)
-  ↓ iterate
-  user message   → close previous turn (if has assistant responses), open new turn
-  assistant msg  → append to current turn's assistantMessages[]
-  tool_result    → append to current turn's assistantMessages[]
-  system/compact → add as activity event; mark turn as truncated if compact
-  queued user    → merge into current user message (D-05: consecutive user msgs)
-  ↓ post-process
-  pairToolCalls()  → join tool_calls + tool_result_events onto each turn
-  linkSubagents()  → find child sessions, add subagent_link activities to first turn
-```
 
-**Turn boundary rule (D-08):** Each user message opens a new turn. The previous turn closes when the next user message arrives. An incomplete final turn (no assistant response yet) is still included.
+**Turn 边界规则（D-08）：** 每条 user 消息开启一个新 turn，下一条 user 消息到来时关闭前一个 turn。尚无 assistant 响应的末尾 turn 也会被包含。
 
-A `TraceTurn` looks like:
+`TraceTurn` 的结构：
 
 ```typescript
 {
   id: "sessionId-turn-0",
   index: 0,
-  userMessage: TraceMessage,        // the human prompt
-  assistantMessages: TraceMessage[], // all model/tool_result responses
-  activities: TraceActivity[],       // tool calls, system events, subagent links
+  userMessage: TraceMessage,         // 人类的提问
+  assistantMessages: TraceMessage[], // 所有模型响应和 tool_result
+  activities: TraceActivity[],       // 工具调用、系统事件、subagent 链接
   startedAt, endedAt, durationMs,
   tokenUsage,
   isTruncated?,
@@ -178,50 +179,50 @@ A `TraceTurn` looks like:
 
 ---
 
-## Stage 6: REST API → BFF → Frontend
+## 阶段 6：REST API → BFF → 前端
 
-The ingest service exposes a Hono REST API on port 8078:
+Ingest 服务在 8078 端口暴露 Hono REST API：
 
-| Endpoint | What it returns |
-|----------|----------------|
-| `GET /api/v1/sessions` | Paginated session list, filterable by source/project/status |
-| `GET /api/v1/sessions/:id` | Single session metadata |
-| `GET /api/v1/sessions/:id/turns` | Turn-assembled view, paginated |
-| `GET /api/v1/sessions/:id/messages` | Raw flat messages |
-| `GET /api/v1/events` | SSE stream for global invalidation |
-| `GET /api/v1/events/:sessionId` | SSE stream for per-session invalidation |
+| Endpoint | 返回内容 |
+| --- | --- |
+| `GET /api/v1/sessions` | 分页 session 列表，支持 source/project/status 过滤 |
+| `GET /api/v1/sessions/:id` | 单个 session 元数据 |
+| `GET /api/v1/sessions/:id/turns` | Turn 组装视图，支持分页 |
+| `GET /api/v1/sessions/:id/messages` | 原始平铺消息列表 |
+| `GET /api/v1/events` | 全局失效 SSE 流 |
+| `GET /api/v1/events/:sessionId` | 单 session 失效 SSE 流 |
 
-The frontend **never calls the ingest service directly** (D-07). Next.js BFF routes at `app/api/agent-tools/[tool]/...` proxy all requests, injecting `source={tool}` so each tool's data is scoped correctly. An additional per-request limit cap (100) is enforced at the BFF layer.
+前端**不直接调用 ingest 服务**（D-07）。Next.js BFF 路由 `app/api/agent-tools/[tool]/...` 代理所有请求，自动注入 `source={tool}` 参数，使每个工具的数据隔离。BFF 层还额外将单次请求的 limit 上限限制为 100。
 
-**Real-time update loop:**
+**实时更新循环：**
 
-```
-1. Frontend subscribes to SSE at /api/agent-tools/{tool}/events
-2. File watcher detects JSONL change on disk
-3. Debounce (500ms) → syncSource() → parser → DB write
-4. sseManager.emit('session_updated', ...) → SSE push to frontend
-5. Frontend receives event → re-fetches session list / session detail
+```text
+1. 前端订阅 SSE：/api/agent-tools/{tool}/events
+2. 文件监听器检测到磁盘上的 JSONL 变化
+3. 防抖（500ms）→ syncSource() → parser → DB 写入
+4. sseManager.emit('session_updated', ...) → SSE 推送到前端
+5. 前端收到事件 → 重新 fetch session 列表 / session 详情
 ```
 
 ---
 
-## Data Flow Summary
+## 数据流总结
 
-```
-JSONL file (disk)
-  → Parser: line-by-line → ParseResult { session, messages[], activities[] }
-  → Skip cache check: SHA-256(file) vs sessions.file_hash
-      [unchanged] → early return
-      [changed]   → upsert session + delete/re-insert messages in SQLite
-  → SSE event: session_created / session_updated → frontend refetch
+```text
+JSONL 文件（磁盘）
+  → Parser：逐行解析 → ParseResult { session, messages[], activities[] }
+  → Skip cache 检查：SHA-256(文件) vs sessions.file_hash
+      [未变化] → 提前返回
+      [已变化] → upsert session + 删除并重新插入 messages 到 SQLite
+  → SSE 事件：session_created / session_updated → 前端重新 fetch
 
-On frontend request for /sessions/:id/turns:
+前端请求 /sessions/:id/turns 时：
   → assembleTurns(sessionId)
       → SELECT messages WHERE session_id ORDER BY ordinal
-      → group by user-message boundary → TraceTurn[]
-      → pairToolCalls: JOIN tool_calls + tool_result_events
-      → linkSubagents: JOIN sessions WHERE parent_session_id
-  → JSON response to BFF → JSON response to React
+      → 按 user 消息边界分组 → TraceTurn[]
+      → pairToolCalls：JOIN tool_calls + tool_result_events
+      → linkSubagents：JOIN sessions WHERE parent_session_id
+  → JSON 响应给 BFF → JSON 响应给 React
 ```
 
-The DB is the bridge between the continuous file-watching ingest path and the on-demand HTTP read path. Without it, every request would require parsing all JSONL files from scratch.
+**DB 是连接「持续文件监听写入路径」和「按需 HTTP 读取路径」的桥梁。没有 DB，每次请求都需要从头解析所有 JSONL 文件。**

@@ -403,6 +403,31 @@ Plans:
 Plans:
 - [x] 07-01-PLAN.md — Fix session rail/navigation, replay keys, Codex freshness, and refresh behavior
 
+### Phase 8: Real-data parser, tool persistence, and sync refresh repair
+
+**Goal:** Repair real-data replay correctness by aligning Claude/Codex parsers and fixtures with actual local JSONL formats, persisting tool calls/result events/message ids into SQLite, and making manual refresh trigger ingest sync/reindex before UI refetch.
+
+**Requirements**: DATA-02, DATA-04, DATA-05, SRC-02, SRC-03, SRC-04, SRC-05, TURN-01, TURN-03, TURN-06, REPLAY-01, REPLAY-03, HARD-01
+**Depends on:** Phase 7
+
+**Success Criteria** (what must be TRUE):
+
+1. Codex parser handles real `response_item.payload.function_call_output`, `custom_tool_call`, and `custom_tool_call_output`; reasoning/web-search entries are either modeled or ignored without noisy parser warnings.
+2. Claude parser handles real `tool_result`, `thinking`, and compact/system-boundary records from actual `~/.claude` JSONL, without relying on synthetic `session` or `type:"compact"` fixture-only shapes.
+3. Sync writes stable `messages.id`, `tool_calls`, and `tool_result_events` rows transactionally; re-sync replaces stale per-session derived rows so turn assembly reads structured activities from SQLite.
+4. Manual refresh calls an ingest sync/resync endpoint before refetching visible sessions/turns, and a safe force-reparse path exists for parser/cache-version changes.
+5. Real-data regression fixtures cover the known Claude/Codex formats from the 2026-05-08 investigation, with synthetic-only fixtures either corrected or explicitly labeled.
+6. Reported sessions verify cleanly: no `key=null` warnings for `606dac00-4f36-40e2-89c8-da91416b6b39`, the `effac644-0eb7-4fc8-9e60-6c8127d51eae` Claude session is discoverable, and tool/result rows are populated after reindex.
+
+**Plans:** 5 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Real-shape fixture corpus and opt-in local session harness
+- [ ] 08-02-PLAN.md — Repair Claude and Codex parsers for real JSONL formats
+- [ ] 08-03-PLAN.md — Persist message ids, tool calls, result events, and force reparse
+- [ ] 08-04-PLAN.md — Wire sync-first refresh through ingest API, BFF, and right rail
+- [ ] 08-05-PLAN.md — Target-session verification and regression closure
+
 ---
 
 **EOF**
