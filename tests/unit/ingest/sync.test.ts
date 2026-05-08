@@ -257,4 +257,73 @@ describe('sync pipeline', () => {
       expect(result.errors.length).toBeGreaterThanOrEqual(1);
     });
   });
+
+  describe('SyncResult shape', () => {
+    it('SyncResult has toolCallsInserted and toolResultEventsInserted fields', async () => {
+      const { syncSource } = await import('@/ingest/sync/index');
+
+      mockAccess.mockResolvedValue(undefined);
+      mockReaddir.mockResolvedValue([]);
+
+      const result = await syncSource('claude-code' as any);
+
+      expect(result).toHaveProperty('toolCallsInserted');
+      expect(result).toHaveProperty('toolResultEventsInserted');
+      expect(typeof result.toolCallsInserted).toBe('number');
+      expect(typeof result.toolResultEventsInserted).toBe('number');
+    });
+  });
+
+  describe('force reparse option', () => {
+    it('syncSource accepts force option without errors', async () => {
+      const { syncSource } = await import('@/ingest/sync/index');
+
+      mockAccess.mockResolvedValue(undefined);
+      mockReaddir.mockResolvedValue([]);
+
+      // Should accept SyncSourceOptions object with force=true
+      const result = await syncSource('claude-code' as any, { force: true });
+
+      expect(result).toHaveProperty('errors');
+      expect(Array.isArray(result.errors)).toBe(true);
+    });
+
+    it('syncSource backward-compatible: accepts string basePath', async () => {
+      const { syncSource } = await import('@/ingest/sync/index');
+
+      mockAccess.mockResolvedValue(undefined);
+      mockReaddir.mockResolvedValue([]);
+
+      // Legacy string argument should still work
+      const result = await syncSource('openclaw' as any, '/some/path' as any);
+
+      expect(result).toHaveProperty('errors');
+    });
+
+    it('writeSessionToDatabase accepts WriteSessionOptions with force', async () => {
+      const { writeSessionToDatabase } = await import('@/ingest/sync/index');
+
+      // Must be callable with 4th argument — type test (would TS-error if wrong signature)
+      const pr = {
+        session: {
+          id: 'force-test-session',
+          source: 'claude-code' as const,
+          project: 'test',
+          name: 'Test',
+          startedAt: null,
+          endedAt: null,
+          status: 'idle' as const,
+          metrics: { messageCount: 0, userMessageCount: 0, hasToolCalls: false, parserMalformedLines: 0, isTruncated: false },
+          turns: [],
+        },
+        messages: [],
+        activities: [],
+        errors: [],
+        warnings: [],
+      };
+
+      const result = writeSessionToDatabase(pr, db, undefined, { force: true });
+      expect(result.errors).toEqual([]);
+    });
+  });
 });

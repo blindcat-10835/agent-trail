@@ -115,7 +115,18 @@ sourcesRoutes.post('/api/v1/sources/:type/sync', async (c) => {
   }
 
   try {
-    const result = await syncSource(type);
+    // Accept force=true via query string or request body
+    const queryForce = c.req.query('force');
+    let bodyForce = false;
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      bodyForce = body?.force === true || body?.force === 'true';
+    } catch {
+      // Body may be empty — ignore parse errors
+    }
+    const force = queryForce === 'true' || bodyForce;
+
+    const result = await syncSource(type, { force });
 
     return c.json({
       type,
@@ -123,6 +134,8 @@ sourcesRoutes.post('/api/v1/sources/:type/sync', async (c) => {
         sessionsInserted: result.sessionsInserted,
         sessionsUpdated: result.sessionsUpdated,
         messagesInserted: result.messagesInserted,
+        toolCallsInserted: result.toolCallsInserted,
+        toolResultEventsInserted: result.toolResultEventsInserted,
         errors: result.errors
       },
       status: 'completed'

@@ -25,10 +25,23 @@ export interface SyncResult {
   sessionsInserted: number;
   sessionsUpdated: number;
   messagesInserted: number;
+  toolCallsInserted: number;
+  toolResultEventsInserted: number;
   errors: string[];
 }
 
 export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex';
+
+/**
+ * Options for writeSessionToDatabase
+ */
+export interface WriteSessionOptions {
+  /**
+   * Force reparse — bypass the file_hash skip cache and always re-write derived rows.
+   * Used when a parser fix has been applied and existing indexed sessions must be rebuilt.
+   */
+  force?: boolean;
+}
 
 // ============================================================================
 // Session Name & Project Extraction
@@ -176,26 +189,34 @@ export function computeFileHash(filePath: string): string {
  * Write a parsed session to the database
  *
  * Handles session upsert (insert or update) and message insertion.
- * If session already exists, updates metadata and replaces all messages.
+ * If session already exists, deletes derived rows in dependency order
+ * (tool_result_events → tool_calls → turns → messages) and inserts replacements.
+ *
+ * All writes are wrapped in a single database.transaction() call so partial
+ * failures roll back automatically (better-sqlite3 synchronous transactions).
  *
  * Supports skip cache: if sourceFile is provided and its hash matches the
- * stored file_hash, skips the entire parse-and-write operation.
+ * stored file_hash, skips the entire parse-and-write operation unless force=true.
  *
  * @param parseResult - Parsed session data from any parser
  * @param db - Optional database connection (defaults to getDatabase())
  * @param sourceFile - Optional file path for hash-based skip cache and file_path column
+ * @param options - Optional flags: force=true bypasses hash skip cache
  * @returns SyncResult with counts and errors
  */
 export function writeSessionToDatabase(
   parseResult: ParseResult,
   db?: Database.Database,
-  sourceFile?: string
+  sourceFile?: string,
+  options?: WriteSessionOptions
 ): SyncResult {
   const database = db || getDatabase();
   const errors: string[] = [];
   let sessionsInserted = 0;
   let sessionsUpdated = 0;
   let messagesInserted = 0;
+  let toolCallsInserted = 0;
+  let toolResultEventsInserted = 0;
 
   try {
     // Compute file hash for skip cache (if sourceFile provided)
@@ -215,8 +236,8 @@ export function writeSessionToDatabase(
       'SELECT id, file_hash, name, project FROM sessions WHERE id = ?'
     ).get(parseResult.session.id) as { id: string; file_hash: string | null; name: string | null; project: string | null } | undefined;
 
-    // Skip cache: if hash matches, skip full re-parse but still patch name/project if empty.
-    if (existing && fileHash && existing.file_hash === fileHash) {
+    // Skip cache: if hash matches AND force is not set, skip full re-parse but still patch name/project if empty.
+    if (existing && fileHash && existing.file_hash === fileHash && !options?.force) {
       database.prepare(`
         UPDATE sessions SET
           file_size = ?,
@@ -231,87 +252,199 @@ export function writeSessionToDatabase(
         sessionsInserted: 0,
         sessionsUpdated: 0,
         messagesInserted: 0,
+        toolCallsInserted: 0,
+        toolResultEventsInserted: 0,
         errors: [],
       };
     }
 
-    if (existing) {
-      // Update existing session
-      database.prepare(`
-        UPDATE sessions SET
-          started_at = ?,
-          ended_at = ?,
-          status = ?,
-          message_count = ?,
-          user_message_count = ?,
-          total_output_tokens = ?,
-          has_tool_calls = ?,
-          parser_malformed_lines = ?,
-          is_truncated = ?,
-          termination_status = ?,
-          name = ?,
-          project = ?,
-          file_path = ?,
-          file_size = ?,
-          file_mtime = ?,
-          file_hash = ?,
-          last_sync_at = ?
-        WHERE id = ?
-      `).run(
-        parseResult.session.startedAt,
-        parseResult.session.endedAt,
-        parseResult.session.status,
-        parseResult.session.metrics.messageCount,
-        parseResult.session.metrics.userMessageCount,
-        parseResult.session.metrics.totalTokens || 0,
-        parseResult.session.metrics.hasToolCalls ? 1 : 0,
-        parseResult.session.metrics.parserMalformedLines,
-        parseResult.session.metrics.isTruncated ? 1 : 0,
-        parseResult.session.metrics.terminationStatus || '',
-        parseResult.session.name || '',
-        parseResult.session.project,
-        sourceFile || parseResult.session.id,
-        fileSize,
-        fileMtime,
-        fileHash,
-        lastSyncAt,
-        parseResult.session.id
-      );
-      sessionsUpdated++;
-    } else {
-      // Insert new session
-      database.prepare(`
-        INSERT INTO sessions (
-          id, source, project, name, started_at, ended_at, status,
-          message_count, user_message_count, total_output_tokens, has_tool_calls,
-          parser_malformed_lines, is_truncated, termination_status,
-          file_path, file_size, file_mtime, file_hash, last_sync_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        parseResult.session.id,
-        parseResult.session.source,
-        parseResult.session.project,
-        parseResult.session.name || '',
-        parseResult.session.startedAt,
-        parseResult.session.endedAt,
-        parseResult.session.status,
-        parseResult.session.metrics.messageCount,
-        parseResult.session.metrics.userMessageCount,
-        parseResult.session.metrics.totalTokens || 0,
-        parseResult.session.metrics.hasToolCalls ? 1 : 0,
-        parseResult.session.metrics.parserMalformedLines,
-        parseResult.session.metrics.isTruncated ? 1 : 0,
-        parseResult.session.metrics.terminationStatus || '',
-        sourceFile || parseResult.session.id, // Use actual file path or fall back to session ID
-        fileSize,
-        fileMtime,
-        fileHash,
-        lastSyncAt
-      );
-      sessionsInserted++;
+    // Build a lookup: messageOrdinal → tool calls for that message
+    // Used to set has_tool_use on message rows.
+    const toolCallsByOrdinal = new Map<number, typeof parseResult.activities[number][]>();
+    for (const activity of parseResult.activities) {
+      if (activity.type !== 'tool_call') continue;
+      const ordinal = (activity as any).messageOrdinal;
+      if (typeof ordinal === 'number') {
+        const list = toolCallsByOrdinal.get(ordinal) ?? [];
+        list.push(activity);
+        toolCallsByOrdinal.set(ordinal, list);
+      }
     }
 
-    // Emit SSE events for real-time frontend invalidation
+    // -------------------------------------------------------------------------
+    // Transactional write: all inserts/deletes in a single SQLite transaction
+    // -------------------------------------------------------------------------
+    const writeTransaction = database.transaction(() => {
+      if (existing) {
+        // Delete derived rows in dependency order before re-inserting
+        // tool_result_events reference tool_calls, so delete events first.
+        database.prepare(`
+          DELETE FROM tool_result_events
+          WHERE tool_call_id IN (
+            SELECT id FROM tool_calls WHERE session_id = ?
+          )
+        `).run(parseResult.session.id);
+        database.prepare('DELETE FROM tool_calls WHERE session_id = ?').run(parseResult.session.id);
+        database.prepare('DELETE FROM turns WHERE session_id = ?').run(parseResult.session.id);
+        database.prepare('DELETE FROM messages WHERE session_id = ?').run(parseResult.session.id);
+
+        // Update session metadata
+        database.prepare(`
+          UPDATE sessions SET
+            started_at = ?,
+            ended_at = ?,
+            status = ?,
+            message_count = ?,
+            user_message_count = ?,
+            total_output_tokens = ?,
+            has_tool_calls = ?,
+            parser_malformed_lines = ?,
+            is_truncated = ?,
+            termination_status = ?,
+            name = ?,
+            project = ?,
+            file_path = ?,
+            file_size = ?,
+            file_mtime = ?,
+            file_hash = ?,
+            last_sync_at = ?
+          WHERE id = ?
+        `).run(
+          parseResult.session.startedAt,
+          parseResult.session.endedAt,
+          parseResult.session.status,
+          parseResult.session.metrics.messageCount,
+          parseResult.session.metrics.userMessageCount,
+          parseResult.session.metrics.totalTokens || 0,
+          parseResult.session.metrics.hasToolCalls ? 1 : 0,
+          parseResult.session.metrics.parserMalformedLines,
+          parseResult.session.metrics.isTruncated ? 1 : 0,
+          parseResult.session.metrics.terminationStatus || '',
+          parseResult.session.name || '',
+          parseResult.session.project,
+          sourceFile || parseResult.session.id,
+          fileSize,
+          fileMtime,
+          fileHash,
+          lastSyncAt,
+          parseResult.session.id
+        );
+        sessionsUpdated++;
+      } else {
+        // Insert new session
+        database.prepare(`
+          INSERT INTO sessions (
+            id, source, project, name, started_at, ended_at, status,
+            message_count, user_message_count, total_output_tokens, has_tool_calls,
+            parser_malformed_lines, is_truncated, termination_status,
+            file_path, file_size, file_mtime, file_hash, last_sync_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          parseResult.session.id,
+          parseResult.session.source,
+          parseResult.session.project,
+          parseResult.session.name || '',
+          parseResult.session.startedAt,
+          parseResult.session.endedAt,
+          parseResult.session.status,
+          parseResult.session.metrics.messageCount,
+          parseResult.session.metrics.userMessageCount,
+          parseResult.session.metrics.totalTokens || 0,
+          parseResult.session.metrics.hasToolCalls ? 1 : 0,
+          parseResult.session.metrics.parserMalformedLines,
+          parseResult.session.metrics.isTruncated ? 1 : 0,
+          parseResult.session.metrics.terminationStatus || '',
+          sourceFile || parseResult.session.id,
+          fileSize,
+          fileMtime,
+          fileHash,
+          lastSyncAt
+        );
+        sessionsInserted++;
+      }
+
+      // Insert messages with stable IDs
+      // ID priority: message.id (from parser) → deterministic fallback "${sessionId}:${ordinal}"
+      const insertMessage = database.prepare(`
+        INSERT INTO messages (
+          id, session_id, ordinal, role, content, timestamp, model,
+          has_tool_use, token_usage_json, source_file, source_line
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const message of parseResult.messages) {
+        const messageId = (message.id && message.id.trim())
+          ? message.id
+          : `${parseResult.session.id}:${message.ordinal}`;
+
+        const hasToolUse = toolCallsByOrdinal.has(message.ordinal) ? 1 : 0;
+
+        insertMessage.run(
+          messageId,
+          parseResult.session.id,
+          message.ordinal,
+          message.role,
+          message.content,
+          message.timestamp || null,
+          message.model || '',
+          hasToolUse,
+          message.tokenUsage ? JSON.stringify(message.tokenUsage) : '',
+          message.sourceMetadata.sourceFile,
+          message.sourceMetadata.sourceLine || null
+        );
+        messagesInserted++;
+      }
+
+      // Insert tool_calls and tool_result_events
+      const insertToolCall = database.prepare(`
+        INSERT INTO tool_calls (
+          session_id, message_ordinal, tool_id, name, category,
+          input_json, status, error, duration_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const insertResultEvent = database.prepare(`
+        INSERT INTO tool_result_events (tool_call_id, timestamp, content, is_partial)
+        VALUES (?, ?, ?, ?)
+      `);
+
+      for (const activity of parseResult.activities) {
+        if (activity.type !== 'tool_call') continue;
+
+        const tc = activity as import('@/types/trace').TraceToolCall;
+        const messageOrdinal = tc.messageOrdinal ?? 0;
+
+        const insertResult = insertToolCall.run(
+          parseResult.session.id,
+          messageOrdinal,
+          tc.id,
+          tc.name,
+          tc.category || 'Other',
+          tc.inputJson,
+          tc.status,
+          tc.error || null,
+          tc.durationMs || null
+        );
+        toolCallsInserted++;
+
+        const toolCallDbId = insertResult.lastInsertRowid;
+
+        // Insert each result event linked to this tool call
+        for (const re of tc.resultEvents) {
+          insertResultEvent.run(
+            toolCallDbId,
+            re.timestamp || null,
+            re.content,
+            re.isPartial ? 1 : 0
+          );
+          toolResultEventsInserted++;
+        }
+      }
+    });
+
+    writeTransaction();
+
+    // Emit SSE events for real-time frontend invalidation (outside transaction)
     if (existing) {
       sseManager.emit('session_updated', {
         sessionId: parseResult.session.id,
@@ -326,37 +459,6 @@ export function writeSessionToDatabase(
       sseManager.emitSessionEvent(parseResult.session.id, 'session_created', {});
     }
 
-    // Delete existing messages for this session (if updating)
-    if (existing) {
-      database.prepare('DELETE FROM messages WHERE session_id = ?').run(parseResult.session.id);
-    }
-
-    // Insert messages
-    const insertMessage = database.prepare(`
-      INSERT INTO messages (
-        session_id, ordinal, role, content, timestamp, model,
-        token_usage_json, source_file, source_line
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const message of parseResult.messages) {
-      insertMessage.run(
-        parseResult.session.id,
-        message.ordinal,
-        message.role,
-        message.content,
-        message.timestamp || null,
-        message.model || '',
-        message.tokenUsage ? JSON.stringify(message.tokenUsage) : '',
-        message.sourceMetadata.sourceFile,
-        message.sourceMetadata.sourceLine || null
-      );
-      messagesInserted++;
-    }
-
-    // Note: Tool calls and turns will be added in Phase 3
-    // For Phase 2, we only store sessions and messages
-
   } catch (err) {
     errors.push(err instanceof Error ? err.message : 'Unknown error');
   }
@@ -365,6 +467,8 @@ export function writeSessionToDatabase(
     sessionsInserted,
     sessionsUpdated,
     messagesInserted,
+    toolCallsInserted,
+    toolResultEventsInserted,
     errors
   };
 }
@@ -396,33 +500,50 @@ function upsertSyncStatus(sourceType: string, result: SyncResult): void {
 }
 
 /**
+ * Options for syncSource
+ */
+export interface SyncSourceOptions {
+  /** Base path override for source discovery (OpenClaw only) */
+  basePath?: string;
+  /** Force reparse — bypasses file_hash skip cache; reparses all session files */
+  force?: boolean;
+}
+
+/**
  * Sync all sessions from a source type
  *
  * Orchestrates full sync pipeline: discover sources → parse files → write to database.
  * Supports OpenClaw, Claude Code, and Codex source types.
  *
  * @param sourceType - Type of source to sync ('openclaw', 'claude-code', 'codex')
- * @param basePath - Optional base path override for source discovery
+ * @param options - Optional sync options (basePath, force)
  * @returns SyncResult with aggregated counts and errors
  */
 export async function syncSource(
   sourceType: SyncSourceType,
-  basePath?: string
+  options?: SyncSourceOptions | string
 ): Promise<SyncResult> {
+  // Backward-compatible: accept legacy string argument as basePath
+  const opts: SyncSourceOptions = typeof options === 'string'
+    ? { basePath: options }
+    : (options ?? {});
+
   let result: SyncResult;
 
   // D-21 (Plan 01): Enumerated source types only — unknown sources have no parser
   if (sourceType === 'openclaw') {
-    result = await syncOpenClawSource(basePath);
+    result = await syncOpenClawSource(opts);
   } else if (sourceType === 'claude-code') {
-    result = await syncClaudeCodeSource();
+    result = await syncClaudeCodeSource(opts);
   } else if (sourceType === 'codex') {
-    result = await syncCodexSource();
+    result = await syncCodexSource(opts);
   } else {
     result = {
       sessionsInserted: 0,
       sessionsUpdated: 0,
       messagesInserted: 0,
+      toolCallsInserted: 0,
+      toolResultEventsInserted: 0,
       errors: [`Unknown source type: ${sourceType}`],
     };
   }
@@ -443,15 +564,17 @@ export async function syncSource(
  * Uses discoverOpenClawSources() and parseOpenClawSession() from the parser module.
  * This is the original sync path preserved from Phase 2.
  */
-async function syncOpenClawSource(basePath?: string): Promise<SyncResult> {
+async function syncOpenClawSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const { discoverOpenClawSources } = await import('./sources');
   const { parseOpenClawSession } = await import('../parser/openclaw');
 
-  const sources = await discoverOpenClawSources({ workspacePath: basePath });
+  const sources = await discoverOpenClawSources({ workspacePath: opts.basePath });
   const totalResult: SyncResult = {
     sessionsInserted: 0,
     sessionsUpdated: 0,
     messagesInserted: 0,
+    toolCallsInserted: 0,
+    toolResultEventsInserted: 0,
     errors: [],
   };
 
@@ -479,10 +602,12 @@ async function syncOpenClawSource(basePath?: string): Promise<SyncResult> {
           const parseResult = await parseOpenClawSession(filePath, project);
           parseResult.session.name = extractSessionName(parseResult);
           parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
-          const result = writeSessionToDatabase(parseResult, undefined, filePath);
+          const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
           totalResult.messagesInserted += result.messagesInserted;
+          totalResult.toolCallsInserted += result.toolCallsInserted;
+          totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
           totalResult.errors.push(...result.errors);
         } catch (err) {
           totalResult.errors.push(`Failed to parse ${filePath}: ${err}`);
@@ -513,7 +638,7 @@ async function syncOpenClawSource(basePath?: string): Promise<SyncResult> {
  * Uses discoverClaudeSources() and parseClaudeSession() from the parser module.
  * Handles parser errors gracefully — errors are captured in SyncResult.errors.
  */
-async function syncClaudeCodeSource(): Promise<SyncResult> {
+async function syncClaudeCodeSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const { discoverClaudeSources } = await import('./sources');
   const { parseClaudeSession } = await import('../parser/claude');
 
@@ -522,6 +647,8 @@ async function syncClaudeCodeSource(): Promise<SyncResult> {
     sessionsInserted: 0,
     sessionsUpdated: 0,
     messagesInserted: 0,
+    toolCallsInserted: 0,
+    toolResultEventsInserted: 0,
     errors: [],
   };
 
@@ -541,10 +668,12 @@ async function syncClaudeCodeSource(): Promise<SyncResult> {
           const parseResult = await parseClaudeSession(filePath, project);
           parseResult.session.name = extractSessionName(parseResult);
           parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
-          const result = writeSessionToDatabase(parseResult, undefined, filePath);
+          const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
           totalResult.messagesInserted += result.messagesInserted;
+          totalResult.toolCallsInserted += result.toolCallsInserted;
+          totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
           totalResult.errors.push(...result.errors);
         } catch (err) {
           totalResult.errors.push(
@@ -579,7 +708,7 @@ async function syncClaudeCodeSource(): Promise<SyncResult> {
  * Uses discoverCodexSources() and parseCodexSession() from the parser module.
  * Handles parser errors gracefully — errors are captured in SyncResult.errors.
  */
-async function syncCodexSource(): Promise<SyncResult> {
+async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const { discoverCodexSources } = await import('./sources');
   const { parseCodexSession } = await import('../parser/codex');
 
@@ -588,6 +717,8 @@ async function syncCodexSource(): Promise<SyncResult> {
     sessionsInserted: 0,
     sessionsUpdated: 0,
     messagesInserted: 0,
+    toolCallsInserted: 0,
+    toolResultEventsInserted: 0,
     errors: [],
   };
 
@@ -607,10 +738,12 @@ async function syncCodexSource(): Promise<SyncResult> {
           const parseResult = await parseCodexSession(filePath, project);
           parseResult.session.name = extractSessionName(parseResult);
           parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
-          const result = writeSessionToDatabase(parseResult, undefined, filePath);
+          const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
           totalResult.sessionsInserted += result.sessionsInserted;
           totalResult.sessionsUpdated += result.sessionsUpdated;
           totalResult.messagesInserted += result.messagesInserted;
+          totalResult.toolCallsInserted += result.toolCallsInserted;
+          totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
           totalResult.errors.push(...result.errors);
         } catch (err) {
           totalResult.errors.push(
