@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T11:29:46.439Z"
+last_updated: "2026-05-08T08:49:39.000Z"
 progress:
   total_phases: 8
   completed_phases: 4
@@ -154,6 +154,7 @@ Trace Contract
 |---|-------------|------|--------|-----------|
 | 260508-18t | Fix session update times all showing same value - use updatedAt from API instead of endedAt/startedAt | 2026-05-07 | 33502dd | [260508-18t-fix-session-update-times-all-showing-sam](./quick/260508-18t-fix-session-update-times-all-showing-sam/) |
 | 260508-fkt | Fix session updated_at computation: remove last_sync_at from UPDATED_AT_EXPR, and lastSyncAt from client-side freshness | 2026-05-08 | 1a89b1c | [260508-fkt-fix-session-updated-at-computation-remov](./quick/260508-fkt-fix-session-updated-at-computation-remov/) |
+| 260508-myy | Ensure ingest starts before frontend + health check overlay | 2026-05-08 | f6b7495, 6ad5aae, 5d77586 | [260508-myy-ensure-ingest-starts-before-frontend-in-](./quick/260508-myy-ensure-ingest-starts-before-frontend-in-/) |
 
 ### Todos
 
@@ -202,4 +203,4 @@ Trace Contract
 
 *State created: 2026-05-06*
 *Last updated: 2026-05-07 after project initialization*
-*Last activity: 2026-05-08 - Completed quick task 260508-fkt: Fix session updated_at computation - remove last_sync_at from UPDATED_AT_EXPR*
+*Last activity: 2026-05-08 - Completed quick task 260508-myy: Ensure ingest starts before frontend + health check overlay*
