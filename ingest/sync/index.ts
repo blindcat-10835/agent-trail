@@ -55,6 +55,9 @@ function deriveDisplayNameFromUserMessage(content: string): string {
   const commandArgs = normalized.match(/<command-args>([\s\S]*?)<\/command-args>/i)?.[1]?.trim()
   if (commandArgs) return truncateDisplayName(commandArgs)
 
+  // Slash command with no args (e.g. /effort, /model) — skip, let loop find real user message
+  if (/<command-name>/i.test(normalized)) return ''
+
   const codexRequest = normalized.match(/## My request for Codex:\s*([\s\S]*)/i)?.[1]?.trim()
   if (codexRequest) {
     const line = firstMeaningfulLine(codexRequest)
@@ -87,6 +90,7 @@ function deriveDisplayNameFromUserMessage(content: string): string {
     '<environment_context',
     '<security_context',
     '<local-command-caveat',
+    '<local-command-stdout',
     '<command-message',
     'base directory for this skill:',
     '# context from my ide setup:',
