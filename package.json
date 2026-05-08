@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm:dev:*\" --names \"NEXT,INGEST\" --prefix-colors \"blue,green\"",
+    "dev": "concurrently -k --names \"INGEST,NEXT\" --prefix-colors \"green,blue\" \"npm:dev:ingest\" \"npx wait-on tcp:8078 && npm run dev:next\"",
     "dev:next": "next dev --webpack",
     "dev:ingest": "tsx watch ingest/index.ts",
     "build": "next build",
