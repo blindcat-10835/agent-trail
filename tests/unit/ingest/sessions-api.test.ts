@@ -22,7 +22,7 @@ describe('sessions API', () => {
     rmSync(`${dbPath}-wal`, { force: true })
   })
 
-  it('sorts by the freshest known timestamp for updated_at', async () => {
+  it('sorts by user-facing activity timestamps for updated_at (excluding last_sync_at)', async () => {
     const db = getDatabase()
     const insert = db.prepare(`
       INSERT INTO sessions (
@@ -79,9 +79,9 @@ describe('sessions API', () => {
 
     expect(response.status).toBe(200)
     expect(body.sessions.map((session: { id: string }) => session.id)).toEqual([
-      'older-start-recent-sync',
       'newer-start-stale-sync',
+      'older-start-recent-sync',
     ])
-    expect(body.sessions[0].updatedAt).toBe('2026-05-07T11:00:00.000Z')
+    expect(body.sessions[0].updatedAt).toBe('2025-01-01T00:00:00.000Z')
   })
 })

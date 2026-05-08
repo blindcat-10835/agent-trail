@@ -14,7 +14,7 @@ import { TraceSession, SessionStatus, TraceSource } from '@/types/trace';
 export const sessionsRoutes = new Hono();
 
 const UPDATED_AT_EXPR =
-  "MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(last_sync_at, ''), COALESCE(file_mtime, ''))";
+  "MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, ''))";
 
 // ============================================================================
 // GET /api/v1/sessions/lookup - Look up session by external key
