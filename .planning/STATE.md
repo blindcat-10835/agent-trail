@@ -204,3 +204,4 @@ Trace Contract
 *State created: 2026-05-06*
 *Last updated: 2026-05-07 after project initialization*
 *Last activity: 2026-05-08 - Completed quick task 260508-myy: Ensure ingest starts before frontend + health check overlay*
+| 2026-05-08 | fast | 整理 fixture vs 真实数据格式对比文档 | ✅ |

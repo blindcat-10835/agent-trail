@@ -1,9 +1,13 @@
+#### ALL FIXED - 05/07
+
 #### 转换tool时url转换的不对
+
 比如直接从
 http://localhost:3000/openclaw/sessions/7cf1568d-85e5-4a55-8c43-b05af7aaf235
 点击header中的codex进行跳转时，会直接跳转到http://localhost:3000/codex/sessions/7cf1568d-85e5-4a55-8c43-b05af7aaf235。然后显示session不存在。这显然是不符合预期的。
 
 #### 页面布局问题
+
 现在的布局是session显示在了children中，实际我想要的意图是session始终显示在右侧的rightrail中，然后点击之后会显示详情在chidlren的部分。
 如果没有点击session的时候是显示overview。
 实现可以参考../references/agentsview中的布局，他们是左侧显示sessions，点击之后显示详情，我们只是吧这个改成了在右侧显示sessions。
@@ -11,6 +15,7 @@ http://localhost:3000/openclaw/sessions/7cf1568d-85e5-4a55-8c43-b05af7aaf235
 #### 进入session详情时的console error
 
 显示如下：
+
 ```
 xt]  GET /api/agent-tools/claude-code/sessions/606dac00-4f36-40e2-89c8-da91416b6b39/turns?offset=0&limit=50 200 in 11ms (next.js: 2ms, application-code: 9ms)
 [NEXTnext] [browser] Encountered two children with the same key, `null`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. 
@@ -84,10 +89,13 @@ xt]  GET /api/agent-tools/claude-code/sessions/606dac00-4f36-40e2-89c8-da91416b6
 ```
 
 #### codex的session显示问题
+
 其他tool的sessions都按照时间来排序了，但是codex都貌似没有，并且我找不到我最新的几个session在哪里，点右上角的刷新也不管用
 
 #### session刷新
+
 同上一条codex，我点击右上角的刷新并没有给我拉取到正确的sessions
 
 #### session列表显示的信息
+
 在 页面布局问题 后修复，应该参考../references/agentsview中的列表信息。显示session名，project目录，更新时间，用的工具（CLAUDE/CODEX/OPENCLAW）
