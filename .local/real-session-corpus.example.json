@@ -1,0 +1,46 @@
+{
+  "_comment": "Copy this file to .local/real-session-corpus.json and populate with paths to your actual local session files. The real-session-corpus.json file is gitignored — do NOT commit it.",
+  "_schema": {
+    "sessions": [
+      {
+        "id": "string — unique tag for this entry (e.g., a short UUID prefix)",
+        "source": "claude-code | codex | openclaw",
+        "path": "string — absolute path to the JSONL session file on your machine",
+        "tags": [
+          "string — optional tags like 'has-tool-calls', 'has-subagent', 'has-compact', 'has-thinking'"
+        ],
+        "_comment": "optional per-entry description"
+      }
+    ]
+  },
+  "sessions": [
+    {
+      "id": "example-claude-tool-session",
+      "source": "claude-code",
+      "path": "/Users/YOURNAME/.claude/sessions/606dac00-0000-0000-0000-000000000000.jsonl",
+      "tags": ["has-tool-calls", "has-compact"],
+      "_comment": "Replace with a real local path. The test will skip if the file does not exist."
+    },
+    {
+      "id": "example-claude-thinking-session",
+      "source": "claude-code",
+      "path": "/Users/YOURNAME/.claude/sessions/effac644-0000-0000-0000-000000000000.jsonl",
+      "tags": ["has-thinking"],
+      "_comment": "Example: a session with thinking blocks"
+    },
+    {
+      "id": "example-codex-function-session",
+      "source": "codex",
+      "path": "/Users/YOURNAME/.codex/sessions/some-codex-session.jsonl",
+      "tags": ["has-tool-calls", "has-function-call-output"],
+      "_comment": "Example: a Codex session with function_call / function_call_output"
+    },
+    {
+      "id": "example-codex-custom-tool-session",
+      "source": "codex",
+      "path": "/Users/YOURNAME/.codex/sessions/another-codex-session.jsonl",
+      "tags": ["has-custom-tool-call"],
+      "_comment": "Example: a Codex session with custom_tool_call / custom_tool_call_output"
+    }
+  ]
+}

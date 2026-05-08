@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:ingest": "tsc --noEmit -p ingest/tsconfig.json",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:real-sessions": "vitest run tests/local/real-session-corpus.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.1",
