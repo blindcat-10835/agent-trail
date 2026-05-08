@@ -7,7 +7,7 @@ import {
   parseClaudeMessage,
 } from '@/ingest/parser/claude';
 import { SessionContext, ParseResult } from '@/ingest/parser/types';
-import { TraceMessage, TraceToolCall, TraceSubagentLink } from '@/types/trace';
+import { TraceMessage, TraceToolCall, TraceThinkingBlock, TraceSubagentLink } from '@/types/trace';
 
 // ============================================================================
 // Helpers
@@ -233,6 +233,183 @@ describe('parseClaudeSession', () => {
     expect(result.session.status).toBe('error');
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0].error).toContain('File does not exist');
+  });
+
+  // ============================================================================
+  // Plan 08-02 repair tests — fail on OLD code, pass after repair
+  // ============================================================================
+
+  // --- Test 8: tool_result user record pairs resultEvents to prior tool_use ---
+
+  it('should pair tool_result user blocks with matching tool_use by tool_use_id (08-02)', async () => {
+    const lines = [
+      JSON.stringify(claudeLine({
+        uuid: 'asst-msg',
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'Running command.' },
+            { type: 'tool_use', id: 'toolu_test_01', name: 'Bash', input: { command: 'ls' } },
+          ],
+          model: 'claude-opus-4-5',
+        },
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'user-result-msg',
+        parentUuid: 'asst-msg',
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_test_01', content: 'file1.ts\nfile2.ts', is_error: false },
+          ],
+        },
+      })),
+    ];
+    const filePath = writeFixture('tool-result-pairing.jsonl', lines);
+
+    const result = await parseClaudeSession(filePath, 'test-project');
+
+    const toolCalls = result.activities.filter(a => a.type === 'tool_call') as TraceToolCall[];
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].id).toBe('toolu_test_01');
+    // Result event should be populated from the tool_result block
+    expect(toolCalls[0].resultEvents).toHaveLength(1);
+    expect(toolCalls[0].resultEvents[0].content).toBe('file1.ts\nfile2.ts');
+    expect(toolCalls[0].status).toBe('success');
+  });
+
+  // --- Test 9: tool_result-only user record produces tool_result role, not user ---
+
+  it('should produce role=tool_result for tool-result-only user records (08-02)', async () => {
+    const lines = [
+      JSON.stringify(claudeLine({
+        uuid: 'asst-2',
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 'toolu_test_02', name: 'Read', input: { file_path: '/x' } },
+          ],
+          model: 'claude-opus-4-5',
+        },
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'user-result-2',
+        parentUuid: 'asst-2',
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_test_02', content: 'file content', is_error: false },
+          ],
+        },
+      })),
+    ];
+    const filePath = writeFixture('tool-result-role.jsonl', lines);
+
+    const result = await parseClaudeSession(filePath, 'test-project');
+
+    // Must NOT have a user role message from the tool_result-only record
+    const userMsgs = result.messages.filter(m => m.role === 'user');
+    expect(userMsgs).toHaveLength(0);
+    // Must have a tool_result role message
+    const toolResultMsgs = result.messages.filter(m => m.role === 'tool_result');
+    expect(toolResultMsgs).toHaveLength(1);
+  });
+
+  // --- Test 10: thinking blocks are extracted as TraceThinkingBlock activities ---
+
+  it('should extract thinking blocks as TraceThinkingBlock activities (08-02)', async () => {
+    const lines = [
+      JSON.stringify(claudeLine({
+        uuid: 'think-msg',
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'This is my internal reasoning process.' },
+            { type: 'text', text: 'Here is my answer.' },
+          ],
+          model: 'claude-opus-4-5',
+        },
+      })),
+    ];
+    const filePath = writeFixture('thinking-extract.jsonl', lines);
+
+    const result = await parseClaudeSession(filePath, 'test-project');
+
+    const thinkingBlocks = result.activities.filter(a => a.type === 'thinking') as TraceThinkingBlock[];
+    expect(thinkingBlocks).toHaveLength(1);
+    expect(thinkingBlocks[0].content).toBe('This is my internal reasoning process.');
+    expect(thinkingBlocks[0].isRedacted).toBe(false);
+  });
+
+  // --- Test 11: isCompactSummary: true recognized as compact boundary ---
+
+  it('should treat isCompactSummary: true as compact boundary and set isTruncated (08-02)', async () => {
+    const lines = [
+      JSON.stringify(claudeLine({
+        uuid: 'before-compact',
+        type: 'assistant',
+        message: { role: 'assistant', content: 'Before compact.' },
+      })),
+      JSON.stringify({
+        uuid: 'rs-compact-real',
+        type: 'compact',
+        compact: { truncatedUuids: ['before-compact'] },
+        message: { role: 'system', content: '[compact] Context compacted' },
+        isCompactSummary: true,
+        timestamp: '2025-01-01T01:00:00Z',
+      }),
+      JSON.stringify(claudeLine({
+        uuid: 'after-compact',
+        type: 'user',
+        message: { role: 'user', content: 'After compact.' },
+      })),
+    ];
+    const filePath = writeFixture('is-compact-summary.jsonl', lines);
+
+    const result = await parseClaudeSession(filePath, 'test-project');
+
+    expect(result.session.metrics.isTruncated).toBe(true);
+    const systemMsgs = result.messages.filter(m => m.role === 'system');
+    expect(systemMsgs.length).toBeGreaterThanOrEqual(1);
+    expect(systemMsgs[0].content).toContain('before-compact');
+  });
+
+  // --- Test 12: tool_use messageOrdinal is set correctly ---
+
+  it('should include messageOrdinal on tool calls matching the owning assistant message (08-02)', async () => {
+    const lines = [
+      JSON.stringify(claudeLine({
+        uuid: 'user-1',
+        type: 'user',
+        message: { role: 'user', content: 'Do something.' },
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'asst-with-tool',
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'OK.' },
+            { type: 'tool_use', id: 'toolu_ordinal_01', name: 'Read', input: { file_path: '/f' } },
+          ],
+          model: 'claude-opus-4-5',
+        },
+      })),
+    ];
+    const filePath = writeFixture('message-ordinal.jsonl', lines);
+
+    const result = await parseClaudeSession(filePath, 'test-project');
+
+    const toolCalls = result.activities.filter(a => a.type === 'tool_call') as TraceToolCall[];
+    expect(toolCalls).toHaveLength(1);
+    // messageOrdinal should be 1 (user is 0, assistant is 1)
+    expect(toolCalls[0].messageOrdinal).toBe(1);
+    expect(typeof toolCalls[0].sourceLine).toBe('number');
   });
 });
 
