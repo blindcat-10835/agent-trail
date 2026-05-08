@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { useIngestHealthStore } from '@/stores/ingest-health-store'
 import { cn } from '@/lib/utils'
 
 const POLL_INTERVAL_MS = 2000
-const TIMEOUT_MS = 30000
+const TIMEOUT_MS = 60000
 
 export function IngestHealthOverlay() {
   const status = useIngestHealthStore((s) => s.status)
@@ -14,81 +14,67 @@ export function IngestHealthOverlay() {
   const setConnected = useIngestHealthStore((s) => s.setConnected)
   const setTimeout_ = useIngestHealthStore((s) => s.setTimeout)
 
-  const startedAtRef = useRef<number>(Date.now())
+  const startedAtRef = useRef<number>(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const statusRef = useRef(status)
-
-  // Keep ref in sync so checkHealth always reads latest status
   statusRef.current = status
 
-  const checkHealth = async () => {
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+  }, [])
+
+  const checkHealth = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:8078/health')
+      // Use BFF proxy to avoid CORS issues — frontend never calls ingest directly
+      const res = await fetch('/api/agent-tools/openclaw/health')
       if (res.ok) {
         const data = await res.json()
         if (data.status === 'ok') {
           setConnected()
-          startedAtRef.current = Date.now()
           return
         }
       }
-      // Unhealthy or unexpected response
-      handleUnhealthy()
     } catch {
-      // Network error
-      handleUnhealthy()
+      // Network error — fall through to timeout check
     }
-  }
 
-  const handleUnhealthy = () => {
-    const currentStatus = statusRef.current
-    if (currentStatus === 'connected') {
-      // Was healthy, now not — transition back to checking with fresh timer
+    // Not healthy — check timeout
+    if (statusRef.current === 'connected') {
       startedAtRef.current = Date.now()
-      // We call retry() to reset to 'checking', which triggers the status
-      // effect below to restart polling with fresh timer
       retry()
       return
     }
 
-    // Still in checking phase — check if we've timed out
     const elapsed = Date.now() - startedAtRef.current
     if (elapsed >= TIMEOUT_MS) {
       setTimeout_()
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
+      stopPolling()
     }
-  }
+  }, [setConnected, setTimeout_, retry, stopPolling])
 
-  const startPolling = () => {
+  const startPolling = useCallback(() => {
     startedAtRef.current = Date.now()
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-    }
+    stopPolling()
     intervalRef.current = setInterval(checkHealth, POLL_INTERVAL_MS)
     checkHealth()
-  }
+  }, [checkHealth, stopPolling])
 
-  // Mount: start polling
-  useEffect(() => {
-    startPolling()
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Restart polling whenever status resets to 'checking' (initial mount or retry)
+  // Single effect: resets store on mount, starts/stops polling on status change
   useEffect(() => {
     if (status === 'checking') {
       startPolling()
     }
+    return () => stopPolling()
+  }, [status, startPolling, stopPolling])
+
+  // On mount, force store back to 'checking' to recover from stale Zustand state (HMR)
+  useEffect(() => {
+    retry()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status])
+  }, [])
 
   if (status === 'connected') return null
 
