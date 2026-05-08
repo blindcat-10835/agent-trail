@@ -1,0 +1,4 @@
+{"type":"session_meta","session_meta":{"session_id":"rs-codex-session-02","cwd":"/redacted/path","model":"gpt-4o"}}
+{"type":"turn_context","turn_context":{"turn_id":"rs-turn-02","model":"gpt-4o","started_at":"2025-01-01T00:00:00Z"}}
+{"type":"response_item","response_item":{"type":"custom_tool_call","call_id":"call_rs02","name":"rs_tool","arguments":"{\"param\":\"[REDACTED]\"}","token_count":8}}
+{"type":"event_msg","event_msg":{"type":"custom_tool_call_output","call_id":"call_rs02","output":"[REDACTED output]","status":"completed"}}

@@ -1,0 +1,2 @@
+{"uuid":"rs-tool-use-01","parentUuid":"rs-user-01","type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"[REDACTED]"},{"type":"tool_use","id":"toolu_rs01","name":"Bash","input":{"command":"[REDACTED]"}}],"model":"claude-opus-4-5"},"timestamp":"2025-01-01T00:00:01Z"}
+{"uuid":"rs-tool-result-01","parentUuid":"rs-tool-use-01","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_rs01","content":"[REDACTED output]","is_error":false}]},"timestamp":"2025-01-01T00:00:02Z"}
