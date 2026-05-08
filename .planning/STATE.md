@@ -148,6 +148,12 @@ Trace Contract
 - Introducing an independent ingest service means dev workflow must manage two processes or a launcher.
 - Parser correctness depends on fixture coverage for real OpenClaw/Claude/Codex logs.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260508-18t | Fix session update times all showing same value - use updatedAt from API instead of endedAt/startedAt | 2026-05-07 | 33502dd | [260508-18t-fix-session-update-times-all-showing-sam](./quick/260508-18t-fix-session-update-times-all-showing-sam/) |
+
 ### Todos
 
 **Immediate**:
@@ -194,4 +200,5 @@ Trace Contract
 ---
 
 *State created: 2026-05-06*
-*Last updated: 2026-05-06 after project initialization*
+*Last updated: 2026-05-07 after project initialization*
+*Last activity: 2026-05-07 - Completed quick task 260508-18t: Fix session update times all showing same value*
