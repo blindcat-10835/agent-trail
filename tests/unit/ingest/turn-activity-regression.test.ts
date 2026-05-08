@@ -1,0 +1,287 @@
+/**
+ * Turn Activity Regression Tests
+ *
+ * Verifies that assembleTurns() reads persisted tool calls and result events
+ * from SQLite and produces structured TraceToolCall activities on turns.
+ *
+ * These tests catch the regression where tool activities were only in parser
+ * memory state and never surfaced in the DB-backed turn model.
+ *
+ * @group ingest/turns
+ */
+
+import { describe, it, expect, beforeEach } from 'vitest';
+import Database from 'better-sqlite3';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { writeSessionToDatabase } from '@/ingest/sync/index';
+import type { ParseResult } from '@/ingest/parser/types';
+import type { TraceToolCall, TraceToolResultEvent } from '@/types/trace';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function createTestDb(): Database.Database {
+  const db = new Database(':memory:');
+  db.pragma('journal_mode = WAL');
+  const schemaPath = join(process.cwd(), 'ingest', 'db', 'schema.sql');
+  const schema = readFileSync(schemaPath, 'utf-8');
+  db.exec(schema);
+  return db;
+}
+
+function makeParseResultWithTools(
+  sessionId: string,
+  toolCalls: Partial<TraceToolCall>[],
+  messageCount = 2
+): ParseResult {
+  const messages = Array.from({ length: messageCount }, (_, i) => ({
+    id: `${sessionId}:${i}`,
+    ordinal: i,
+    role: (i === 0 ? 'user' : 'assistant') as any,
+    content: i === 0 ? 'Run the command' : 'Running...',
+    timestamp: `2024-01-01T00:0${i}:00Z`,
+    sourceMetadata: {
+      sourceType: 'claude-code' as any,
+      sourceFile: '/fake/session.jsonl',
+      sourceLine: i + 1,
+    },
+  }));
+
+  const activities: TraceToolCall[] = toolCalls.map((tc, i) => ({
+    type: 'tool_call' as const,
+    id: tc.id ?? `toolu_${i}`,
+    name: tc.name ?? 'Bash',
+    category: (tc.category ?? 'Bash') as any,
+    inputJson: tc.inputJson ?? '{}',
+    resultEvents: tc.resultEvents ?? [],
+    status: (tc.status ?? 'success') as any,
+    messageOrdinal: tc.messageOrdinal ?? 1,
+    sourceLine: tc.sourceLine ?? 1,
+  }));
+
+  return {
+    session: {
+      id: sessionId,
+      source: 'claude-code',
+      project: 'test-project',
+      name: 'Test',
+      startedAt: '2024-01-01T00:00:00Z',
+      endedAt: '2024-01-01T01:00:00Z',
+      status: 'idle',
+      metrics: {
+        messageCount,
+        userMessageCount: 1,
+        totalTokens: 50,
+        hasToolCalls: toolCalls.length > 0,
+        parserMalformedLines: 0,
+        isTruncated: false,
+      },
+      turns: [],
+    },
+    messages,
+    activities,
+    errors: [],
+    warnings: [],
+  };
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe('turn activity regression — assembleTurns reads tool activities from DB', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = createTestDb();
+  });
+
+  it('turn.activities contains persisted tool call after sync', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-tool-activity-001';
+
+    const parseResult = makeParseResultWithTools(sessionId, [
+      {
+        id: 'toolu_regression01',
+        name: 'Bash',
+        category: 'Bash',
+        inputJson: JSON.stringify({ command: 'echo hello' }),
+        resultEvents: [
+          { type: 'result_event', content: 'hello', isPartial: false } as TraceToolResultEvent,
+        ],
+        status: 'success',
+        messageOrdinal: 1,
+      },
+    ]);
+
+    const syncResult = writeSessionToDatabase(parseResult, db);
+    expect(syncResult.errors).toEqual([]);
+    expect(syncResult.toolCallsInserted).toBe(1);
+    expect(syncResult.toolResultEventsInserted).toBe(1);
+
+    const turns = await assembleTurns(sessionId, db);
+
+    expect(turns.length).toBeGreaterThan(0);
+    const turn0 = turns[0];
+    const toolActivities = turn0.activities.filter(a => a.type === 'tool_call');
+
+    expect(toolActivities.length).toBe(1);
+    const toolCall = toolActivities[0] as TraceToolCall;
+    expect(toolCall.id).toBe('toolu_regression01');
+    expect(toolCall.name).toBe('Bash');
+    expect(toolCall.status).toBe('success');
+  });
+
+  it('tool call result events are surfaced in turn activities', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-tool-result-events-001';
+
+    const parseResult = makeParseResultWithTools(sessionId, [
+      {
+        id: 'toolu_with_results',
+        name: 'Read',
+        category: 'Read',
+        inputJson: JSON.stringify({ file_path: '/foo/bar.ts' }),
+        resultEvents: [
+          { type: 'result_event', content: 'line1\nline2', isPartial: false } as TraceToolResultEvent,
+          { type: 'result_event', content: 'more content', isPartial: false } as TraceToolResultEvent,
+        ],
+        status: 'success',
+        messageOrdinal: 1,
+      },
+    ]);
+
+    writeSessionToDatabase(parseResult, db);
+
+    const turns = await assembleTurns(sessionId, db);
+    const turn0 = turns[0];
+    const toolCall = turn0.activities.find(a => a.type === 'tool_call') as TraceToolCall | undefined;
+
+    expect(toolCall).toBeDefined();
+    expect(toolCall!.resultEvents.length).toBe(2);
+    expect(toolCall!.resultEvents[0].content).toBe('line1\nline2');
+    expect(toolCall!.resultEvents[1].content).toBe('more content');
+  });
+
+  it('multiple tool calls in same turn are all surfaced', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-multi-tool-001';
+
+    const parseResult = makeParseResultWithTools(sessionId, [
+      { id: 'tc_read', name: 'Read', category: 'Read', inputJson: '{"file_path":"/a.ts"}', resultEvents: [], status: 'success', messageOrdinal: 1 },
+      { id: 'tc_bash', name: 'Bash', category: 'Bash', inputJson: '{"command":"ls"}', resultEvents: [{ type: 'result_event', content: 'a.ts', isPartial: false } as TraceToolResultEvent], status: 'success', messageOrdinal: 1 },
+    ]);
+
+    writeSessionToDatabase(parseResult, db);
+
+    const turns = await assembleTurns(sessionId, db);
+    const turn0 = turns[0];
+    const toolActivities = turn0.activities.filter(a => a.type === 'tool_call');
+
+    expect(toolActivities.length).toBe(2);
+    const names = toolActivities.map(a => (a as TraceToolCall).name).sort();
+    expect(names).toEqual(['Bash', 'Read']);
+  });
+
+  it('turn with no tool calls has empty tool activities', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-no-tools-001';
+
+    const parseResult = makeParseResultWithTools(sessionId, []); // no tool calls
+    writeSessionToDatabase(parseResult, db);
+
+    const turns = await assembleTurns(sessionId, db);
+
+    if (turns.length > 0) {
+      const toolActivities = turns[0].activities.filter(a => a.type === 'tool_call');
+      expect(toolActivities.length).toBe(0);
+    }
+  });
+
+  it('tool call category is preserved from DB', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-category-check';
+
+    const parseResult = makeParseResultWithTools(sessionId, [
+      { id: 'tc_grep', name: 'Grep', category: 'Grep', inputJson: '{"pattern":"foo"}', resultEvents: [], status: 'success', messageOrdinal: 1 },
+    ]);
+
+    writeSessionToDatabase(parseResult, db);
+
+    const turns = await assembleTurns(sessionId, db);
+    const tool = turns[0].activities.find(a => a.type === 'tool_call') as TraceToolCall;
+
+    expect(tool).toBeDefined();
+    expect(tool.category).toBe('Grep');
+  });
+
+  it('force re-sync replaces tool activities with new parser output', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-force-resync-activities';
+
+    // First sync: 2 tool calls
+    const initial = makeParseResultWithTools(sessionId, [
+      { id: 'tc_old1', name: 'Bash', category: 'Bash', inputJson: '{}', resultEvents: [], status: 'pending', messageOrdinal: 1 },
+      { id: 'tc_old2', name: 'Read', category: 'Read', inputJson: '{}', resultEvents: [], status: 'pending', messageOrdinal: 1 },
+    ]);
+    writeSessionToDatabase(initial, db);
+
+    // Verify 2 tool activities
+    const turnsFirst = await assembleTurns(sessionId, db);
+    const toolsFirst = turnsFirst[0]?.activities.filter(a => a.type === 'tool_call') ?? [];
+    expect(toolsFirst.length).toBe(2);
+
+    // Second sync with force=true and only 1 tool call
+    const updated = makeParseResultWithTools(sessionId, [
+      { id: 'tc_new', name: 'Grep', category: 'Grep', inputJson: '{"pattern":"x"}', resultEvents: [{ type: 'result_event', content: 'match', isPartial: false } as TraceToolResultEvent], status: 'success', messageOrdinal: 1 },
+    ]);
+    writeSessionToDatabase(updated, db, undefined, { force: true });
+
+    // Verify 1 tool activity (stale rows removed)
+    const turnsSecond = await assembleTurns(sessionId, db);
+    const toolsSecond = turnsSecond[0]?.activities.filter(a => a.type === 'tool_call') ?? [];
+    expect(toolsSecond.length).toBe(1);
+    expect((toolsSecond[0] as TraceToolCall).name).toBe('Grep');
+  });
+
+  it('tool_result-only messages do not create spurious turns', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-tool-result-role';
+
+    // Simulate a parse result where the tool result message has role=tool_result
+    const parseResult: ParseResult = {
+      session: {
+        id: sessionId,
+        source: 'claude-code',
+        project: 'test',
+        name: 'Test',
+        startedAt: '2024-01-01T00:00:00Z',
+        endedAt: '2024-01-01T01:00:00Z',
+        status: 'idle',
+        metrics: { messageCount: 3, userMessageCount: 1, hasToolCalls: true, parserMalformedLines: 0, isTruncated: false },
+        turns: [],
+      },
+      messages: [
+        { id: `${sessionId}:0`, ordinal: 0, role: 'user', content: 'Run ls', sourceMetadata: { sourceType: 'claude-code', sourceFile: '/f.jsonl', sourceLine: 1 } },
+        { id: `${sessionId}:1`, ordinal: 1, role: 'assistant', content: 'Running...', sourceMetadata: { sourceType: 'claude-code', sourceFile: '/f.jsonl', sourceLine: 2 } },
+        { id: `${sessionId}:2`, ordinal: 2, role: 'tool_result', content: 'file1.ts', sourceMetadata: { sourceType: 'claude-code', sourceFile: '/f.jsonl', sourceLine: 3 } },
+      ],
+      activities: [
+        { type: 'tool_call', id: 'toolu_ls', name: 'Bash', category: 'Bash', inputJson: '{"command":"ls"}', resultEvents: [{ type: 'result_event', content: 'file1.ts', isPartial: false }], status: 'success', messageOrdinal: 1 } as TraceToolCall,
+      ],
+      errors: [],
+      warnings: [],
+    };
+
+    writeSessionToDatabase(parseResult, db);
+
+    const turns = await assembleTurns(sessionId, db);
+
+    // Should produce exactly 1 turn (user msg at ordinal 0 starts it)
+    // The tool_result message should not create a new turn
+    expect(turns.length).toBe(1);
+    expect(turns[0].userMessage?.content).toBe('Run ls');
+  });
+});
