@@ -105,7 +105,7 @@ function renderCellValue(
     case 'project':
       return deriveProject(session)
     case 'updatedAt':
-      return fmtAgo(session.endedAt || session.startedAt)
+      return fmtAgo(session.updatedAt ?? null)
     default:
       return formatUnknownCellValue(dynamicSession[accessor])
   }
