@@ -153,6 +153,12 @@ export interface ClaudeJsonlLine {
           name?: string;
           input?: any;
           id?: string;
+          // thinking block fields (Claude extended thinking)
+          thinking?: string;
+          // tool_result block fields
+          tool_use_id?: string;
+          content?: string | Array<any>;
+          is_error?: boolean;
         }>;
     model?: string;
     usage?: { input_tokens?: number; output_tokens?: number };
