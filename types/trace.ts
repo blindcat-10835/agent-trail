@@ -198,6 +198,10 @@ export interface TraceToolCall {
   status: 'pending' | 'success' | 'error';
   error?: string;
   durationMs?: number;
+  /** Ordinal of the message that owns this tool call — used by sync to write tool_calls.message_ordinal */
+  messageOrdinal?: number;
+  /** Source line number for diagnostics */
+  sourceLine?: number;
 }
 
 /**

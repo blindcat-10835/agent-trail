@@ -251,3 +251,23 @@ export interface CodexTurnContext {
   model?: string;
   startedAt?: string;
 }
+
+// ============================================================================
+// Parser Activity Metadata Helpers
+// ============================================================================
+
+/**
+ * Parser-level metadata for tool call creation
+ *
+ * Carries message-level context (ordinal, source line) so the sync layer can
+ * write tool_calls.message_ordinal and tool_calls.source_line into the DB.
+ * This avoids adding parser-internal fields directly to the canonical model
+ * (TraceToolCall) where possible; for sync correctness, messageOrdinal IS
+ * promoted to TraceToolCall as an optional field.
+ */
+export interface ParserToolCallMeta {
+  /** Ordinal of the message that owns this tool call */
+  messageOrdinal: number;
+  /** Source line number in the JSONL file for diagnostics */
+  sourceLine: number;
+}
