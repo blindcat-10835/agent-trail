@@ -306,6 +306,7 @@ describe('turn assembler', () => {
       const tc = toolCalls[0] as any;
       expect(tc.name).toBe('Read');
       expect(tc.status).toBe('success');
+      expect(tc.messageOrdinal).toBe(1);
       expect(tc.resultEvents.length).toBeGreaterThanOrEqual(1);
       expect(tc.resultEvents[0].content).toBe('File contents here...');
     });
@@ -375,6 +376,67 @@ describe('turn assembler', () => {
       const link = subagentLinks[0] as any;
       expect(link.subagentSessionId).toBe('child-session-1');
       expect(link.relationship).toBe('spawned');
+    });
+
+    it('should anchor subagent links to the turn and messageOrdinal of the matching Agent tool call', async () => {
+      const { assembleTurns } = await import('@/ingest/turns/assembler');
+      const sessionId = 'test-parent-agent-anchor';
+
+      insertMessage(db, sessionId, 0, 'user', 'First turn', '2024-01-01T00:00:00Z');
+      insertMessage(db, sessionId, 1, 'assistant', 'No subagent yet', '2024-01-01T00:00:05Z');
+      insertMessage(db, sessionId, 2, 'user', 'Spawn subagent', '2024-01-01T00:01:00Z');
+      insertMessage(db, sessionId, 3, 'assistant', 'Launching subagent', '2024-01-01T00:01:05Z');
+
+      const toolCallId = insertToolCall(
+        db,
+        sessionId,
+        3,
+        'toolu_agent_anchor',
+        'Agent',
+        'success',
+        '{"prompt":"do work"}',
+        'Agent'
+      );
+      insertToolResultEvent(
+        db,
+        toolCallId as number,
+        'Async agent launched successfully.\nagentId: agent-123',
+        0
+      );
+
+      db.prepare(`
+        INSERT INTO sessions (
+          id, source, project, started_at, ended_at, status,
+          message_count, user_message_count, has_tool_calls,
+          parser_malformed_lines, is_truncated, file_path,
+          parent_session_id, source_session_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'claude-agent:test-parent-agent-anchor:agent-123',
+        'claude-code',
+        'test',
+        '2024-01-01T00:01:10Z',
+        '2024-01-01T00:02:00Z',
+        'idle',
+        2,
+        1,
+        0,
+        0,
+        0,
+        'child.jsonl',
+        sessionId,
+        'agent-123'
+      );
+
+      const turns = await assembleTurns(sessionId, db);
+
+      expect(turns).toHaveLength(2);
+      expect(turns[0].activities.some((activity) => activity.type === 'subagent_link')).toBe(false);
+      const subagentLinks = turns[1].activities.filter((activity) => activity.type === 'subagent_link');
+      expect(subagentLinks).toHaveLength(1);
+      expect((subagentLinks[0] as any).subagentSessionId).toBe('claude-agent:test-parent-agent-anchor:agent-123');
+      expect((subagentLinks[0] as any).messageOrdinal).toBe(3);
     });
   });
 });

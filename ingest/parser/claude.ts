@@ -249,6 +249,42 @@ export async function parseClaudeSession(
 
       const role = parsed.message.role;
 
+      const userTextContent = role === 'user' ? getClaudeTextContent(parsed) : '';
+      const taskNotification = parseClaudeTaskNotification(userTextContent);
+      if (taskNotification) {
+        if (taskNotification.toolUseId && toolCallMap.has(taskNotification.toolUseId)) {
+          const toolCall = toolCallMap.get(taskNotification.toolUseId)!;
+          toolCall.resultEvents.push({
+            type: 'result_event',
+            timestamp: parsed.timestamp,
+            content: taskNotification.content,
+            isPartial: false,
+          });
+          toolCall.status = 'success';
+        } else {
+          warnings.push(
+            `Line ${lineNum}: task notification for unknown tool_use_id: ${taskNotification.toolUseId || '(missing)'}`
+          );
+        }
+        continue;
+      }
+
+      if (isClaudeRequestInterrupted(userTextContent)) {
+        messages.push(createClaudeSystemMessage(
+          context,
+          ordinal,
+          lineNum,
+          '[Request interrupted by user]',
+          parsed.timestamp,
+          sessionCwd,
+          sessionGitBranch,
+          currentTurnId,
+          currentTurnIndex >= 0 ? currentTurnIndex : undefined
+        ));
+        ordinal++;
+        continue;
+      }
+
       if (role === 'user' && isClaudeLocalCommandMessage(parsed)) {
         continue;
       }
@@ -538,12 +574,88 @@ function isClaudeLocalCommandMessage(parsed: ClaudeJsonlLine): boolean {
   if (typeof content !== 'string') return false;
 
   const normalized = content.trim().toLowerCase();
+  if (normalized.startsWith('<command-message')) return false;
   return (
     normalized.startsWith('<local-command-caveat') ||
     normalized.startsWith('<local-command-stdout') ||
-    normalized.startsWith('<command-name>') ||
-    normalized.startsWith('<command-message')
+    normalized.startsWith('<command-name>')
   );
+}
+
+function getClaudeTextContent(parsed: ClaudeJsonlLine): string {
+  const content = parsed.message?.content;
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+
+  return content
+    .filter((block: any) => block?.type === 'text' && typeof block.text === 'string')
+    .map((block: any) => block.text)
+    .join('\n');
+}
+
+function isClaudeRequestInterrupted(content: string): boolean {
+  return content.trim() === '[Request interrupted by user]';
+}
+
+function parseClaudeTaskNotification(content: string): {
+  taskId?: string;
+  toolUseId?: string;
+  content: string;
+} | null {
+  const trimmed = content.trim();
+  if (!trimmed.toLowerCase().startsWith('<task-notification>')) return null;
+
+  return {
+    taskId: extractXmlTag(trimmed, 'task-id'),
+    toolUseId: extractXmlTag(trimmed, 'tool-use-id'),
+    content: trimmed,
+  };
+}
+
+function extractClaudeCommandUserContent(content: unknown): string {
+  if (typeof content !== 'string') return '';
+
+  const commandName = extractXmlTag(content, 'command-name');
+  const commandArgs = extractXmlTag(content, 'command-args');
+  if (!commandName) return '';
+
+  return [commandName, commandArgs].filter(Boolean).join(' ').trim();
+}
+
+function extractXmlTag(content: string, tagName: string): string | undefined {
+  const match = content.match(new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, 'i'));
+  return match?.[1]?.trim() || undefined;
+}
+
+function createClaudeSystemMessage(
+  context: SessionContext,
+  ordinal: number,
+  lineNum: number,
+  content: string,
+  timestamp?: string,
+  cwd?: string,
+  gitBranch?: string,
+  turnId?: string,
+  turnIndex?: number
+): TraceMessage {
+  return {
+    id: `${context.uuid}-${ordinal}`,
+    ordinal,
+    role: 'system',
+    content,
+    timestamp,
+    turnId,
+    turnIndex,
+    isRealUserInput: false,
+    sourceMetadata: {
+      sourceType: 'claude-code',
+      sourceFile: context.filePath,
+      sourceLine: lineNum,
+      sourceVersion: (context as any).sourceVersion || 'unknown',
+      cwd,
+      gitBranch,
+    },
+  };
 }
 
 // ============================================================================
@@ -571,7 +683,12 @@ function parseMessage(
 
   // Extract content from message
   let content = '';
-  if (typeof msg.content === 'string') {
+  const commandUserContent = msg.role === 'user'
+    ? extractClaudeCommandUserContent(msg.content)
+    : '';
+  if (commandUserContent) {
+    content = commandUserContent;
+  } else if (typeof msg.content === 'string') {
     content = msg.content;
   } else if (Array.isArray(msg.content)) {
     // Concatenate text blocks; tool_use blocks handled separately

@@ -248,6 +248,8 @@ export interface TraceSubagentLink {
   subagentSessionId: string;
   subagentSource: TraceSource;
   relationship: 'spawned' | 'attached';
+  /** Ordinal of the message that spawned or attached the subagent, when known. */
+  messageOrdinal?: number;
 }
 
 // ============================================================================

@@ -406,4 +406,23 @@ describe('Codex parser — 08-02 repair: messageOrdinal on tool calls', () => {
     expect(typeof toolCalls[0].messageOrdinal).toBe('number');
     expect(typeof toolCalls[0].sourceLine).toBe('number');
   });
+
+  it('should not surface function_call placeholders as assistant-visible text', async () => {
+    const jsonl = [
+      '{"type":"session_meta","session_meta":{"session_id":"codex-rp-004","model":"gpt-5"}}',
+      '{"type":"response_item","response_item":{"type":"input_text","input_text":"Run ls","token_count":2}}',
+      '{"type":"response_item","response_item":{"type":"function_call","call_id":"call-rp-04","name":"exec_command","arguments":"{\\"cmd\\":\\"ls\\"}","token_count":5}}',
+      '{"type":"response_item","response_item":{"type":"text","text":"Done.","token_count":1}}',
+    ].join('\n');
+
+    const filePath = writeFixture('fc-placeholder-hidden.jsonl', jsonl);
+    const result = await parseCodexSession(filePath, 'test-project');
+
+    const assistantContents = result.messages
+      .filter((message) => message.role === 'assistant')
+      .map((message) => message.content);
+    expect(assistantContents).not.toContain('[function_call: exec_command]');
+    expect(assistantContents).toContain('');
+    expect(assistantContents).toContain('Done.');
+  });
 });

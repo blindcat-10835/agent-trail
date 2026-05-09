@@ -411,6 +411,116 @@ describe('parseClaudeSession', () => {
     expect(toolCalls[0].messageOrdinal).toBe(1);
     expect(typeof toolCalls[0].sourceLine).toBe('number');
   });
+
+  it('should treat slash command messages as real user turns and keep interruptions in the interrupted turn', async () => {
+    const commandContent = '<command-message>gsd-quick</command-message>\n<command-name>/gsd-quick</command-name>\n<command-args>spawn几个subagents分别完成三个任务。</command-args>';
+    const lines = [
+      JSON.stringify(claudeLine({
+        uuid: 'cmd-1',
+        type: 'user',
+        message: { role: 'user', content: commandContent },
+        timestamp: '2026-05-08T05:50:18.375Z',
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'skill-body',
+        parentUuid: 'cmd-1',
+        type: 'user',
+        isMeta: true,
+        message: { role: 'user', content: [{ type: 'text', text: 'Base directory for this skill: /tmp/skill' }] },
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'interrupt-1',
+        parentUuid: 'cmd-1',
+        type: 'user',
+        message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] },
+        timestamp: '2026-05-08T05:50:32.835Z',
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'cmd-2',
+        parentUuid: 'interrupt-1',
+        type: 'user',
+        message: { role: 'user', content: commandContent },
+        timestamp: '2026-05-08T05:52:08.588Z',
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'assistant-2',
+        parentUuid: 'cmd-2',
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Running quick task.' }] },
+      })),
+    ];
+    const filePath = writeFixture('slash-command-interrupt.jsonl', lines);
+
+    const result = await parseClaudeSession(filePath, 'test-project');
+    const userMessages = result.messages.filter((message) => message.role === 'user');
+    const systemMessages = result.messages.filter((message) => message.role === 'system');
+
+    expect(userMessages.map((message) => message.content)).toEqual([
+      '/gsd-quick spawn几个subagents分别完成三个任务。',
+      '/gsd-quick spawn几个subagents分别完成三个任务。',
+    ]);
+    expect(userMessages.map((message) => message.turnIndex)).toEqual([0, 1]);
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].content).toBe('[Request interrupted by user]');
+    expect(systemMessages[0].turnIndex).toBe(0);
+  });
+
+  it('should attach task notifications to the matching Agent tool call without creating user turns', async () => {
+    const lines = [
+      JSON.stringify(claudeLine({
+        uuid: 'cmd',
+        type: 'user',
+        message: {
+          role: 'user',
+          content: '<command-message>gsd-quick</command-message>\n<command-name>/gsd-quick</command-name>\n<command-args>spawn task</command-args>',
+        },
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'agent-tool',
+        parentUuid: 'cmd',
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'Launching agent.' },
+            { type: 'tool_use', id: 'toolu_agent_01', name: 'Agent', input: { prompt: 'do work' } },
+          ],
+        },
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'agent-launch-result',
+        parentUuid: 'agent-tool',
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_agent_01', content: 'agentId: agent-123', is_error: false },
+          ],
+        },
+      })),
+      JSON.stringify(claudeLine({
+        uuid: 'task-notification',
+        parentUuid: 'agent-launch-result',
+        type: 'user',
+        message: {
+          role: 'user',
+          content: '<task-notification>\n<task-id>agent-123</task-id>\n<tool-use-id>toolu_agent_01</tool-use-id>\n<output>done</output>\n</task-notification>',
+        },
+      })),
+    ];
+    const filePath = writeFixture('task-notification-agent-result.jsonl', lines);
+
+    const result = await parseClaudeSession(filePath, 'test-project');
+    const userMessages = result.messages.filter((message) => message.role === 'user');
+    const toolCalls = result.activities.filter((activity) => activity.type === 'tool_call') as TraceToolCall[];
+
+    expect(userMessages).toHaveLength(1);
+    expect(userMessages[0].content).toBe('/gsd-quick spawn task');
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].name).toBe('Agent');
+    expect(toolCalls[0].resultEvents).toHaveLength(2);
+    expect(toolCalls[0].resultEvents[1].content).toContain('<task-id>agent-123</task-id>');
+  });
 });
 
 // ============================================================================

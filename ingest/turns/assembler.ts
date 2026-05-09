@@ -215,7 +215,7 @@ async function pairToolCalls(
     const toolCalls = db
       .prepare(
         `
-      SELECT id, tool_id, name, category, input_json, status, error, duration_ms
+      SELECT id, message_ordinal, tool_id, name, category, input_json, status, error, duration_ms
       FROM tool_calls
       WHERE session_id = ? AND message_ordinal IN (${placeholders})
     `
@@ -250,6 +250,7 @@ async function pairToolCalls(
         status: tc.status as 'pending' | 'success' | 'error',
         error: tc.error || undefined,
         durationMs: tc.duration_ms || undefined,
+        messageOrdinal: tc.message_ordinal,
       };
 
       turn.activities.push(activity);
@@ -265,7 +266,7 @@ async function pairToolCalls(
  * Link subagent sessions to their parent session's turns.
  *
  * Queries sessions table for child sessions (parent_session_id = sessionId)
- * and adds TraceSubagentLink activities to the first turn.
+ * and anchors each TraceSubagentLink to the turn/tool call that spawned it.
  *
  * @param turns - Assembled turns
  * @param sessionId - Parent session ID
@@ -280,25 +281,24 @@ async function linkSubagents(
   const childSessions = db
     .prepare(
       `
-    SELECT id, source FROM sessions
+    SELECT id, source, source_session_id, started_at FROM sessions
     WHERE parent_session_id = ?
   `
     )
-    .all(sessionId) as { id: string; source: string }[];
+    .all(sessionId) as ChildSessionRow[];
 
   if (childSessions.length === 0) return;
 
-  // Link subagents to the first turn (where they were spawned)
-  // If no turns exist, skip
-  const targetTurn = turns[0];
-  if (!targetTurn) return;
-
   for (const child of childSessions) {
-    targetTurn.activities.push({
+    const anchor = findSubagentAnchor(turns, child);
+    if (!anchor) continue;
+
+    anchor.turn.activities.push({
       type: 'subagent_link',
       subagentSessionId: child.id,
       subagentSource: child.source as TraceSource,
       relationship: 'spawned',
+      messageOrdinal: anchor.messageOrdinal,
     } as TraceSubagentLink);
   }
 }
@@ -325,6 +325,7 @@ interface MessageRow {
 
 interface ToolCallRow {
   id: number;
+  message_ordinal: number;
   tool_id: string;
   name: string;
   category: string | null;
@@ -338,6 +339,13 @@ interface ResultEventRow {
   content: string;
   is_partial: number;
   timestamp: string | null;
+}
+
+interface ChildSessionRow {
+  id: string;
+  source: string;
+  source_session_id: string | null;
+  started_at: string | null;
 }
 
 // ============================================================================
@@ -417,6 +425,47 @@ function assembleTurnsFromStoredBoundaries(
         isTruncated: systemActivities.some((activity) => activity.subtype === 'compact') || undefined,
       };
     });
+}
+
+function findSubagentAnchor(
+  turns: TraceTurn[],
+  child: ChildSessionRow
+): { turn: TraceTurn; messageOrdinal?: number } | null {
+  let firstAgentToolAnchor: { turn: TraceTurn; messageOrdinal?: number } | null = null;
+
+  for (const turn of turns) {
+    for (const activity of turn.activities) {
+      if (activity.type !== 'tool_call') continue;
+      const isAgentTool =
+        activity.category === 'Agent' ||
+        activity.category === 'Task' ||
+        activity.name.toLowerCase().includes('agent') ||
+        activity.name.toLowerCase().includes('task');
+
+      if (isAgentTool && !firstAgentToolAnchor) {
+        firstAgentToolAnchor = { turn, messageOrdinal: activity.messageOrdinal };
+      }
+
+      if (toolCallReferencesChild(activity, child)) {
+        return { turn, messageOrdinal: activity.messageOrdinal };
+      }
+    }
+  }
+
+  return firstAgentToolAnchor || (turns[0] ? { turn: turns[0] } : null);
+}
+
+function toolCallReferencesChild(toolCall: TraceToolCall, child: ChildSessionRow): boolean {
+  const needles = [child.id, child.source_session_id]
+    .filter((value): value is string => Boolean(value && value.trim()));
+  if (needles.length === 0) return false;
+
+  const haystack = [
+    toolCall.inputJson,
+    ...toolCall.resultEvents.map((event) => event.content),
+  ].join('\n');
+
+  return needles.some((needle) => haystack.includes(needle));
 }
 
 function finalizeTurn(

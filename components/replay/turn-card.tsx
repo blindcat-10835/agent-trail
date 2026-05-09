@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { Wrench, Sparkles, Bot, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react'
-import type { TraceTurn, TraceActivity } from '@/types/trace'
+import type { TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
 import { useReplayStore } from '@/stores/replay-store'
 import { cn } from '@/lib/utils'
 import { ToolBlock } from './tool-block'
@@ -21,6 +21,17 @@ export function TurnCard({ turn }: TurnCardProps) {
   const toggleTurn = useReplayStore((s) => s.toggleTurn)
   const isExpanded = expandedTurns.has(turn.id)
   const [copied, setCopied] = useState(false)
+  const activityEntries = turn.activities.map((activity, idx) => ({ activity, idx }))
+  const activitiesByOrdinal = groupActivityEntriesByOrdinal(activityEntries)
+  const messageOrdinals = new Set(turn.assistantMessages.map((message) => message.ordinal))
+  const unanchoredActivityEntries = activityEntries.filter(
+    ({ activity }) => getActivityMessageOrdinal(activity) == null
+  )
+  const orphanedAnchoredActivityEntries = activityEntries.filter(({ activity }) => {
+    const ordinal = getActivityMessageOrdinal(activity)
+    return ordinal != null && !messageOrdinals.has(ordinal)
+  })
+  const hasVisibleAssistantMessages = turn.assistantMessages.some(shouldRenderAssistantMessage)
 
   // Count activity types for collapsed badges
   const toolCount = turn.activities.filter((a) => a.type === 'tool_call').length
@@ -33,7 +44,9 @@ export function TurnCard({ turn }: TurnCardProps) {
       text += `**User:** ${turn.userMessage.content}\n\n`
     }
     turn.assistantMessages.forEach((m) => {
-      text += `**Assistant:** ${m.content}\n\n`
+      if (shouldRenderAssistantMessage(m)) {
+        text += `**Assistant:** ${m.content}\n\n`
+      }
     })
     await navigator.clipboard.writeText(text)
     setCopied(true)
@@ -120,8 +133,8 @@ export function TurnCard({ turn }: TurnCardProps) {
             </div>
           )}
 
-          {/* Activity blocks — rendered inline between user and assistant */}
-          {turn.activities.map((activity, idx) => (
+          {/* Unanchored activity blocks — system events without a message ordinal */}
+          {unanchoredActivityEntries.map(({ activity, idx }) => (
             <ActivityBlock
               key={getActivityKey(activity, idx, turn.index)}
               activity={activity}
@@ -131,21 +144,60 @@ export function TurnCard({ turn }: TurnCardProps) {
 
           {/* Assistant message(s) */}
           {turn.assistantMessages.length > 0 && (
-            <div className="px-4 py-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  ASSISTANT
-                </span>
-              </div>
-              {turn.assistantMessages.map((msg, index) => (
-                <div key={getMessageKey(msg, index)} className="group relative">
-                  <div className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap break-words">
-                    {msg.content}
+            <>
+              {hasVisibleAssistantMessages && (
+                <div className="px-4 pt-3">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      ASSISTANT
+                    </span>
                   </div>
-                  <CopyMessageButton content={msg.content} />
                 </div>
+              )}
+              {turn.assistantMessages.map((msg, index) => {
+                const attachedActivities = activitiesByOrdinal.get(msg.ordinal) ?? []
+                const showMessage = shouldRenderAssistantMessage(msg)
+
+                return (
+                  <div key={getMessageKey(msg, index)}>
+                    {showMessage && (
+                      <div className="group relative px-4 pb-3">
+                        <div className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                          {msg.content}
+                        </div>
+                        <CopyMessageButton content={msg.content} />
+                      </div>
+                    )}
+                    {attachedActivities.map(({ activity, idx }) => (
+                      <ActivityBlock
+                        key={getActivityKey(activity, idx, turn.index)}
+                        activity={activity}
+                        turnIndex={turn.index}
+                      />
+                    ))}
+                  </div>
+                )
+              })}
+              {orphanedAnchoredActivityEntries.map(({ activity, idx }) => (
+                <ActivityBlock
+                  key={getActivityKey(activity, idx, turn.index)}
+                  activity={activity}
+                  turnIndex={turn.index}
+                />
               ))}
-            </div>
+            </>
+          )}
+
+          {turn.assistantMessages.length === 0 && orphanedAnchoredActivityEntries.length > 0 && (
+            <>
+              {orphanedAnchoredActivityEntries.map(({ activity, idx }) => (
+                <ActivityBlock
+                  key={getActivityKey(activity, idx, turn.index)}
+                  activity={activity}
+                  turnIndex={turn.index}
+                />
+              ))}
+            </>
           )}
 
           {/* Turn metadata footer */}
@@ -204,6 +256,36 @@ function ActivityBlock({ activity, turnIndex }: { activity: TraceActivity; turnI
     default:
       return null
   }
+}
+
+type ActivityEntry = {
+  activity: TraceActivity
+  idx: number
+}
+
+function groupActivityEntriesByOrdinal(entries: ActivityEntry[]): Map<number, ActivityEntry[]> {
+  const grouped = new Map<number, ActivityEntry[]>()
+  for (const entry of entries) {
+    const ordinal = getActivityMessageOrdinal(entry.activity)
+    if (ordinal == null) continue
+    const existing = grouped.get(ordinal) ?? []
+    existing.push(entry)
+    grouped.set(ordinal, existing)
+  }
+  return grouped
+}
+
+function getActivityMessageOrdinal(activity: TraceActivity): number | undefined {
+  if (activity.type === 'tool_call') return activity.messageOrdinal
+  if (activity.type === 'subagent_link') return activity.messageOrdinal
+  return undefined
+}
+
+function shouldRenderAssistantMessage(message: TraceMessage): boolean {
+  if (message.role !== 'assistant') return false
+  const content = message.content.trim()
+  if (!content) return false
+  return !/^\[(function_call|custom_tool_call):/i.test(content)
 }
 
 function formatDuration(ms: number): string {

@@ -17,7 +17,7 @@ import { getDatabase } from '../db';
 import { ParseResult } from '../parser/types';
 import { sseManager } from '../src/sse';
 
-const PARSER_CACHE_VERSION = 'parser-v6-turns-relations';
+const PARSER_CACHE_VERSION = 'parser-v7-turn-activity-placement';
 
 // ============================================================================
 // Types
