@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import { Wrench, Sparkles, Bot, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react'
 import type { TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
 import { useReplayStore } from '@/stores/replay-store'
@@ -11,29 +11,7 @@ import { SubagentBlock } from './subagent-block'
 import { ThinkingBlock } from './thinking-block'
 import { SystemEventBlock } from './system-event-block'
 import { getActivityKey, getMessageKey } from './key-utils'
-
-/** Split text on query matches, wrap matches in <mark> */
-function HighlightMatch({ text, query }: { text: string; query: string }) {
-  if (!query) return <>{text}</>
-  const parts = useMemo(() => {
-    const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi')
-    return text.split(regex)
-  }, [text, query])
-
-  return (
-    <>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.toLowerCase()
-          ? <mark key={i} className="bg-accent/30 text-foreground rounded-sm px-0.5">{part}</mark>
-          : part
-      )}
-    </>
-  )
-}
-
-function escapeRegExp(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
+import { MarkdownContent } from './markdown-content'
 
 interface TurnCardProps {
   turn: TraceTurn
@@ -151,9 +129,11 @@ export function TurnCard({ turn }: TurnCardProps) {
                 </span>
                 <CopyMessageButton content={turn.userMessage.content} />
               </div>
-              <div className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap break-words font-mono">
-                <HighlightMatch text={turn.userMessage.content} query={searchQuery} />
-              </div>
+              <MarkdownContent
+                content={turn.userMessage.content}
+                searchQuery={searchQuery}
+                className="text-[12px] leading-relaxed text-foreground"
+              />
             </div>
           )}
 
@@ -186,9 +166,11 @@ export function TurnCard({ turn }: TurnCardProps) {
                   <div key={getMessageKey(msg, index)}>
                     {showMessage && (
                       <div className="group relative px-4 pb-3">
-                        <div className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap break-words">
-                          <HighlightMatch text={msg.content} query={searchQuery} />
-                        </div>
+                        <MarkdownContent
+                          content={msg.content}
+                          searchQuery={searchQuery}
+                          className="text-[12px] leading-relaxed text-foreground"
+                        />
                         <CopyMessageButton content={msg.content} />
                       </div>
                     )}

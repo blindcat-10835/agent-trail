@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Brain, ChevronDown, ChevronRight } from 'lucide-react'
 import type { TraceThinkingBlock } from '@/types/trace'
+import { MarkdownContent } from './markdown-content'
 
 interface ThinkingBlockProps {
   thinking: TraceThinkingBlock
@@ -36,9 +37,10 @@ export function ThinkingBlock({ thinking }: ThinkingBlockProps) {
               Thinking content was redacted in the source log.
             </div>
           ) : (
-            <div className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words bg-background/50 p-2 border border-border">
-              {thinking.content}
-            </div>
+            <MarkdownContent
+              content={thinking.content}
+              className="text-[11px] text-muted-foreground bg-background/50 p-2 border border-border"
+            />
           )}
         </div>
       )}
