@@ -85,6 +85,7 @@ BFF 为我们免费提供了四个属性：
 
 ```ts
 const adapters: Record<string, AgentToolServerAdapter> = {
+  all: allAdapter,           // 跨源，不做 source 过滤
   openclaw: openclawAdapter,
   'claude-code': claudeCodeAdapter,
   codex: codexAdapter,
@@ -93,7 +94,7 @@ const adapters: Record<string, AgentToolServerAdapter> = {
 
 适配器是纯粹的分发器 — 路由处理器中没有 `if (toolId === 'openclaw')` 分支。BFF 中唯一按工具区分的代码是位于 `/api/agent-tools/[tool]/sessions/lookup` 的 OpenClaw 专属 Gateway 查找（依据 D-10）。
 
-第四个作用域 `all` 是合成的聚合视图 — 它不是一个摄取数据源。`assertSourceToolId` 拒绝 `all`；它仅被 shell 布局使用的更宽松的 `assertAgentToolId` 接受。
+第四个作用域 `all` 是合成的聚合视图。它有自己的 adapter（`allAdapter`），直接调 ingest API 不做 source 过滤，支持在 ALL 模式下查看任意 session 的详情、turns 和 messages。`assertSourceToolId` 仍拒绝 `all`；BFF route 在 `tool === 'all'` 时直接使用 `allAdapter` 而不经过 `assertSourceToolId`。
 
 ### 3.3 信任边界总结
 

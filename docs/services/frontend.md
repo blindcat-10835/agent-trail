@@ -121,7 +121,7 @@ types/
 56px
 ```
 
-网格模板列在 `useUIStore((s) => s.rightRailOpen)` 切换时，在 `'56px 1fr 0px'` 和 `'56px 1fr 360px'` 之间动画过渡。
+网格模板列在 `useUIStore((s) => s.rightRailOpen)` 切换时，在 `'56px minmax(0, 1fr)'` 和 `'56px minmax(0, 1fr) 4px {rightRailWidth}px'` 之间切换。`rightRailWidth` 存储在 ui-store（默认 360px，范围 280-720px），通过 4px 拖拽手柄实时调整。
 
 ---
 
@@ -245,7 +245,7 @@ Hooks 通过 `EventSource('/api/agent-tools/<tool>/events?sessionId=...')`（每
 | --- | --- |
 | `tool-store` | 当前选中的 sessionId（`selectedSessionId`），侧边栏折叠/展开等。 |
 | `replay-store` | 每轮的 `expandedTurns: Set<string>`、`searchQuery`、`searchMatches`、`currentMatchIndex`、`currentTurnIndex`、`focusedTurnId`、按 session ID 保存的滚动位置。 |
-| `ui-store` | `rightRailOpen`、模态框状态 — 仅视觉外壳。 |
+| `ui-store` | `rightRailOpen`、`rightRailWidth`（280-720px，默认 360px）、模态框状态 — 仅视觉外壳。 |
 | `ingest-health-store` | `status: 'checking' \| 'connected' \| 'timeout'`、`hasConnectedOnce: boolean`，以及 `retry / setConnected / setTimeout` 操作。由 `IngestHealthOverlay` 轮询。 |
 | `theme-store` | `'light' \| 'dark' \| 'system'`。**通过 `app/layout.tsx` 中的内联脚本同步引导**，以避免 FOUC。store 在挂载后水合。 |
 | `office-layout/office-layout-store` + `office-map` | OpenClaw Office 2D 平面图布局持久化（拖拽位置、缩放）。 |
