@@ -206,9 +206,6 @@ CREATE INDEX IF NOT EXISTS idx_tool_result_events_tool_call_id ON tool_result_ev
 CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);
 CREATE INDEX IF NOT EXISTS idx_turns_session_index ON turns(session_id, turn_index);
 
--- Agent name indexes
-CREATE INDEX IF NOT EXISTS idx_sessions_agent_name ON sessions(agent_name);
-
 -- ============================================================================
 -- WAL Mode (Write-Ahead Logging)
 -- ============================================================================
