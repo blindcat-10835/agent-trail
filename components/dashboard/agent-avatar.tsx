@@ -1,30 +1,22 @@
 'use client'
 
-/**
- * Agent avatar — first-character glyph with status-colored border
- */
+import type { AgentInfo } from '@/types/trace'
+import { AGENT_STATUS_META } from './agent-status-meta'
 
-interface AgentAvatarProps {
-  name: string
-  statusColor?: string
-  size?: number
-}
-
-export function AgentAvatar({ name, statusColor, size = 32 }: AgentAvatarProps) {
-  const glyph = name.charAt(0).toUpperCase()
+export function AgentAvatar({ agent, size = 32 }: { agent: AgentInfo; size?: number }) {
+  const glyph = agent.name.charAt(0).toUpperCase()
 
   return (
     <div
-      className="flex items-center justify-center rounded border font-mono font-bold shrink-0"
+      className="hud-clip-sm border border-border-strong bg-background grid place-items-center font-bold shrink-0 overflow-hidden"
       style={{
         width: size,
         height: size,
-        fontSize: size * 0.45,
-        borderColor: statusColor ?? 'var(--color-border)',
-        color: statusColor ?? 'var(--color-foreground)',
+        fontSize: size * 0.5,
+        color: AGENT_STATUS_META[agent.latestStatus]?.color,
       }}
     >
-      {glyph}
+      <span>{glyph}</span>
     </div>
   )
 }

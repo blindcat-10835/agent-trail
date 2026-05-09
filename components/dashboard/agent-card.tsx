@@ -1,12 +1,6 @@
 'use client'
 
-/**
- * Agent card for the OpenClaw dashboard overview
- *
- * Displays agent name, session count, status indicator, last active time,
- * and tool call count.
- */
-
+import { cn } from '@/lib/utils'
 import type { AgentInfo } from '@/types/trace'
 import { AgentAvatar } from './agent-avatar'
 import { AGENT_STATUS_META } from './agent-status-meta'
@@ -15,56 +9,58 @@ interface AgentCardProps {
   agent: AgentInfo
 }
 
-function formatRelativeTime(isoString: string | null): string {
-  if (!isoString) return 'never'
-  const diff = Date.now() - new Date(isoString).getTime()
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
 export function AgentCard({ agent }: AgentCardProps) {
-  const meta = AGENT_STATUS_META[agent.latestStatus] ?? AGENT_STATUS_META.unknown
+  const m = AGENT_STATUS_META[agent.latestStatus] ?? AGENT_STATUS_META.unknown
 
   return (
-    <div className="border border-border bg-card p-3 flex flex-col gap-2 hover:bg-accent/5 transition-colors">
-      {/* Header row: avatar + name + status */}
-      <div className="flex items-center gap-2.5">
-        <AgentAvatar name={agent.name} statusColor={meta.color} />
-        <div className="flex flex-col min-w-0 flex-1">
-          <span className="text-sm font-semibold truncate">{agent.name}</span>
-          <div className="flex items-center gap-1.5">
-            <span
-              className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
-              style={{ backgroundColor: meta.color }}
-            />
-            <span
-              className="text-[10px] font-medium tracking-[0.1em] uppercase"
-              style={{ color: meta.color }}
-            >
-              {meta.label}
-            </span>
+    <div
+      className={cn(
+        'hud-clip-md bg-card px-4 py-3.5 grid gap-2 hover:bg-accent/5 transition-colors relative outline outline-1 outline-border outline-offset-[-1px]',
+        agent.latestStatus === 'error' && 'outline-destructive/50',
+      )}
+    >
+      {/* Glowing left-edge status bar */}
+      <div
+        className="absolute left-0 top-3 bottom-3 w-0.5"
+        style={{ background: m.color, boxShadow: `0 0 8px ${m.color}` }}
+      />
+
+      {/* Header: avatar + name + status badge */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <AgentAvatar agent={agent} />
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-foreground truncate tracking-wide">
+              {agent.name}
+            </div>
+            <div className="text-[10px] text-muted-foreground tracking-wider">
+              {agent.sessionCount} session{agent.sessionCount !== 1 ? 's' : ''}
+            </div>
           </div>
         </div>
+        <span
+          className="hud-clip-sm inline-flex items-center gap-1 px-2 py-0.5 border text-[9px] tracking-[0.15em] uppercase font-bold shrink-0"
+          style={{
+            borderColor: m.color,
+            color: m.color,
+            background: `color-mix(in oklch, ${m.color} 10%, transparent)`,
+          }}
+        >
+          <span className={cn('w-1.5 h-1.5 rounded-full bg-current', m.live && 'animate-pulse')} />
+          {m.label}
+        </span>
       </div>
 
-      {/* Stats row */}
-      <div className="flex items-center gap-3 text-[11px] text-muted-foreground pt-1 border-t border-border">
-        <span>
-          <span className="font-mono text-foreground font-bold">{agent.sessionCount}</span>{' '}
-          session{agent.sessionCount !== 1 ? 's' : ''}
-        </span>
-        <span className="text-border">|</span>
-        <span>
-          <span className="font-mono text-foreground font-bold">{agent.toolCallCount}</span>{' '}
-          tools
-        </span>
-        <span className="text-border">|</span>
-        <span>{formatRelativeTime(agent.lastActiveAt)}</span>
+      {/* Footer: tool count + last active */}
+      <div className="text-[11px] text-foreground/65">
+        {agent.toolCallCount > 0 ? (
+          <>
+            <span className="text-accent mr-1">▸</span>
+            {agent.toolCallCount} tool call{agent.toolCallCount !== 1 ? 's' : ''}
+          </>
+        ) : (
+          <span className="text-muted-foreground">▸ standby</span>
+        )}
       </div>
     </div>
   )
