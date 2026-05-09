@@ -167,7 +167,7 @@ export function SessionFilterDropdown({
               Display
             </div>
             <FilterToggle
-              label="Group by agent"
+              label="Group by tool"
               active={filter.groupMode === 'agent'}
               onClick={() =>
                 onGroupModeChange(filter.groupMode === 'agent' ? 'none' : 'agent')
