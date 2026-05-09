@@ -3,7 +3,6 @@
 import { type ReactNode, useEffect } from 'react'
 import { AgentToolProvider } from '@/lib/agent-tools/client-hooks'
 import { ShellFrame } from '@/components/shell/shell-frame'
-import { GatewayBootstrap } from '@/components/hud/gateway-bootstrap'
 import { useToolStore } from '@/stores/tool-store'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 
@@ -26,9 +25,7 @@ export function ToolLayoutClient({ toolId, children }: ToolLayoutClientProps) {
 
   return (
     <AgentToolProvider toolId={toolId}>
-      <ShellFrame
-        gatewayBootstrap={toolId === 'openclaw' ? <GatewayBootstrap /> : null}
-      >
+      <ShellFrame>
         {children}
       </ShellFrame>
     </AgentToolProvider>

@@ -11,15 +11,13 @@ import { RightRail } from './right-rail'
 interface ShellFrameProps {
   /** Page content rendered in the main content area */
   children: ReactNode
-  /** Whether GatewayBootstrap should be mounted (OpenClaw only) */
-  gatewayBootstrap?: ReactNode
   /** Currently selected session ID for right rail detail */
   selectedSessionId?: string | null
   /** Callback to clear session selection (closes detail panel) */
   onCloseSession?: () => void
 }
 
-export function ShellFrame({ children, gatewayBootstrap, selectedSessionId: propSelectedSessionId, onCloseSession }: ShellFrameProps) {
+export function ShellFrame({ children, selectedSessionId: propSelectedSessionId, onCloseSession }: ShellFrameProps) {
   const rightRailOpen = useUIStore((s) => s.rightRailOpen)
   const storeSelectedSessionId = useToolStore((s) => s.selectedSessionId)
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
@@ -30,7 +28,6 @@ export function ShellFrame({ children, gatewayBootstrap, selectedSessionId: prop
 
   return (
     <div className="grid grid-rows-[48px_1fr_26px] h-screen w-screen overflow-hidden bg-background text-foreground">
-      {gatewayBootstrap}
       <ShellHeader />
       <main
         className="grid min-h-0 min-w-0 overflow-hidden transition-[grid-template-columns] duration-200"
