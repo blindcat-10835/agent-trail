@@ -5,6 +5,9 @@
  * Provides validation and default values.
  */
 
+import { resolveToolDirs } from './tool-dirs';
+import type { SourceToolId } from '@/lib/agent-tools/types';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -20,6 +23,7 @@ export interface IngestConfig {
   rateLimitRPM: number;          // default 100
   rateLimitEnabled: boolean;     // default true (parse from INGEST_RATE_LIMIT_ENABLED)
   debugMode: boolean;            // default false (parse from INGEST_DEBUG)
+  toolDirs: Map<SourceToolId, string[]>;
 }
 
 // ============================================================================
@@ -115,6 +119,8 @@ export function loadConfig(): IngestConfig {
     (process.env.INGEST_DEBUG || 'false').toLowerCase()
   );
 
+  const toolDirs = resolveToolDirs();
+
   const config: IngestConfig = {
     port,
     dbPath,
@@ -126,6 +132,7 @@ export function loadConfig(): IngestConfig {
     rateLimitRPM,
     rateLimitEnabled,
     debugMode,
+    toolDirs,
   };
 
   console.log('Configuration loaded:', {
@@ -139,6 +146,7 @@ export function loadConfig(): IngestConfig {
     rateLimitRPM: config.rateLimitRPM,
     rateLimitEnabled: config.rateLimitEnabled,
     debugMode: config.debugMode,
+    toolDirs: Object.fromEntries(config.toolDirs),
   });
 
   return config;
