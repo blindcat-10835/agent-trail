@@ -193,7 +193,6 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_ses
 -- Messages indexes
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_session_ordinal ON messages(session_id, ordinal);
-CREATE INDEX IF NOT EXISTS idx_messages_session_turn_index ON messages(session_id, turn_index);
 
 -- Tool calls indexes
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls(session_id);
