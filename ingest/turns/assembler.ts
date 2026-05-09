@@ -52,12 +52,22 @@ export async function assembleTurns(
   // Fetch all messages for the session, ordered by ordinal
   const messages = database.prepare(`
     SELECT
-      id, ordinal, role, content, timestamp, model,
-      token_usage_json, source_file, source_line
-    FROM messages
-    WHERE session_id = ?
-    ORDER BY ordinal ASC
+      m.id, m.ordinal, m.role, m.content, m.timestamp, m.model,
+      m.token_usage_json, m.source_file, m.source_line,
+      m.turn_id, m.turn_index, m.is_real_user_input,
+      s.source
+    FROM messages m
+    JOIN sessions s ON s.id = m.session_id
+    WHERE m.session_id = ?
+    ORDER BY m.ordinal ASC
   `).all(sessionId) as MessageRow[];
+
+  if (messages.some((msg) => msg.turn_index !== null && msg.turn_index !== undefined)) {
+    const turns = assembleTurnsFromStoredBoundaries(messages, sessionId);
+    await pairToolCalls(turns, sessionId, database);
+    await linkSubagents(turns, sessionId, database);
+    return turns;
+  }
 
   const turns: TraceTurn[] = [];
   let currentTurn: Partial<TraceTurn> | null = null;
@@ -307,6 +317,10 @@ interface MessageRow {
   token_usage_json: string | null;
   source_file: string;
   source_line: number | null;
+  turn_id: string | null;
+  turn_index: number | null;
+  is_real_user_input: number | null;
+  source: string;
 }
 
 interface ToolCallRow {
@@ -338,15 +352,71 @@ function parseMessageRow(row: MessageRow): TraceMessage {
     content: row.content,
     timestamp: row.timestamp || undefined,
     model: row.model || undefined,
+    turnId: row.turn_id || undefined,
+    turnIndex: row.turn_index ?? undefined,
+    isRealUserInput: row.is_real_user_input === 1,
     tokenUsage: row.token_usage_json
       ? (JSON.parse(row.token_usage_json) as TokenUsage)
       : undefined,
     sourceMetadata: {
-      sourceType: 'openclaw', // TODO: Get from session join in Phase 3
+      sourceType: row.source as TraceSource,
       sourceFile: row.source_file,
       sourceLine: row.source_line || undefined,
     },
   };
+}
+
+function assembleTurnsFromStoredBoundaries(
+  rows: MessageRow[],
+  sessionId: string
+): TraceTurn[] {
+  const grouped = new Map<number, TraceMessage[]>();
+
+  for (const row of rows) {
+    if (row.turn_index === null || row.turn_index === undefined) continue;
+    const list = grouped.get(row.turn_index) ?? [];
+    list.push(parseMessageRow(row));
+    grouped.set(row.turn_index, list);
+  }
+
+  return Array.from(grouped.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([storedTurnIndex, messagesForTurn], outputIndex) => {
+      const userMessage =
+        messagesForTurn.find((message) => message.role === 'user' && message.isRealUserInput) ||
+        messagesForTurn.find((message) => message.role === 'user') ||
+        null;
+      const assistantMessages = messagesForTurn.filter((message) =>
+        message.role === 'assistant' || message.role === 'tool_result'
+      );
+      const systemActivities = messagesForTurn
+        .filter((message) => message.role === 'system')
+        .map((message) => ({
+          type: 'system',
+          subtype: message.content.toLowerCase().includes('compact') ? 'compact' : 'system_message',
+          content: message.content,
+        }) as TraceSystemEvent);
+
+      const startedAt = userMessage?.timestamp || messagesForTurn[0]?.timestamp || null;
+      const endedAt =
+        messagesForTurn[messagesForTurn.length - 1]?.timestamp ||
+        assistantMessages[assistantMessages.length - 1]?.timestamp ||
+        null;
+
+      return {
+        id: `${sessionId}-turn-${storedTurnIndex}`,
+        sessionId,
+        index: outputIndex,
+        userMessage,
+        assistantMessages,
+        activities: systemActivities,
+        startedAt,
+        endedAt,
+        durationMs: calculateDuration(startedAt, endedAt),
+        tokenUsage: userMessage?.tokenUsage,
+        isTruncated: systemActivities.some((activity) => activity.subtype === 'compact') || undefined,
+      };
+    });
 }
 
 function finalizeTurn(
@@ -392,6 +462,20 @@ export function getTurnCount(
   db?: Database.Database
 ): number {
   const database = db || getDatabase();
+
+  const storedBoundaryResult = database
+    .prepare(
+      `
+    SELECT COUNT(DISTINCT turn_index) as count
+    FROM messages
+    WHERE session_id = ? AND turn_index IS NOT NULL
+  `
+    )
+    .get(sessionId) as { count: number };
+
+  if (storedBoundaryResult.count > 0) {
+    return storedBoundaryResult.count;
+  }
 
   const result = database
     .prepare(

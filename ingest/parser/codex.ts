@@ -38,6 +38,13 @@ import {
 
 type CodexPayload = Record<string, any>;
 
+interface PendingCodexUserMessage {
+  dedupKey: string;
+  tokenCount: number;
+  message: TraceMessage;
+  lineNum: number;
+}
+
 function getCodexPayload(parsed: CodexJsonlLine): CodexPayload | undefined {
   return parsed.payload && typeof parsed.payload === 'object'
     ? parsed.payload as CodexPayload
@@ -117,6 +124,40 @@ function mapCodexRole(role: unknown): MessageRole | null {
   return null;
 }
 
+function extractCodexUserEventContent(eventMsg: CodexPayload): string {
+  if (typeof eventMsg.message === 'string') return eventMsg.message;
+  if (typeof eventMsg.content === 'string') return eventMsg.content;
+  if (typeof eventMsg.text === 'string') return eventMsg.text;
+  return '';
+}
+
+function normalizeCodexUserContent(content: string): string {
+  return content
+    .replace(/\r\n/g, '\n')
+    .replace(/<image\b[^>]*>\s*<\/image>\s*/gi, '')
+    .trim();
+}
+
+function isCodexMetadataUserMessage(content: string): boolean {
+  const lower = content.trim().toLowerCase();
+  const metadataPrefixes = [
+    '# agents.md instructions',
+    '<environment_context',
+    '<permissions instructions',
+    '<collaboration_mode',
+    '<personality_spec',
+    '<apps_instructions',
+    '<skills_instructions',
+    '<skill>',
+    '<subagent_notification',
+    '<turn_aborted',
+    '<local-command-caveat',
+    '<local-command-stdout',
+  ];
+
+  return metadataPrefixes.some((prefix) => lower.startsWith(prefix));
+}
+
 // ============================================================================
 // Main Entry Point — parseCodexSession
 // ============================================================================
@@ -181,6 +222,9 @@ export async function parseCodexSession(
   let sessionGitBranch: string | undefined;
   let sessionModel: string | undefined;
   let sessionId: string = context.uuid;
+  let currentTurnId: string | undefined;
+  let currentTurnIndex = -1;
+  let pendingUserResponseMessage: PendingCodexUserMessage | undefined;
 
   // Token-count dedup tracking (D-09)
   // Key: call_id for function_calls, content for text messages
@@ -192,12 +236,55 @@ export async function parseCodexSession(
   // Tool call registry for pairing with function_call_output events (D-11)
   const toolCallMap = new Map<string, TraceToolCall>();
 
+  const ensureTurn = (turnId?: string, startedAtForTurn?: string | null): void => {
+    if (!turnId && currentTurnId) {
+      if (startedAtForTurn && !startedAt) {
+        startedAt = startedAtForTurn;
+      }
+      return;
+    }
+    const nextTurnId = turnId || `turn-${currentTurnIndex + 1}`;
+    if (currentTurnId !== nextTurnId) {
+      currentTurnId = nextTurnId;
+      currentTurnIndex++;
+    }
+    if (startedAtForTurn && !startedAt) {
+      startedAt = startedAtForTurn;
+    }
+  };
+
+  const currentTurnMetadata = () => ({
+    turnId: currentTurnId,
+    turnIndex: currentTurnIndex >= 0 ? currentTurnIndex : undefined,
+  });
+
+  const flushPendingUserResponseMessage = (): void => {
+    if (!pendingUserResponseMessage) return;
+    handleDedup(
+      pendingUserResponseMessage.dedupKey,
+      pendingUserResponseMessage.tokenCount,
+      pendingUserResponseMessage.message,
+      messageVersions,
+      warnings,
+      pendingUserResponseMessage.lineNum
+    );
+    pendingUserResponseMessage = undefined;
+  };
+
   for await (const line of rl) {
     lineNum++;
     if (!line.trim()) continue;
 
     try {
       const parsed: CodexJsonlLine = JSON.parse(line);
+
+      const eventMsgBeforeResponse = getCodexEventMsg(parsed);
+      if (parsed.type === 'event_msg' && eventMsgBeforeResponse?.type === 'task_started') {
+        ensureTurn(
+          eventMsgBeforeResponse.turn_id || eventMsgBeforeResponse.id,
+          parsed.timestamp
+        );
+      }
 
       // Handle session_meta — extract metadata from first line
       const sessionMeta = getCodexSessionMeta(parsed);
@@ -227,8 +314,13 @@ export async function parseCodexSession(
         currentModel = turnContext.model || currentModel;
         sessionCwd = turnContext.cwd || sessionCwd;
         sessionGitBranch = turnContext.git_branch || sessionGitBranch;
+        if (!currentTurnId) {
+          ensureTurn(turnContext.turn_id || `turn-${lineNum}`, turnStartedAt);
+        } else if (turnContext.turn_id) {
+          currentTurnId = turnContext.turn_id;
+        }
         turnContexts.push({
-          turnId: turnContext.turn_id || `turn-${lineNum}`,
+          turnId: currentTurnId || turnContext.turn_id || `turn-${lineNum}`,
           model: turnContext.model,
           startedAt: turnStartedAt,
         });
@@ -252,6 +344,7 @@ export async function parseCodexSession(
 
         // input_text → TraceMessage (user)
         if (ri.type === 'input_text') {
+          ensureTurn(undefined, timestamp || null);
           const content = ri.input_text || '';
           const dedupKey = `text:${content}`;
           const tokenCount = ri.token_count ?? 0;
@@ -269,6 +362,8 @@ export async function parseCodexSession(
             content,
             timestamp,
             model: currentModel || sessionModel,
+            ...currentTurnMetadata(),
+            isRealUserInput: true,
             sourceMetadata,
           };
 
@@ -305,16 +400,30 @@ export async function parseCodexSession(
             content,
             timestamp,
             model: currentModel || sessionModel,
+            ...currentTurnMetadata(),
+            isRealUserInput: role === 'user' && !isCodexMetadataUserMessage(content),
             sourceMetadata,
           };
 
-          handleDedup(dedupKey, tokenCount, message, messageVersions, warnings, lineNum);
+          if (role === 'user') {
+            if (isCodexMetadataUserMessage(content)) {
+              continue;
+            }
+            ensureTurn(undefined, timestamp || null);
+            message.turnId = currentTurnId;
+            message.turnIndex = currentTurnIndex;
+            pendingUserResponseMessage = { dedupKey, tokenCount, message, lineNum };
+          } else {
+            flushPendingUserResponseMessage();
+            handleDedup(dedupKey, tokenCount, message, messageVersions, warnings, lineNum);
+          }
           ordinal++;
           continue;
         }
 
         // text → TraceMessage (assistant)
         if (ri.type === 'text' || ri.type === 'output_text') {
+          flushPendingUserResponseMessage();
           const content = ri.text || ri.output_text || '';
           const dedupKey = `text:${content}`;
           const tokenCount = ri.token_count ?? 0;
@@ -332,6 +441,8 @@ export async function parseCodexSession(
             content,
             timestamp,
             model: currentModel || sessionModel,
+            ...currentTurnMetadata(),
+            isRealUserInput: false,
             sourceMetadata,
           };
 
@@ -343,6 +454,7 @@ export async function parseCodexSession(
         // function_call_output as a response_item payload — some Codex versions emit this
         // as { type: "response_item", payload: { type: "function_call_output", call_id, output } }
         if (ri.type === 'function_call_output') {
+          flushPendingUserResponseMessage();
           const callId = ri.call_id;
           if (callId && toolCallMap.has(callId)) {
             const toolCall = toolCallMap.get(callId)!;
@@ -366,6 +478,7 @@ export async function parseCodexSession(
 
         // function_call → TraceToolCall (D-07)
         if (ri.type === 'function_call') {
+          flushPendingUserResponseMessage();
           const callId = ri.call_id || `call-${lineNum}`;
           const name = ri.name || 'unknown';
           // Normalize arguments from either 'arguments' (string) or 'input' (object)
@@ -416,6 +529,8 @@ export async function parseCodexSession(
             content: `[function_call: ${name}]`,
             timestamp,
             model: currentModel || sessionModel,
+            ...currentTurnMetadata(),
+            isRealUserInput: false,
             sourceMetadata: createSourceMetadata(context, lineNum, sessionCwd, sessionGitBranch),
           }});
           hasToolCalls = true;
@@ -425,6 +540,7 @@ export async function parseCodexSession(
 
         // custom_tool_call → TraceToolCall (same pipeline as function_call)
         if (ri.type === 'custom_tool_call') {
+          flushPendingUserResponseMessage();
           const callId = ri.call_id || `call-${lineNum}`;
           const name = ri.name || 'unknown';
           // Normalize arguments from either 'arguments' (string) or 'input' (object)
@@ -470,6 +586,8 @@ export async function parseCodexSession(
               content: `[custom_tool_call: ${name}]`,
               timestamp,
               model: currentModel || sessionModel,
+              ...currentTurnMetadata(),
+              isRealUserInput: false,
               sourceMetadata: createSourceMetadata(context, lineNum, sessionCwd, sessionGitBranch),
             },
           });
@@ -500,7 +618,48 @@ export async function parseCodexSession(
       if (parsed.type === 'event_msg' && eventMsg) {
         const ev = eventMsg;
 
+        if (ev.type === 'user_message') {
+          ensureTurn(ev.turn_id, parsed.timestamp);
+          const content = extractCodexUserEventContent(ev);
+          if (content) {
+            if (
+              pendingUserResponseMessage &&
+              normalizeCodexUserContent(pendingUserResponseMessage.message.content) === normalizeCodexUserContent(content)
+            ) {
+              pendingUserResponseMessage = undefined;
+            }
+
+            const sourceMetadata = createSourceMetadata(
+              context,
+              lineNum,
+              sessionCwd,
+              sessionGitBranch
+            );
+            const message: TraceMessage = {
+              id: `${sessionId}-${ordinal}`,
+              ordinal,
+              role: 'user',
+              content,
+              timestamp: parsed.timestamp,
+              model: currentModel || sessionModel,
+              ...currentTurnMetadata(),
+              isRealUserInput: true,
+              sourceMetadata,
+            };
+            handleDedup(
+              `event_user:${currentTurnId || ordinal}:${content}`,
+              0,
+              message,
+              messageVersions,
+              warnings,
+              lineNum
+            );
+            ordinal++;
+          }
+        }
+
         if (ev.type === 'function_call_output' || ev.type === 'custom_tool_call_output') {
+          flushPendingUserResponseMessage();
           const callId = ev.call_id;
           if (callId && toolCallMap.has(callId)) {
             const toolCall = toolCallMap.get(callId)!;
@@ -523,6 +682,16 @@ export async function parseCodexSession(
               `Line ${lineNum}: ${ev.type} for unknown call_id: ${callId}`
             );
           }
+        }
+
+        if (ev.type === 'collab_agent_spawn_end' && ev.new_thread_id) {
+          const subagentLink: TraceSubagentLink = {
+            type: 'subagent_link',
+            subagentSessionId: ev.new_thread_id,
+            subagentSource: 'codex',
+            relationship: 'spawned',
+          };
+          activities.push(subagentLink);
         }
 
         if (parsed.timestamp && !startedAt) {
@@ -568,10 +737,15 @@ export async function parseCodexSession(
     }
   }
 
+  flushPendingUserResponseMessage();
+
   // Flush deduplicated messages
-  messageVersions.forEach((entry) => {
-    messages.push(entry.message);
-  });
+  Array.from(messageVersions.values())
+    .map((entry) => entry.message)
+    .sort((a, b) => a.ordinal - b.ordinal)
+    .forEach((message) => {
+      messages.push(message);
+    });
 
   // Flush tool calls from registry
   toolCallMap.forEach((toolCall) => {
@@ -588,7 +762,11 @@ export async function parseCodexSession(
     status: endedAt ? 'idle' : 'active',
     rootSessionId: undefined,
     parentSessionId: undefined,
-    relationshipType: undefined,
+    relationshipType: 'root',
+    sourceSessionId: sessionId,
+    cwd: sessionCwd,
+    gitBranch: sessionGitBranch,
+    sourceVersion: '1.0',
     metrics: {
       messageCount: messages.length,
       userMessageCount: messages.filter((m) => m.role === 'user').length,

@@ -33,6 +33,14 @@ import {
   SessionContext,
 } from './types';
 
+type ClaudeSessionContext = SessionContext & {
+  rootSessionId?: string;
+  parentSessionId?: string;
+  relationshipType?: 'root' | 'subagent' | 'fork' | 'continuation';
+  sourceSessionId?: string;
+  sourceVersion?: string;
+};
+
 // ============================================================================
 // Main Parser Entry Point
 // ============================================================================
@@ -98,6 +106,8 @@ export async function parseClaudeSession(
   let hasToolCalls = false;
   let sessionCwd: string | undefined;
   let sessionGitBranch: string | undefined;
+  let currentTurnIndex = -1;
+  let currentTurnId: string | undefined;
   let sessionMetadata: {
     sessionId?: string;
     sessionType?: string;
@@ -127,23 +137,25 @@ export async function parseClaudeSession(
         sessionGitBranch = parsed.gitBranch;
       }
 
-      // D-03: UUID deduplication — skip duplicate UUIDs, keep first occurrence
-      if (seenUuids.has(parsed.uuid)) {
-        warnings.push(
-          `Line ${lineNum}: Duplicate UUID ${parsed.uuid} — skipping`
-        );
-        continue;
-      }
-      seenUuids.add(parsed.uuid);
+      // D-03: UUID deduplication — only applies to real message UUIDs.
+      if (typeof parsed.uuid === 'string' && parsed.uuid.length > 0) {
+        if (seenUuids.has(parsed.uuid)) {
+          warnings.push(
+            `Line ${lineNum}: Duplicate UUID ${parsed.uuid} — skipping`
+          );
+          continue;
+        }
+        seenUuids.add(parsed.uuid);
 
-      // D-01: Register DAG node for parent/child relationship tracking
-      dagNodes.set(parsed.uuid, {
-        uuid: parsed.uuid,
-        parentUuid: parsed.parentUuid,
-        sessionId: parsed.session?.id || context.uuid,
-        parentSessionId: undefined, // resolved later
-        relationshipType: 'root',   // resolved later
-      });
+        // D-01: Register DAG node for parent/child relationship tracking
+        dagNodes.set(parsed.uuid, {
+          uuid: parsed.uuid,
+          parentUuid: parsed.parentUuid,
+          sessionId: parsed.session?.id || context.uuid,
+          parentSessionId: undefined, // resolved later
+          relationshipType: context.relationshipType || 'root',
+        });
+      }
 
       // Extract timestamp
       if (parsed.timestamp && !startedAt) {
@@ -209,12 +221,37 @@ export async function parseClaudeSession(
         }
       }
 
+      if (typeof parsed.sessionId === 'string' && parsed.sessionId.trim()) {
+        sessionMetadata = {
+          ...(sessionMetadata || {}),
+          sessionId: parsed.sessionId,
+          sessionType: context.relationshipType,
+          parentId: context.parentSessionId,
+          cwd: sessionCwd,
+          gitBranch: sessionGitBranch,
+        };
+      }
+      if (typeof parsed.agentId === 'string' && parsed.agentId.trim()) {
+        sessionMetadata = {
+          ...(sessionMetadata || {}),
+          sessionId: parsed.agentId,
+          sessionType: 'subagent',
+          parentId: context.parentSessionId,
+          cwd: sessionCwd,
+          gitBranch: sessionGitBranch,
+        };
+      }
+
       // Skip lines without a message object (e.g., system-only lines)
       if (!parsed.message) {
         continue;
       }
 
       const role = parsed.message.role;
+
+      if (role === 'user' && isClaudeLocalCommandMessage(parsed)) {
+        continue;
+      }
 
       // User messages: check if this is a tool_result-only record
       // tool_result-only user records should NOT become full user turn messages —
@@ -275,6 +312,9 @@ export async function parseClaudeSession(
               cwd: sessionCwd,
               gitBranch: sessionGitBranch,
             },
+            turnId: currentTurnId,
+            turnIndex: currentTurnIndex >= 0 ? currentTurnIndex : undefined,
+            isRealUserInput: false,
           };
           messages.push(toolResultMsg);
           ordinal++;
@@ -290,6 +330,15 @@ export async function parseClaudeSession(
 
       // Parse message
       const message = parseMessage(parsed, ordinal, context, lineNum, sessionCwd, sessionGitBranch);
+      if (message.role === 'user') {
+        currentTurnIndex++;
+        currentTurnId = parsed.uuid || `turn-${currentTurnIndex}`;
+        message.isRealUserInput = true;
+      } else {
+        message.isRealUserInput = false;
+      }
+      message.turnIndex = currentTurnIndex >= 0 ? currentTurnIndex : undefined;
+      message.turnId = currentTurnId;
       messages.push(message);
 
       // Extract tool calls and thinking blocks from assistant messages
@@ -327,19 +376,24 @@ export async function parseClaudeSession(
   let parentSessionId: string | undefined;
   let relationshipType: 'root' | 'subagent' | 'fork' | 'continuation' | undefined;
 
-  if (sessionMetadata) {
+  rootSessionId = context.rootSessionId;
+  parentSessionId = context.parentSessionId;
+  relationshipType = context.relationshipType || 'root';
+
+  if (sessionMetadata?.sessionType) {
     const sessionType = sessionMetadata.sessionType;
     if (sessionType === 'subagent') {
       relationshipType = 'subagent';
       // Subagent parent is the parent session
-      parentSessionId = sessionMetadata.parentId;
+      parentSessionId = sessionMetadata.parentId || parentSessionId;
+      rootSessionId = rootSessionId || parentSessionId;
     } else if (sessionType === 'fork') {
       relationshipType = 'fork';
       // Fork shares root with parent; parentSessionId from parent
-      parentSessionId = sessionMetadata.parentId;
+      parentSessionId = sessionMetadata.parentId || parentSessionId;
     } else if (sessionType === 'continuation') {
       relationshipType = 'continuation';
-      parentSessionId = sessionMetadata.parentId;
+      parentSessionId = sessionMetadata.parentId || parentSessionId;
     } else {
       relationshipType = 'root';
     }
@@ -364,6 +418,10 @@ export async function parseClaudeSession(
     rootSessionId,
     parentSessionId,
     relationshipType,
+    sourceSessionId: sessionMetadata?.sessionId || context.sourceSessionId,
+    cwd: sessionMetadata?.cwd || sessionCwd,
+    gitBranch: sessionMetadata?.gitBranch || sessionGitBranch,
+    sourceVersion: context.sourceVersion || 'unknown',
     metrics: {
       messageCount: messages.length,
       userMessageCount: messages.filter((m) => m.role === 'user').length,
@@ -402,15 +460,26 @@ export async function parseClaudeSession(
 function extractClaudeSessionContext(
   filePath: string,
   project: string
-): SessionContext {
-  // Try to extract UUID from filename (standard Claude session path)
-  const uuidMatch = filePath.match(
-    /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
-  );
+): ClaudeSessionContext {
+  const basename = path.basename(filePath, '.jsonl');
+  const parentDir = path.basename(path.dirname(filePath));
+  const grandparentDir = path.basename(path.dirname(path.dirname(filePath)));
+  const parentUuid = parentDir === 'subagents' ? grandparentDir : undefined;
 
-  const uuid = uuidMatch
-    ? uuidMatch[1]
-    : path.basename(filePath, '.jsonl');
+  let uuid = basename;
+  let parentSessionId: string | undefined;
+  let rootSessionId: string | undefined;
+  let relationshipType: ClaudeSessionContext['relationshipType'] = 'root';
+  let sourceSessionId: string | undefined = basename;
+
+  if (basename.startsWith('agent-') && parentUuid) {
+    const agentId = basename.replace(/^agent-/, '');
+    uuid = `claude-agent:${parentUuid}:${agentId}`;
+    parentSessionId = parentUuid;
+    rootSessionId = parentUuid;
+    relationshipType = 'subagent';
+    sourceSessionId = agentId;
+  }
 
   let fileMtime: number;
   try {
@@ -425,8 +494,12 @@ function extractClaudeSessionContext(
     project,
     filePath,
     fileMtime,
+    rootSessionId,
+    parentSessionId,
+    relationshipType,
+    sourceSessionId,
     sourceVersion: 'unknown', // resolved during parse from first line
-  } as SessionContext & { sourceVersion?: string };
+  };
 }
 
 /**
@@ -456,6 +529,21 @@ function createErrorSession(
     },
     turns: [],
   };
+}
+
+function isClaudeLocalCommandMessage(parsed: ClaudeJsonlLine): boolean {
+  if (parsed.isMeta === true) return true;
+
+  const content = parsed.message?.content;
+  if (typeof content !== 'string') return false;
+
+  const normalized = content.trim().toLowerCase();
+  return (
+    normalized.startsWith('<local-command-caveat') ||
+    normalized.startsWith('<local-command-stdout') ||
+    normalized.startsWith('<command-name>') ||
+    normalized.startsWith('<command-message')
+  );
 }
 
 // ============================================================================

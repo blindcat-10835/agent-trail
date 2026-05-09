@@ -167,7 +167,7 @@ describe('app/api/sync/route.ts', () => {
     await POST(req)
 
     expect(fetchIngestMock).toHaveBeenCalledTimes(3)
-    const paths = fetchIngestMock.mock.calls.map(([p]: [string]) => p)
+    const paths = fetchIngestMock.mock.calls.map((call) => call[0] as string)
     expect(paths).toContain('/api/v1/sources/openclaw/sync')
     expect(paths).toContain('/api/v1/sources/claude-code/sync')
     expect(paths).toContain('/api/v1/sources/codex/sync')

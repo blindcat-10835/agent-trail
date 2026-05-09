@@ -102,6 +102,10 @@ export interface TraceSession {
   rootSessionId?: string; // For forks/subagents
   parentSessionId?: string; // For subagent relationships
   relationshipType?: 'root' | 'subagent' | 'fork' | 'continuation';
+  sourceSessionId?: string;
+  cwd?: string;
+  gitBranch?: string;
+  sourceVersion?: string;
   metrics: SessionMetrics;
   turns: TraceTurn[];
 }
@@ -150,6 +154,9 @@ export interface TraceMessage {
   timestamp?: string;
   model?: string;
   tokenUsage?: TokenUsage;
+  turnId?: string;
+  turnIndex?: number;
+  isRealUserInput?: boolean;
   sourceMetadata: SourceMetadata;
 }
 

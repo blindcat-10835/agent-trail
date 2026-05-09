@@ -52,6 +52,7 @@ sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
   const session = db.prepare(`
     SELECT
       id, source, project, name, started_at, ended_at, status,
+      root_session_id, parent_session_id, relationship_type, source_session_id,
       message_count, user_message_count, total_output_tokens, has_tool_calls,
       parser_malformed_lines, is_truncated, termination_status,
       last_sync_at, file_mtime,
@@ -85,6 +86,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   const status = c.req.query('status') as SessionStatus | null;
   const sort = c.req.query('sort') || 'updated_at'; // updated_at, started_at, or ended_at
   const order = c.req.query('order') || 'desc'; // asc or desc
+  const includeChildren = c.req.query('includeChildren') === 'true';
 
   // Parse and validate limit/offset (T-02-14: reject negative values)
   const limit = parseInt(c.req.query('limit') || '50', 10);
@@ -129,6 +131,11 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
     params.push(status);
   }
 
+  if (!includeChildren) {
+    conditions.push('(relationship_type IS NULL OR relationship_type = ?)');
+    params.push('root');
+  }
+
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   // Get total count
@@ -150,6 +157,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   const sessions = db.prepare(`
     SELECT
       id, source, project, name, started_at, ended_at, status,
+      root_session_id, parent_session_id, relationship_type, source_session_id,
       message_count, user_message_count, total_output_tokens, has_tool_calls,
       parser_malformed_lines, is_truncated, termination_status,
       last_sync_at, file_mtime,
@@ -188,6 +196,7 @@ sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
   const session = db.prepare(`
     SELECT
       id, source, project, name, started_at, ended_at, status,
+      root_session_id, parent_session_id, relationship_type, source_session_id,
       message_count, user_message_count, total_output_tokens, has_tool_calls,
       parser_malformed_lines, is_truncated, termination_status,
       last_sync_at, file_mtime,
@@ -218,6 +227,10 @@ interface SessionRow {
   started_at: string | null;
   ended_at: string | null;
   status: string;
+  root_session_id: string | null;
+  parent_session_id: string | null;
+  relationship_type: string | null;
+  source_session_id: string | null;
   message_count: number;
   user_message_count: number;
   total_output_tokens: number;
@@ -245,6 +258,10 @@ function parseSessionRow(row: SessionRow): TraceSession {
     updatedAt: row.updated_at || undefined,
     lastSyncAt: row.last_sync_at || undefined,
     status: row.status as SessionStatus,
+    rootSessionId: row.root_session_id || undefined,
+    parentSessionId: row.parent_session_id || undefined,
+    relationshipType: (row.relationship_type as TraceSession['relationshipType']) || undefined,
+    sourceSessionId: row.source_session_id || undefined,
     metrics: {
       messageCount: row.message_count,
       userMessageCount: row.user_message_count,

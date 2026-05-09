@@ -81,6 +81,11 @@ CREATE TABLE IF NOT EXISTS messages (
   -- Tool use indicator
   has_tool_use INTEGER NOT NULL DEFAULT 0 CHECK(has_tool_use IN (0, 1)),
 
+  -- Turn provenance
+  turn_id TEXT,
+  turn_index INTEGER,
+  is_real_user_input INTEGER NOT NULL DEFAULT 0 CHECK(is_real_user_input IN (0, 1)),
+
   -- Token usage (JSON string of TokenUsage interface)
   token_usage_json TEXT,
 
@@ -188,6 +193,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_ses
 -- Messages indexes
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_session_ordinal ON messages(session_id, ordinal);
+CREATE INDEX IF NOT EXISTS idx_messages_session_turn_index ON messages(session_id, turn_index);
 
 -- Tool calls indexes
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls(session_id);

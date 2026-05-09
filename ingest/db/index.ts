@@ -133,7 +133,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 5;
+  const targetVersion = 6;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -182,6 +182,30 @@ export function runMigrations(): void {
            OR project = 'default'
            OR project LIKE '//%'
            OR file_path NOT LIKE '/%'
+      `,
+    },
+    {
+      desc: 'Add turn boundary columns to messages',
+      sql: 'ALTER TABLE messages ADD COLUMN turn_id TEXT',
+    },
+    {
+      desc: 'Add turn_index column to messages',
+      sql: 'ALTER TABLE messages ADD COLUMN turn_index INTEGER',
+    },
+    {
+      desc: 'Add is_real_user_input column to messages',
+      sql: 'ALTER TABLE messages ADD COLUMN is_real_user_input INTEGER NOT NULL DEFAULT 0 CHECK(is_real_user_input IN (0, 1))',
+    },
+    {
+      desc: 'Add messages turn index lookup',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_messages_session_turn_index ON messages(session_id, turn_index)',
+    },
+    {
+      desc: 'Invalidate stale Claude/Codex parser cache for turn and relationship repairs',
+      sql: `
+        UPDATE sessions
+        SET file_hash = NULL
+        WHERE source IN ('claude-code', 'codex')
       `,
     },
   ];

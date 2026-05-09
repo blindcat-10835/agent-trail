@@ -17,6 +17,8 @@ import { getDatabase } from '../db';
 import { ParseResult } from '../parser/types';
 import { sseManager } from '../src/sse';
 
+const PARSER_CACHE_VERSION = 'parser-v6-turns-relations';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -185,6 +187,10 @@ export function computeFileHash(filePath: string): string {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
+function buildParserCacheHash(source: string, fileHash: string): string {
+  return `${PARSER_CACHE_VERSION}:${source}:${fileHash}`;
+}
+
 /**
  * Write a parsed session to the database
  *
@@ -230,6 +236,9 @@ export function writeSessionToDatabase(
       fileSize = stats.size;
       fileMtime = new Date(stats.mtimeMs).toISOString();
     }
+    const cacheFileHash = fileHash
+      ? buildParserCacheHash(parseResult.session.source, fileHash)
+      : null;
 
     // Check if session already exists
     const existing = database.prepare(
@@ -237,7 +246,7 @@ export function writeSessionToDatabase(
     ).get(parseResult.session.id) as { id: string; file_hash: string | null; name: string | null; project: string | null } | undefined;
 
     // Skip cache: if hash matches AND force is not set, skip full re-parse but still patch name/project if empty.
-    if (existing && fileHash && existing.file_hash === fileHash && !options?.force) {
+    if (existing && cacheFileHash && existing.file_hash === cacheFileHash && !options?.force) {
       database.prepare(`
         UPDATE sessions SET
           file_size = ?,
@@ -303,6 +312,13 @@ export function writeSessionToDatabase(
             termination_status = ?,
             name = ?,
             project = ?,
+            root_session_id = ?,
+            parent_session_id = ?,
+            relationship_type = ?,
+            cwd = ?,
+            git_branch = ?,
+            source_session_id = ?,
+            source_version = ?,
             file_path = ?,
             file_size = ?,
             file_mtime = ?,
@@ -322,10 +338,17 @@ export function writeSessionToDatabase(
           parseResult.session.metrics.terminationStatus || '',
           parseResult.session.name || '',
           parseResult.session.project,
+          parseResult.session.rootSessionId || null,
+          parseResult.session.parentSessionId || null,
+          parseResult.session.relationshipType || 'root',
+          parseResult.session.cwd || null,
+          parseResult.session.gitBranch || null,
+          parseResult.session.sourceSessionId || null,
+          parseResult.session.sourceVersion || null,
           sourceFile || parseResult.session.id,
           fileSize,
           fileMtime,
-          fileHash,
+          cacheFileHash,
           lastSyncAt,
           parseResult.session.id
         );
@@ -335,10 +358,12 @@ export function writeSessionToDatabase(
         database.prepare(`
           INSERT INTO sessions (
             id, source, project, name, started_at, ended_at, status,
+            root_session_id, parent_session_id, relationship_type,
             message_count, user_message_count, total_output_tokens, has_tool_calls,
             parser_malformed_lines, is_truncated, termination_status,
-            file_path, file_size, file_mtime, file_hash, last_sync_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            file_path, file_size, file_mtime, file_hash, last_sync_at,
+            cwd, git_branch, source_session_id, source_version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           parseResult.session.id,
           parseResult.session.source,
@@ -347,6 +372,9 @@ export function writeSessionToDatabase(
           parseResult.session.startedAt,
           parseResult.session.endedAt,
           parseResult.session.status,
+          parseResult.session.rootSessionId || null,
+          parseResult.session.parentSessionId || null,
+          parseResult.session.relationshipType || 'root',
           parseResult.session.metrics.messageCount,
           parseResult.session.metrics.userMessageCount,
           parseResult.session.metrics.totalTokens || 0,
@@ -357,8 +385,12 @@ export function writeSessionToDatabase(
           sourceFile || parseResult.session.id,
           fileSize,
           fileMtime,
-          fileHash,
-          lastSyncAt
+          cacheFileHash,
+          lastSyncAt,
+          parseResult.session.cwd || null,
+          parseResult.session.gitBranch || null,
+          parseResult.session.sourceSessionId || null,
+          parseResult.session.sourceVersion || null
         );
         sessionsInserted++;
       }
@@ -368,8 +400,9 @@ export function writeSessionToDatabase(
       const insertMessage = database.prepare(`
         INSERT INTO messages (
           id, session_id, ordinal, role, content, timestamp, model,
-          has_tool_use, token_usage_json, source_file, source_line
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          has_tool_use, turn_id, turn_index, is_real_user_input,
+          token_usage_json, source_file, source_line
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       for (const message of parseResult.messages) {
@@ -388,6 +421,9 @@ export function writeSessionToDatabase(
           message.timestamp || null,
           message.model || '',
           hasToolUse,
+          message.turnId || null,
+          typeof message.turnIndex === 'number' ? message.turnIndex : null,
+          message.isRealUserInput ? 1 : 0,
           message.tokenUsage ? JSON.stringify(message.tokenUsage) : '',
           message.sourceMetadata.sourceFile,
           message.sourceMetadata.sourceLine || null
@@ -713,6 +749,7 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const { parseCodexSession } = await import('../parser/codex');
 
   const sources = await discoverCodexSources();
+  const relationshipsByChild = await collectCodexRelationships(sources);
   const totalResult: SyncResult = {
     sessionsInserted: 0,
     sessionsUpdated: 0,
@@ -736,6 +773,13 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
 
         try {
           const parseResult = await parseCodexSession(filePath, project);
+          const relationship = relationshipsByChild.get(parseResult.session.id);
+          if (relationship) {
+            parseResult.session.parentSessionId = relationship.parentSessionId;
+            parseResult.session.rootSessionId = relationship.rootSessionId || relationship.parentSessionId;
+            parseResult.session.relationshipType = 'subagent';
+            parseResult.session.sourceSessionId = parseResult.session.sourceSessionId || parseResult.session.id;
+          }
           parseResult.session.name = extractSessionName(parseResult);
           parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
           const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
@@ -766,4 +810,57 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   });
 
   return totalResult;
+}
+
+async function collectCodexRelationships(
+  sources: Array<{ path: string; error?: string; sessionCount: number }>
+): Promise<Map<string, { parentSessionId: string; rootSessionId?: string }>> {
+  const relationships = new Map<string, { parentSessionId: string; rootSessionId?: string }>();
+  const fsp = await import('fs/promises');
+  const readline = await import('readline');
+
+  for (const source of sources) {
+    if (source.error || source.sessionCount === 0) continue;
+
+    let files: string[];
+    try {
+      files = await fsp.readdir(source.path);
+    } catch {
+      continue;
+    }
+
+    for (const file of files.filter((f) => f.endsWith('.jsonl'))) {
+      const filePath = `${source.path}/${file}`;
+      if (!fs.existsSync(filePath)) continue;
+      const stream = fs.createReadStream(filePath);
+      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+      try {
+        for await (const line of rl) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+            const payload = parsed?.event_msg || parsed?.payload;
+            if (
+              parsed?.type === 'event_msg' &&
+              payload?.type === 'collab_agent_spawn_end' &&
+              typeof payload.new_thread_id === 'string' &&
+              typeof payload.sender_thread_id === 'string'
+            ) {
+              relationships.set(payload.new_thread_id, {
+                parentSessionId: payload.sender_thread_id,
+                rootSessionId: payload.sender_thread_id,
+              });
+            }
+          } catch {
+            // Relationship collection is best-effort; parser records malformed lines later.
+          }
+        }
+      } finally {
+        rl.close();
+      }
+    }
+  }
+
+  return relationships;
 }

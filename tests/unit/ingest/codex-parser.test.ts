@@ -86,6 +86,53 @@ describe('Codex parser — parseCodexSession()', () => {
       expect(result.messages[1].role).toBe('assistant');
       expect(result.messages[1].model).toBe('gpt-5-codex');
     });
+
+    it('should use event_msg user_message as canonical user input and skip injected metadata', async () => {
+      const jsonl = [
+        '{"timestamp":"2026-05-08T14:52:18.211Z","type":"session_meta","payload":{"id":"codex-real-turn-001","cwd":"/repo","model_provider":"openai"}}',
+        '{"timestamp":"2026-05-08T14:52:18.219Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}',
+        '{"timestamp":"2026-05-08T14:52:18.220Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for /repo\\n<environment_context>...</environment_context>"}]}}',
+        '{"timestamp":"2026-05-08T14:52:18.221Z","type":"turn_context","payload":{"turn_id":"turn-a","cwd":"/repo","model":"gpt-5"}}',
+        '{"timestamp":"2026-05-08T14:52:18.222Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"$gsd-debug reproduce this"}]}}',
+        '{"timestamp":"2026-05-08T14:52:18.223Z","type":"event_msg","payload":{"type":"user_message","message":"$gsd-debug reproduce this","images":[]}}',
+        '{"timestamp":"2026-05-08T14:52:19.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Investigating."}]}}',
+        '{"timestamp":"2026-05-08T14:53:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-b"}}',
+        '{"timestamp":"2026-05-08T14:53:00.001Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>large skill body</skill>"}]}}',
+        '{"timestamp":"2026-05-08T14:53:00.002Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}}',
+        '{"timestamp":"2026-05-08T14:53:00.003Z","type":"event_msg","payload":{"type":"user_message","message":"continue","images":[]}}',
+      ].join('\n');
+
+      const filePath = writeFixture('payload-event-user-message.jsonl', jsonl);
+      const result = await parseCodexSession(filePath, 'fallback');
+      const userMessages = result.messages.filter((message) => message.role === 'user');
+
+      expect(userMessages.map((message) => message.content)).toEqual([
+        '$gsd-debug reproduce this',
+        'continue',
+      ]);
+      expect(userMessages.every((message) => message.isRealUserInput)).toBe(true);
+      expect(userMessages.map((message) => message.turnId)).toEqual(['turn-a', 'turn-b']);
+      expect(result.messages.map((message) => message.content).join('\n')).not.toContain('AGENTS.md');
+      expect(result.messages.map((message) => message.content).join('\n')).not.toContain('<skill>');
+    });
+
+    it('should deduplicate image-wrapper response_item users against canonical event user messages', async () => {
+      const jsonl = [
+        '{"timestamp":"2026-05-08T14:52:18.211Z","type":"session_meta","payload":{"id":"codex-image-user-001","cwd":"/repo","model_provider":"openai"}}',
+        '{"timestamp":"2026-05-08T14:52:18.219Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-image"}}',
+        '{"timestamp":"2026-05-08T14:52:18.220Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<image name=[Image #1]>\\n</image>\\n$gsd-code-review check parsing"}]}}',
+        '{"timestamp":"2026-05-08T14:52:18.221Z","type":"event_msg","payload":{"type":"user_message","message":"$gsd-code-review check parsing","images":["image-1"]}}',
+        '{"timestamp":"2026-05-08T14:52:19.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checking."}]}}',
+      ].join('\n');
+
+      const filePath = writeFixture('payload-event-user-image-wrapper.jsonl', jsonl);
+      const result = await parseCodexSession(filePath, 'fallback');
+      const userMessages = result.messages.filter((message) => message.role === 'user');
+
+      expect(userMessages).toHaveLength(1);
+      expect(userMessages[0].content).toBe('$gsd-code-review check parsing');
+      expect(userMessages[0].turnId).toBe('turn-image');
+    });
   });
 
   describe('Test 3: text → TraceMessage (assistant)', () => {
