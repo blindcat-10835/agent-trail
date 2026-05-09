@@ -49,7 +49,7 @@ function AggregateSessionsRightRail({
   selectedSessionId,
   onClearSelection,
 }: SessionsRightRailProps) {
-  const { definition } = useAgentTool()
+  const { definition, href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
   const aggregateSessions = useAggregateSessions({ limit: '500' })
@@ -72,7 +72,7 @@ function AggregateSessionsRightRail({
 
   function handleSelect(session: TraceSession) {
     setSelectedSessionId(session.id)
-    router.push(`/${session.source}/sessions/${session.id}`)
+    router.push(href(`/sessions/${session.id}`))
   }
 
   return (

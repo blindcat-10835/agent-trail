@@ -13,10 +13,12 @@ import { assertSourceToolId } from '@/lib/agent-tools/registry'
 import { openclawAdapter } from '@/lib/agent-tools/openclaw/server-adapter'
 import { claudeCodeAdapter } from '@/lib/agent-tools/claude-code/server-adapter'
 import { codexAdapter } from '@/lib/agent-tools/codex/server-adapter'
+import { allAdapter } from '@/lib/agent-tools/all/server-adapter'
 import { sanitizeError } from '@/lib/agent-tools/server-adapter'
-import type { AgentToolServerAdapter, TurnsQueryParams } from '@/lib/agent-tools/server-adapter'
+import type { AgentToolServerAdapter } from '@/lib/agent-tools/server-adapter'
 
 const adapters: Record<string, AgentToolServerAdapter> = {
+  all: allAdapter,
   openclaw: openclawAdapter,
   'claude-code': claudeCodeAdapter,
   codex: codexAdapter,
@@ -29,9 +31,6 @@ export async function GET(
   const { tool, sessionId } = await params
 
   try {
-    const toolId = assertSourceToolId(tool)
-    const adapter = adapters[toolId]
-
     // Parse offset/limit query params
     const { searchParams } = new URL(request.url)
     const rawOffset = searchParams.get('offset')
@@ -56,6 +55,18 @@ export async function GET(
     // Cap limit to prevent resource exhaustion (100 max at BFF layer)
     const cappedLimit =
       limit !== undefined ? Math.min(limit, 100) : undefined
+
+    if (tool === 'all') {
+      const adapter = adapters[tool]
+      const result = await adapter.getSessionTurns(sessionId, {
+        offset,
+        limit: cappedLimit,
+      })
+      return NextResponse.json(result)
+    }
+
+    const toolId = assertSourceToolId(tool)
+    const adapter = adapters[toolId]
 
     const result = await adapter.getSessionTurns(sessionId, {
       offset,

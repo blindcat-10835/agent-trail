@@ -13,10 +13,12 @@ import { assertSourceToolId } from '@/lib/agent-tools/registry'
 import { openclawAdapter } from '@/lib/agent-tools/openclaw/server-adapter'
 import { claudeCodeAdapter } from '@/lib/agent-tools/claude-code/server-adapter'
 import { codexAdapter } from '@/lib/agent-tools/codex/server-adapter'
+import { allAdapter } from '@/lib/agent-tools/all/server-adapter'
 import { sanitizeError } from '@/lib/agent-tools/server-adapter'
 import type { AgentToolServerAdapter } from '@/lib/agent-tools/server-adapter'
 
 const adapters: Record<string, AgentToolServerAdapter> = {
+  all: allAdapter,
   openclaw: openclawAdapter,
   'claude-code': claudeCodeAdapter,
   codex: codexAdapter,
@@ -29,6 +31,12 @@ export async function GET(
   const { tool, sessionId } = await params
 
   try {
+    if (tool === 'all') {
+      const adapter = adapters[tool]
+      const result = await adapter.getSessionMessages(sessionId)
+      return NextResponse.json(result)
+    }
+
     const toolId = assertSourceToolId(tool)
     const adapter = adapters[toolId]
 

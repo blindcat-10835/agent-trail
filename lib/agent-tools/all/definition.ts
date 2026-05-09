@@ -14,7 +14,7 @@ const definition: AgentToolDefinition = {
   defaultRoute: '/dashboard',
   capabilities: {
     sessions: true,
-    replay: false,
+    replay: true,
     activity: false,
     office: false,
     workspace: false,
