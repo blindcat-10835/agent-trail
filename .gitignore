@@ -53,3 +53,5 @@ ingest/dist/
 
 # local real-session corpus (may contain sensitive paths — never commit)
 .local/real-session-corpus.json
+
+.superpowers
