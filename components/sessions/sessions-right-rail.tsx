@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { RefreshCw, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import {
@@ -12,9 +12,16 @@ import {
   syncAllSessions,
 } from '@/lib/agent-tools/client-hooks'
 import { useToolStore } from '@/stores/tool-store'
+import { useStarredStore } from '@/stores/starred-store'
+import {
+  SessionFilterDropdown,
+  type SessionFilterState,
+  type GroupMode,
+} from './session-filter-dropdown'
 import { cn } from '@/lib/utils'
 import type { AgentToolId, SourceToolId } from '@/lib/agent-tools/types'
-import type { TraceSession } from '@/types/trace'
+import type { TraceSession, TraceSource } from '@/types/trace'
+import { TOOL_IDS } from '@/lib/agent-tools/registry'
 
 interface SessionsRightRailProps {
   selectedSessionId: string | null
@@ -143,6 +150,11 @@ function SourceSessionsRightRail({
   )
 }
 
+interface GroupSection {
+  label: string
+  sessions: TraceSession[]
+}
+
 function SessionsRailContent({
   definitionLabel,
   sessions,
@@ -168,9 +180,101 @@ function SessionsRailContent({
   currentToolId: AgentToolId
   syncing?: boolean
 }) {
+  // -- Filter state with localStorage restore for groupMode --
+  const [filter, setFilter] = useState<SessionFilterState>(() => {
+    let groupMode: GroupMode = 'none'
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('agents-tracing-group-mode')
+        if (stored === 'agent' || stored === 'project') groupMode = stored
+      } catch {}
+    }
+    return { groupMode, sourceFilter: new Set(), starredOnly: false, searchQuery: '' }
+  })
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const starredIds = useStarredStore((s) => s.ids)
+  const starredToggle = useStarredStore((s) => s.toggle)
+  const starredIsStarred = useStarredStore((s) => s.isStarred)
+
+  // -- Filtered sessions --
+  const filteredSessions = useMemo(() => {
+    let result = sessions
+
+    // Search filter
+    if (filter.searchQuery) {
+      const q = filter.searchQuery.toLowerCase()
+      result = result.filter(
+        (s) =>
+          (s.name && s.name.toLowerCase().includes(q)) ||
+          (s.project && s.project.toLowerCase().includes(q)),
+      )
+    }
+
+    // Source filter (empty set = show all)
+    if (filter.sourceFilter.size > 0) {
+      result = result.filter((s) => filter.sourceFilter.has(s.source))
+    }
+
+    // Starred only filter
+    if (filter.starredOnly) {
+      result = result.filter((s) => starredIds.has(s.id))
+    }
+
+    return result
+  }, [sessions, filter.searchQuery, filter.sourceFilter, filter.starredOnly, starredIds])
+
+  // -- Grouped sessions --
+  const groupedSessions = useMemo((): GroupSection[] | null => {
+    if (filter.groupMode === 'none') return null
+
+    const map = new Map<string, TraceSession[]>()
+    for (const s of filteredSessions) {
+      const key =
+        filter.groupMode === 'agent'
+          ? (s.agentName || s.source)
+          : (s.project || 'default')
+      const list = map.get(key) || []
+      list.push(s)
+      map.set(key, list)
+    }
+
+    return Array.from(map.entries())
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([label, sessions]) => ({ label, sessions }))
+  }, [filteredSessions, filter.groupMode])
+
+  // -- Filter callback handlers --
+  const handleGroupModeChange = (mode: GroupMode) => {
+    setFilter((prev) => ({ ...prev, groupMode: mode }))
+    try { localStorage.setItem('agents-tracing-group-mode', mode) } catch {}
+  }
+
+  const handleSourceToggle = (source: TraceSource) => {
+    setFilter((prev) => {
+      const next = new Set(prev.sourceFilter)
+      if (next.has(source)) next.delete(source)
+      else next.add(source)
+      return { ...prev, sourceFilter: next.size === TOOL_IDS.length ? new Set() : next }
+    })
+  }
+
+  const handleClearAll = () => {
+    setFilter({ groupMode: 'none', sourceFilter: new Set(), starredOnly: false, searchQuery: '' })
+    try { localStorage.removeItem('agents-tracing-group-mode') } catch {}
+  }
+
+  const toggleGroupCollapse = (label: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+      <div className="relative flex items-center gap-2 border-b border-border px-3 py-2">
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
             Sessions
@@ -190,6 +294,15 @@ function SessionsRailContent({
             <X className="h-3.5 w-3.5" />
           </button>
         )}
+        <SessionFilterDropdown
+          filter={filter}
+          onGroupModeChange={handleGroupModeChange}
+          onSourceToggle={handleSourceToggle}
+          onClearSources={() => setFilter((prev) => ({ ...prev, sourceFilter: new Set() }))}
+          onStarredOnlyToggle={() => setFilter((prev) => ({ ...prev, starredOnly: !prev.starredOnly }))}
+          onSearchChange={(q) => setFilter((prev) => ({ ...prev, searchQuery: q }))}
+          onClearAll={handleClearAll}
+        />
         <button
           type="button"
           onClick={onRefresh}
@@ -219,24 +332,62 @@ function SessionsRailContent({
               {error}
             </div>
           </div>
-        ) : sessions.length === 0 ? (
+        ) : filteredSessions.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-5 text-center">
             <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
               NO SESSIONS
             </div>
             <div className="text-[10px] leading-relaxed text-muted-foreground">
-              {definitionLabel} index is empty.
+              {sessions.length === 0
+                ? `${definitionLabel} index is empty.`
+                : 'No sessions match current filters.'}
             </div>
+          </div>
+        ) : groupedSessions ? (
+          <div className="divide-y divide-border">
+            {groupedSessions.map((group) => (
+              <div key={group.label}>
+                <button
+                  type="button"
+                  onClick={() => toggleGroupCollapse(group.label)}
+                  className="flex w-full items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1.5 text-left transition-colors hover:bg-muted/50"
+                >
+                  <span className="text-[9px] text-muted-foreground/60 transition-transform" style={{ transform: collapsedGroups.has(group.label) ? 'rotate(-90deg)' : undefined }}>
+                    &#9662;
+                  </span>
+                  <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {group.label}
+                  </span>
+                  <span className="text-[9px] font-mono tabular-nums text-muted-foreground/60">
+                    ({group.sessions.length})
+                  </span>
+                </button>
+                {!collapsedGroups.has(group.label) &&
+                  group.sessions.map((session, index) => (
+                    <SessionRailRow
+                      key={session.id || `${session.source}-${index}`}
+                      session={session}
+                      active={selectedSessionId === session.id}
+                      currentToolId={currentToolId}
+                      onSelect={() => onSelect(session)}
+                      isStarred={starredIsStarred(session.id)}
+                      onToggleStar={() => starredToggle(session.id)}
+                    />
+                  ))}
+              </div>
+            ))}
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {sessions.map((session, index) => (
+            {filteredSessions.map((session, index) => (
               <SessionRailRow
                 key={session.id || `${session.source}-${index}`}
                 session={session}
                 active={selectedSessionId === session.id}
                 currentToolId={currentToolId}
                 onSelect={() => onSelect(session)}
+                isStarred={starredIsStarred(session.id)}
+                onToggleStar={() => starredToggle(session.id)}
               />
             ))}
           </div>
@@ -251,11 +402,15 @@ function SessionRailRow({
   active,
   currentToolId,
   onSelect,
+  isStarred,
+  onToggleStar,
 }: {
   session: TraceSession
   active: boolean
   currentToolId: AgentToolId
   onSelect: () => void
+  isStarred: boolean
+  onToggleStar: () => void
 }) {
   const name = deriveSessionName(session)
   const project = deriveProject(session)
@@ -281,13 +436,22 @@ function SessionRailRow({
           {sourceLabel}
         </span>
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-[10px] text-muted-foreground">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 text-[10px] text-muted-foreground">
         <span className="truncate font-mono" title={project}>
           {project}
         </span>
         <span className="font-mono tabular-nums">
           {updated}
         </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleStar() }}
+          className={`flex-shrink-0 ml-1 text-sm transition-colors ${
+            isStarred ? 'text-amber-500' : 'text-muted-foreground/30 hover:text-muted-foreground'
+          }`}
+          aria-label={isStarred ? 'Unstar session' : 'Star session'}
+        >
+          {isStarred ? '★' : '☆'}
+        </button>
       </div>
     </button>
   )
