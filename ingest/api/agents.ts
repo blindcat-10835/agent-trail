@@ -7,15 +7,26 @@
 
 import { Hono } from 'hono'
 import { getDatabase } from '../db'
+import type { SessionStatus } from '../../types/trace'
 
 export const agentsRoutes = new Hono()
 
-export interface AgentRow {
+interface AgentRow {
   name: string
   session_count: number
   last_active_at: string | null
   latest_status: string
   tool_call_count: number
+}
+
+function parseAgentRow(row: AgentRow) {
+  return {
+    name: row.name,
+    sessionCount: row.session_count,
+    lastActiveAt: row.last_active_at,
+    latestStatus: row.latest_status as SessionStatus,
+    toolCallCount: row.tool_call_count,
+  }
 }
 
 agentsRoutes.get('/api/v1/agents', (c) => {
@@ -56,5 +67,5 @@ agentsRoutes.get('/api/v1/agents', (c) => {
     ORDER BY last_active_at DESC
   `).all(source) as AgentRow[]
 
-  return c.json({ agents: rows })
+  return c.json({ agents: rows.map(parseAgentRow) })
 })
