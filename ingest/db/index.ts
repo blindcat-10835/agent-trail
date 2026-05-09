@@ -133,7 +133,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 6;
+  const targetVersion = 7;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -207,6 +207,18 @@ export function runMigrations(): void {
         SET file_hash = NULL
         WHERE source IN ('claude-code', 'codex')
       `,
+    },
+    {
+      desc: 'Add agent_name column to sessions',
+      sql: 'ALTER TABLE sessions ADD COLUMN agent_name TEXT',
+    },
+    {
+      desc: 'Add agent_name index',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_sessions_agent_name ON sessions(agent_name)',
+    },
+    {
+      desc: 'Invalidate openclaw sessions cache to backfill agent_name',
+      sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'openclaw' AND agent_name IS NULL",
     },
   ];
 
