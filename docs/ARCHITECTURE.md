@@ -247,13 +247,16 @@ useSessionTurns(toolId, sessionId, ...)
 
 | 变量 | 默认值 | 为什么需要关注 |
 | --- | --- | --- |
-| `WORKSPACE_PATH` | `~/.openclaw`（去除 `/workspace` 后） | OpenClaw 源根目录 |
-| `CLAUDE_SESSIONS_PATH` | `~/.claude/projects` | Claude Code 源根目录 |
-| `CODEX_SESSIONS_PATH` | `~/.codex/sessions` | Codex 源根目录 |
+| `OPENCLAW_DIR` | `~/.openclaw/agents` | OpenClaw 源目录（可配置多个，见下文） |
+| `CLAUDE_PROJECTS_DIR` | `~/.claude/projects` | Claude Code 源目录 |
+| `CODEX_SESSIONS_DIR` | `~/.codex/sessions` | Codex 源目录 |
+| `AGENTS_TRACING_CONFIG` | `~/.agents-tracing/config.json` | 配置文件路径（可在其中定义多目录） |
 | `INGEST_PORT` | `8078` | Hono 端口 |
 | `INGEST_DB_PATH` | `./data/ingest.db` | SQLite 文件（阻止路径穿越） |
 | `INGEST_STARTUP_SYNC_LIMIT` | `50` | 每个数据源在 `ready: true` 之前索引的最新文件数 |
 | `INGEST_BACKGROUND_SYNC_ENABLED` | `true` | 预热后是否进行全量历史扫描 |
+
+**工具目录注册表**（`ingest/config/tool-dirs.ts`）集中管理每个数据源的扫描目录。目录解析优先级：环境变量 > 配置文件（`~/.agents-tracing/config.json`）> 内置默认值。配置文件中可指定多个目录（数组），环境变量仅支持单个目录。
 
 前端环境变量 (`NEXT_PUBLIC_*`) 存放在 `.env.local`（gitignore 中）。
 

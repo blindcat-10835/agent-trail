@@ -14,7 +14,8 @@ ingest/
 ├── types.ts                 # 内部类型：ServiceContext、HealthStatus、StartupSyncState、VersionInfo
 ├── tsconfig.json            # 项目引用；编译输出到 ingest/dist/
 ├── config/
-│   └── index.ts             # loadConfig() / getConfig() — INGEST_* 环境变量解析 + 验证
+│   ├── index.ts             # loadConfig() / getConfig() — INGEST_* 环境变量解析 + 验证
+│   └── tool-dirs.ts         # TOOL_DIR_REGISTRY + resolveToolDirs() — 工具目录注册表
 ├── db/
 │   ├── schema.sql           # 标准 SQLite DDL（见 db-schema.md）
 │   └── index.ts             # openDatabase / initSchema / runMigrations / getDatabase / closeDatabase
@@ -105,23 +106,35 @@ initializeSourcesAndSync()                             // 后台执行
 
 ## 4. 数据源发现
 
+### 4.1 工具目录注册表（`config/tool-dirs.ts`）
+
+扫描目录由 `ingest/config/tool-dirs.ts` 中的工具目录注册表集中管理。注册表为每个数据源定义了：
+
+| 数据源 | 环境变量 | 配置文件键 | 默认目录 |
+| --- | --- | --- | --- |
+| OpenClaw | `OPENCLAW_DIR` | `openclaw_dirs` | `~/.openclaw/agents` |
+| Claude Code | `CLAUDE_PROJECTS_DIR` | `claude_project_dirs` | `~/.claude/projects` |
+| Codex | `CODEX_SESSIONS_DIR` | `codex_sessions_dirs` | `~/.codex/sessions` |
+
+`resolveToolDirs()` 按优先级解析目录：环境变量 > 配置文件（`AGENTS_TRACING_CONFIG` 或默认 `~/.agents-tracing/config.json`）> 内置默认值。配置文件中可指定多个目录（数组），环境变量仅支持单个目录。解析结果存储在 `IngestConfig.toolDirs`（`Map<SourceToolId, string[]>`）中。
+
+### 4.2 发现器（`sync/sources.ts`）
+
 `sync/sources.ts` 导出三个发现器：
 
-- `discoverOpenClawSources({ workspacePath? })`
-  - 默认根路径：`WORKSPACE_PATH ?? ~/.openclaw`（移除尾部 `/workspace`）。
-  - 遍历 `<root>/agents/*/sessions/`，为每个 agent 的 sessions 目录返回一个 `DiscoveredSource`，包含来自 `*.jsonl` 文件的 `sessionCount`。
+- `discoverOpenClawSources(dirs?: string[])`
+  - 默认从 `IngestConfig.toolDirs` 中读取 OpenClaw 的目录列表。
+  - 对每个目录，遍历 `*/sessions/` 子目录，为每个 agent 的 sessions 目录返回一个 `DiscoveredSource`，包含来自 `*.jsonl` 文件的 `sessionCount`。
   - 如果未找到任何 agent，返回一个 `sessionCount: 0` 且带有描述缺失原因的 `error` 的条目。
   - 通过 `isWithinRoot` 过滤掉已解析的 `agentsDir` 之外的任何内容。
-- `discoverClaudeSources({ sessionsPath? })`
-  - 默认根路径：`CLAUDE_SESSIONS_PATH ?? ~/.claude/projects`。
-  - 递归：根目录下任何包含 `.jsonl` 的目录都成为 `DiscoveredSource`。
-- `discoverCodexSources({ sessionsPath? })`
-  - 默认根路径：`CODEX_SESSIONS_PATH ?? ~/.codex/sessions`。
+- `discoverClaudeSources(dirs?: string[])`
+  - 默认从 `IngestConfig.toolDirs` 中读取 Claude Code 的目录列表。
+  - 递归：目录下任何包含 `.jsonl` 的子目录都成为 `DiscoveredSource`。
+- `discoverCodexSources(dirs?: string[])`
+  - 默认从 `IngestConfig.toolDirs` 中读取 Codex 的目录列表。
   - 与 Claude 相同的递归模式。
 
 `isWithinRoot(candidate, allowed)` 解析两个路径并检查 `candidate.startsWith(root + sep) || candidate === root`。这阻止了可能让 watcher 逃逸出配置根路径的符号链接。
-
-`getSourcePath(sourceType)` 是一个无副作用的辅助函数，供只需要解析后根路径的调用者使用。
 
 ---
 

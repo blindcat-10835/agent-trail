@@ -53,12 +53,15 @@ This document explains the complete data pipeline — from raw JSONL files that 
 
 ## Stage 1: Source Files
 
-Each AI tool writes conversation history to JSONL files (one JSON object per line). The ingest service discovers these directories on startup via `ingest/sync/sources.ts`:
+Each AI tool writes conversation history to JSONL files (one JSON object per line). The ingest service discovers these directories on startup:
 
-| Source | File path | Session ID |
+- Scan directories are centralised by the **tool directory registry** in `ingest/config/tool-dirs.ts`, resolved with priority: environment variable > config file (`~/.agents-tracing/config.json`) > built-in defaults.
+- Discoverers (`ingest/sync/sources.ts`) read the directory list from `IngestConfig.toolDirs`; each source can be configured with multiple directories.
+
+| Source | Default path | Session ID |
 | --- | --- | --- |
 | Claude Code | `~/.claude/projects/{encoded-cwd}/{uuid}.jsonl` | UUID extracted from filename |
-| OpenClaw | `.openclaw/agents/{name}/sessions/{key}.jsonl` | `agent:{name}:{uuid}` |
+| OpenClaw | `~/.openclaw/agents/{name}/sessions/{key}.jsonl` | `agent:{name}:{uuid}` |
 | Codex | `~/.codex/sessions/*.jsonl` | Derived from filename |
 
 Each JSONL line contains a message with role (`user`, `assistant`, `system`, `tool_result`), content, timestamp, and optional tool call blocks. Claude Code lines also carry `uuid` and `parentUuid` for DAG relationship tracking.

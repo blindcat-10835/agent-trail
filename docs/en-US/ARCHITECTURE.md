@@ -247,13 +247,16 @@ All knobs are environment variables — the project deliberately has **no `.env.
 
 | Variable | Default | Why you care |
 | --- | --- | --- |
-| `WORKSPACE_PATH` | `~/.openclaw` (when stripped of `/workspace`) | OpenClaw source root |
-| `CLAUDE_SESSIONS_PATH` | `~/.claude/projects` | Claude Code source root |
-| `CODEX_SESSIONS_PATH` | `~/.codex/sessions` | Codex source root |
+| `OPENCLAW_DIR` | `~/.openclaw/agents` | OpenClaw source directory (multiple dirs configurable, see below) |
+| `CLAUDE_PROJECTS_DIR` | `~/.claude/projects` | Claude Code source directory |
+| `CODEX_SESSIONS_DIR` | `~/.codex/sessions` | Codex source directory |
+| `AGENTS_TRACING_CONFIG` | `~/.agents-tracing/config.json` | Path to config file (can define multiple directories) |
 | `INGEST_PORT` | `8078` | Hono port |
 | `INGEST_DB_PATH` | `./data/ingest.db` | SQLite file (path traversal blocked) |
 | `INGEST_STARTUP_SYNC_LIMIT` | `50` | Newest files per source indexed before `ready: true` |
 | `INGEST_BACKGROUND_SYNC_ENABLED` | `true` | Whether to do the full historical scan after warmup |
+
+The **tool directory registry** (`ingest/config/tool-dirs.ts`) centralises per-source scan directories. Directory resolution priority: environment variable > config file (`~/.agents-tracing/config.json`) > built-in defaults. The config file can specify multiple directories (as an array); environment variables support a single directory only.
 
 Frontend env vars (`NEXT_PUBLIC_*`) live in `.env.local` (gitignored).
 

@@ -14,7 +14,8 @@ ingest/
 ├── types.ts                 # Internal types: ServiceContext, HealthStatus, StartupSyncState, VersionInfo
 ├── tsconfig.json            # Project reference; emits to ingest/dist/
 ├── config/
-│   └── index.ts             # loadConfig() / getConfig() — INGEST_* env parsing + validation
+│   ├── index.ts             # loadConfig() / getConfig() — INGEST_* env parsing + validation
+│   └── tool-dirs.ts         # TOOL_DIR_REGISTRY + resolveToolDirs() — tool directory registry
 ├── db/
 │   ├── schema.sql           # Canonical SQLite DDL (see db-schema.md)
 │   └── index.ts             # openDatabase / initSchema / runMigrations / getDatabase / closeDatabase
@@ -105,23 +106,35 @@ Validation throws on startup — if Hono never reaches `serve()`, look at the pr
 
 ## 4. Source discovery
 
+### 4.1 Tool directory registry (`config/tool-dirs.ts`)
+
+Scan directories are centralised by the tool directory registry in `ingest/config/tool-dirs.ts`. The registry defines per-source:
+
+| Source | Env var | Config file key | Default directory |
+| --- | --- | --- | --- |
+| OpenClaw | `OPENCLAW_DIR` | `openclaw_dirs` | `~/.openclaw/agents` |
+| Claude Code | `CLAUDE_PROJECTS_DIR` | `claude_project_dirs` | `~/.claude/projects` |
+| Codex | `CODEX_SESSIONS_DIR` | `codex_sessions_dirs` | `~/.codex/sessions` |
+
+`resolveToolDirs()` resolves directories with priority: environment variable > config file (`AGENTS_TRACING_CONFIG` or default `~/.agents-tracing/config.json`) > built-in defaults. The config file can specify multiple directories (as an array); environment variables support a single directory only. The resolved result is stored in `IngestConfig.toolDirs` (`Map<SourceToolId, string[]>`).
+
+### 4.2 Discoverers (`sync/sources.ts`)
+
 `sync/sources.ts` exports three discoverers:
 
-- `discoverOpenClawSources({ workspacePath? })`
-  - Default root: `WORKSPACE_PATH ?? ~/.openclaw` (with trailing `/workspace` stripped).
-  - Walks `<root>/agents/*/sessions/`, returns one `DiscoveredSource` per agent's sessions dir with `sessionCount` from `*.jsonl` files.
+- `discoverOpenClawSources(dirs?: string[])`
+  - By default reads the OpenClaw directory list from `IngestConfig.toolDirs`.
+  - For each directory, walks `*/sessions/` subdirectories, returns one `DiscoveredSource` per agent's sessions dir with `sessionCount` from `*.jsonl` files.
   - If no agents found, returns one entry with `sessionCount: 0` and an `error` describing the absence.
   - Filters out anything outside the resolved `agentsDir` via `isWithinRoot`.
-- `discoverClaudeSources({ sessionsPath? })`
-  - Default root: `CLAUDE_SESSIONS_PATH ?? ~/.claude/projects`.
+- `discoverClaudeSources(dirs?: string[])`
+  - By default reads the Claude Code directory list from `IngestConfig.toolDirs`.
   - Recursive: any directory under the root containing `.jsonl` becomes a `DiscoveredSource`.
-- `discoverCodexSources({ sessionsPath? })`
-  - Default root: `CODEX_SESSIONS_PATH ?? ~/.codex/sessions`.
+- `discoverCodexSources(dirs?: string[])`
+  - By default reads the Codex directory list from `IngestConfig.toolDirs`.
   - Same recursive shape as Claude.
 
 `isWithinRoot(candidate, allowed)` resolves both paths and checks `candidate.startsWith(root + sep) || candidate === root`. This blocks symlinks that would otherwise let the watcher escape the configured root.
-
-`getSourcePath(sourceType)` is a side-effect-free helper for callers that only need the resolved root.
 
 ---
 

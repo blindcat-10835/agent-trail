@@ -53,12 +53,15 @@
 
 ## 阶段 1：Source 文件
 
-每个 AI 工具将对话历史写成 JSONL 文件（每行一个 JSON 对象）。Ingest 服务在启动时通过 `ingest/sync/sources.ts` 发现这些目录：
+每个 AI 工具将对话历史写成 JSONL 文件（每行一个 JSON 对象）。Ingest 服务在启动时发现这些目录：
 
-| Source | 文件路径 | Session ID |
+- 扫描目录由 `ingest/config/tool-dirs.ts` 中的**工具目录注册表**集中管理，按优先级解析：环境变量 > 配置文件（`~/.agents-tracing/config.json`）> 内置默认值。
+- 发现器（`ingest/sync/sources.ts`）从 `IngestConfig.toolDirs` 读取目录列表，每个数据源可配置多个目录。
+
+| Source | 默认路径 | Session ID |
 | --- | --- | --- |
 | Claude Code | `~/.claude/projects/{encoded-cwd}/{uuid}.jsonl` | 从文件名提取 UUID |
-| OpenClaw | `.openclaw/agents/{name}/sessions/{key}.jsonl` | `agent:{name}:{uuid}` |
+| OpenClaw | `~/.openclaw/agents/{name}/sessions/{key}.jsonl` | `agent:{name}:{uuid}` |
 | Codex | `~/.codex/sessions/*.jsonl` | 从文件名派生 |
 
 每行 JSONL 包含一条消息，具有 role（`user`、`assistant`、`system`、`tool_result`）、content、timestamp，以及可选的工具调用块。Claude Code 的行还携带 `uuid` 和 `parentUuid`，用于 DAG 关系追踪。
