@@ -674,7 +674,10 @@ async function syncOpenClawSource(opts: SyncSourceOptions): Promise<SyncResult> 
   const { discoverOpenClawSources } = await import('./sources');
   const { parseOpenClawSession } = await import('../parser/openclaw');
 
-  const sources = await discoverOpenClawSources({ workspacePath: opts.basePath });
+  const { getConfig } = await import('../config');
+  const toolDirs = getConfig().toolDirs;
+  const dirs = opts.basePath ? [opts.basePath] : toolDirs.get('openclaw');
+  const sources = await discoverOpenClawSources(dirs);
   const totalResult: SyncResult = {
     sessionsInserted: 0,
     sessionsUpdated: 0,
@@ -733,7 +736,9 @@ async function syncClaudeCodeSource(opts: SyncSourceOptions): Promise<SyncResult
   const { discoverClaudeSources } = await import('./sources');
   const { parseClaudeSession } = await import('../parser/claude');
 
-  const sources = await discoverClaudeSources();
+  const { getConfig } = await import('../config');
+  const toolDirs = getConfig().toolDirs;
+  const sources = await discoverClaudeSources(toolDirs.get('claude-code'));
   const totalResult: SyncResult = {
     sessionsInserted: 0,
     sessionsUpdated: 0,
@@ -794,7 +799,9 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const { discoverCodexSources } = await import('./sources');
   const { parseCodexSession } = await import('../parser/codex');
 
-  const sources = await discoverCodexSources();
+  const { getConfig } = await import('../config');
+  const toolDirs = getConfig().toolDirs;
+  const sources = await discoverCodexSources(toolDirs.get('codex'));
   const relationshipsByChild = typeof opts.limit === 'number'
     ? new Map<string, { parentSessionId: string; rootSessionId?: string }>()
     : await collectCodexRelationships(sources);
