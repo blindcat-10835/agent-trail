@@ -77,7 +77,7 @@ types/                  # 共享类型
 - **shadcn 添加组件**：`pnpm dlx shadcn@latest add <name>`，组件落在 `components/ui/`。preset 是 `radix-nova`，不要换成默认。
 - **Gateway 必须在跑**（默认 `ws://localhost:18789`）才能测试 OpenClaw Dashboard/Workspace —— 没有 Gateway 时 UI 会卡在 loading。Claude Code/Codex sources 不依赖 Gateway。
 - **GSD 工作流**：项目用 `.planning/` 跟踪 milestone/phase/plan。开新工作前看 `.planning/STATE.md` 了解当前 phase。不要手编 `.planning/` 里的 STATE/ROADMAP —— 用 `/gsd-*` 命令。
-- **历史错误教训** → 见 [`docs/ERRORS_LEARNED.md`](docs/ERRORS_LEARNED.md)，写新组件前查阅避免重复踩坑。
+- **历史错误教训** → 见 [`ERRORS_LEARNED.md`](ERRORS_LEARNED.md)，写新组件前查阅避免重复踩坑。
 
 ## Skills
 

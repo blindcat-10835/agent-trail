@@ -1,19 +1,19 @@
-# API reference
+# API 参考
 
-agent-tracing-dashboard exposes two HTTP surfaces:
+agent-tracing-dashboard 暴露两个 HTTP 接口：
 
-1. **Ingest service** on `http://localhost:8078` (Hono) — the canonical REST + SSE API.
-2. **Next.js BFF** on `http://localhost:3000/api/...` — proxies and aggregators that the browser uses. The frontend never calls ingest directly (D-07).
+1. **摄取服务**，地址为 `http://localhost:8078` (Hono) — 规范的 REST + SSE API。
+2. **Next.js BFF**，地址为 `http://localhost:3000/api/...` — 浏览器使用的代理和聚合器。前端绝不直接调用摄取服务 (D-07)。
 
-Source-scoped frontend reads should always go through `/api/agent-tools/[tool]/...`. The ingest API is documented here for tooling, debugging, and parity reference.
+前端按源读取数据应始终通过 `/api/agent-tools/[tool]/...` 路径。此处记录摄取 API 供工具开发、调试和对照参考。
 
-> All examples assume defaults from [`CONFIGURATION.md`](CONFIGURATION.md). `[tool]` is one of `openclaw | claude-code | codex` (the `all` aggregate scope is shell-only and is rejected by the BFF).
+> 所有示例假定使用 [`CONFIGURATION.md`](CONFIGURATION.md) 中的默认值。`[tool]` 取值为 `openclaw | claude-code | codex`（`all` 聚合作用域仅用于 shell 层，BFF 会拒绝它）。
 
 ---
 
-## 1. Ingest service (`:8078`)
+## 1. 摄取服务 (`:8078`)
 
-### 1.1 Health & version
+### 1.1 健康检查与版本
 
 #### `GET /health`
 
@@ -36,12 +36,12 @@ Source-scoped frontend reads should always go through `/api/agent-tools/[tool]/.
 }
 ```
 
-- `status` is `"ok"` once `openDatabase()` succeeded; `"error"` otherwise.
-- `ready` is `true` only after the bounded warmup sync finishes.
-- `database` is `"connected"` when `getDatabase()` returns a live handle.
-- `sync.phase` walks through `starting → discovering → warming → indexing → idle` (or `error`).
+- `status`：`openDatabase()` 成功后为 `"ok"`，否则为 `"error"`。
+- `ready`：仅在有限预热同步完成后为 `true`。
+- `database`：当 `getDatabase()` 返回有效句柄时为 `"connected"`。
+- `sync.phase`：依次经过 `starting → discovering → warming → indexing → idle`（或 `error`）。
 
-The route bypasses `/version` and `/health` from rate limiting in `rateLimiter`.
+该路由在 `rateLimiter` 中跳过 `/version` 和 `/health` 的速率限制。
 
 #### `GET /version`
 
@@ -55,11 +55,11 @@ The route bypasses `/version` and `/health` from rate limiting in `rateLimiter`.
 
 ---
 
-### 1.2 Sources
+### 1.2 数据源
 
 #### `GET /api/v1/sources`
 
-List all discovered sources across all three types.
+列出所有三种类型下已发现的数据源。
 
 ```json
 {
@@ -79,23 +79,23 @@ List all discovered sources across all three types.
 }
 ```
 
-- `healthStatus` is derived: `error` if `error != null`, else `configured` if `sessionCount > 0`, else `empty`.
-- `watcherStatus` and `filesWatched` come from the chokidar watcher (`watching` / `stopped`).
-- Discovery errors (e.g. ENOENT) become `error` on the entry, not on the response.
+- `healthStatus` 推导规则：如果 `error != null` 则为 `error`，否则如果 `sessionCount > 0` 则为 `configured`，否则为 `empty`。
+- `watcherStatus` 和 `filesWatched` 来自 chokidar 监视器（`watching` / `stopped`）。
+- 发现错误（例如 ENOENT）会成为对应条目上的 `error`，而非响应级别的错误。
 
 #### `GET /api/v1/sources/:type`
 
-Same shape as above, scoped to one source type.
+与上述结构相同，仅限某一数据源类型。
 
-- **400** `Unsupported source type` when `type` is not `openclaw | claude-code | codex`.
+- **400** 当 `type` 不是 `openclaw | claude-code | codex` 时返回 `Unsupported source type`。
 
 #### `POST /api/v1/sources/:type/sync`
 
-Trigger an immediate sync for one source type.
+触发某一数据源类型的立即同步。
 
-| Param | Where | Default | Notes |
+| 参数 | 位置 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `force` | query (`?force=true`) or JSON body (`{"force":true}`) | `false` | Bypasses the `file_hash` skip cache; reparses every file. |
+| `force` | 查询参数 (`?force=true`) 或 JSON 请求体 (`{"force":true}`) | `false` | 绕过 `file_hash` 跳过缓存；重新解析每个文件。 |
 
 ```json
 {
@@ -112,39 +112,39 @@ Trigger an immediate sync for one source type.
 }
 ```
 
-- **400** unsupported source type.
-- **500** `{ error: "Sync failed", message: "<details>" }` on parser/IO failure (or `Internal server error` if `INGEST_DEBUG=false`).
+- **400** 不支持的数据源类型。
+- **500** 解析器/IO 错误时返回 `{ error: "Sync failed", message: "<details>" }`（如果 `INGEST_DEBUG=false` 则返回 `Internal server error`）。
 
 #### `GET /api/v1/sources/:type/status`
 
-Lightweight watcher status — no source enumeration.
+轻量级监视器状态 — 不枚举数据源。
 
 ```json
 { "type": "openclaw", "watcherStatus": "watching", "filesWatched": 142, "lastSyncAt": null, "lastError": null }
 ```
 
-- **400** unsupported source type.
+- **400** 不支持的数据源类型。
 
 ---
 
-### 1.3 Sessions
+### 1.3 会话
 
 #### `GET /api/v1/sessions`
 
-Paginated session list with filtering and sort.
+带分页、过滤和排序的会话列表。
 
-| Query | Type | Default | Validation |
+| 查询参数 | 类型 | 默认值 | 校验 |
 | --- | --- | --- | --- |
-| `source` | `openclaw \| claude-code \| codex` | _(any)_ | Whitelist; **400** otherwise via downstream filter |
-| `project` | string | _(any)_ | Pass-through `=` filter |
-| `status` | `active \| idle \| aborted \| error \| unknown` | _(any)_ | Pass-through |
-| `sort` | `updated_at \| started_at \| ended_at` | `updated_at` | **400** Invalid sort parameter otherwise |
-| `order` | `asc \| desc` | `desc` | **400** otherwise |
-| `includeChildren` | `true` (only this value enables it) | `false` | When false, only `relationship_type IS NULL OR 'root'` returned |
-| `limit` | non-negative int | `50` | Cap at 1000; **400** if negative |
-| `offset` | non-negative int | `0` | **400** if negative |
+| `source` | `openclaw \| claude-code \| codex` | _(任意)_ | 白名单；不匹配经下游过滤器返回 **400** |
+| `project` | string | _(任意)_ | 透传 `=` 过滤 |
+| `status` | `active \| idle \| aborted \| error \| unknown` | _(任意)_ | 透传 |
+| `sort` | `updated_at \| started_at \| ended_at` | `updated_at` | 无效排序参数返回 **400** |
+| `order` | `asc \| desc` | `desc` | 无效参数返回 **400** |
+| `includeChildren` | `true`（仅此值启用） | `false` | 为 false 时，仅返回 `relationship_type IS NULL OR 'root'` 的会话 |
+| `limit` | 非负整数 | `50` | 上限 1000；负数返回 **400** |
+| `offset` | 非负整数 | `0` | 负数返回 **400** |
 
-`updated_at` is computed as `MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, ''))` — that's why `sort=updated_at` works without a stored column.
+`updated_at` 计算方式为 `MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, ''))` — 这便是 `sort=updated_at` 无需存储列即可工作的原因。
 
 ```json
 {
@@ -153,39 +153,39 @@ Paginated session list with filtering and sort.
 }
 ```
 
-`turns` is always `[]` here — fetch turns separately via `/sessions/:id/turns`.
+`turns` 在此处始终为 `[]` — 请通过 `/sessions/:id/turns` 单独获取轮次。
 
 #### `GET /api/v1/sessions/lookup`
 
-Look up a session by `(source, key)` — used by OpenClaw Gateway-to-ingest drilldown.
+通过 `(source, key)` 查找会话 — 供 OpenClaw Gateway 到摄取服务的下钻使用。
 
-| Query | Required | Notes |
+| 查询参数 | 是否必需 | 说明 |
 | --- | --- | --- |
-| `source` | yes | Whitelist `openclaw \| claude-code \| codex`; **400** otherwise |
-| `key` | yes | Regex `^[a-zA-Z0-9:\-_.]{1,256}$`; **400** otherwise |
+| `source` | 是 | 白名单 `openclaw \| claude-code \| codex`；否则返回 **400** |
+| `key` | 是 | 正则 `^[a-zA-Z0-9:\-_.]{1,256}$`；否则返回 **400** |
 
-The lookup tries `id = ?` first, then `source_session_id = ?`, both filtered by `source`.
+查找流程先尝试 `id = ?`，再尝试 `source_session_id = ?`，两者均按 `source` 过滤。
 
-- **400** missing/invalid params.
-- **404** `Session not found for key`.
+- **400** 参数缺失或无效。
+- **404** `Session not found for key`。
 
 #### `GET /api/v1/sessions/:id`
 
-Single session detail.
+单个会话详情。
 
-- **400** `Invalid session ID format` if `id` doesn't match `^[a-zA-Z0-9:\-_.]{1,256}$`.
-- **404** `Session not found` if no row matches.
-- **200** the canonical `TraceSession` (with `turns: []`).
+- **400** 当 `id` 不匹配 `^[a-zA-Z0-9:\-_.]{1,256}$` 时返回 `Invalid session ID format`。
+- **404** 无匹配行时返回 `Session not found`。
+- **200** 返回规范 `TraceSession`（其中 `turns: []`）。
 
 #### `GET /api/v1/sessions/:id/messages`
 
-Flat ordered message list.
+扁平有序的消息列表。
 
-| Query | Default | Notes |
+| 查询参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `role` | _(all)_ | Whitelist `user \| assistant \| system \| tool_result`; **400** otherwise |
-| `limit` | `100` | Cap at 1000; **400** if negative |
-| `offset` | `0` | **400** if negative |
+| `role` | _(全部)_ | 白名单 `user \| assistant \| system \| tool_result`；否则返回 **400** |
+| `limit` | `100` | 上限 1000；负数返回 **400** |
+| `offset` | `0` | 负数返回 **400** |
 
 ```json
 {
@@ -195,19 +195,19 @@ Flat ordered message list.
 }
 ```
 
-> Note: `sourceMetadata.sourceType` is currently hard-coded to `"openclaw"` in the message-row mapper — see the `// TODO` in `ingest/api/turns.ts`. Don't rely on that field for source identification; use the parent session's `source`.
+> 注意：`sourceMetadata.sourceType` 目前在消息行映射器中硬编码为 `"openclaw"` — 参见 `ingest/api/turns.ts` 中的 `// TODO` 注释。请勿依赖该字段进行数据源识别；请使用父会话的 `source`。
 
-- **400** invalid session ID format / role / limit / offset.
-- **404** session not found.
+- **400** 无效的会话 ID 格式 / role / limit / offset。
+- **404** 会话未找到。
 
 #### `GET /api/v1/sessions/:id/turns`
 
-Run the turn assembler for a session.
+为某个会话运行轮次组装器。
 
-| Query | Default | Notes |
+| 查询参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `limit` | `50` | Cap at 1000 |
-| `offset` | `0` | Applied after assembly (assembler reads all messages, slice happens in memory) |
+| `limit` | `50` | 上限 1000 |
+| `offset` | `0` | 在组装之后应用（组装器读取所有消息，切片在内存中进行） |
 
 ```json
 {
@@ -227,21 +227,21 @@ Run the turn assembler for a session.
 }
 ```
 
-- **400** invalid session ID / limit / offset.
-- **404** session not found.
+- **400** 无效的会话 ID / limit / offset。
+- **404** 会话未找到。
 
 #### `GET /api/v1/sessions/:id/turns/:index`
 
-Single-turn fetch. Same validation as above.
+获取单个轮次。校验规则同上。
 
-- **400** non-numeric / negative `:index`.
-- **404** turn or session not found.
+- **400** `:index` 非数字或为负数。
+- **404** 轮次或会话未找到。
 
 ---
 
-### 1.4 SSE event streams
+### 1.4 SSE 事件流
 
-Both endpoints set:
+两个端点均设置：
 
 ```text
 Content-Type: text/event-stream
@@ -250,130 +250,130 @@ Connection: keep-alive
 X-Accel-Buffering: no
 ```
 
-Connections live for as long as the client keeps them open. The route handler attaches an `abort` listener so client disconnects clean up the subscriber.
+连接在客户端保持打开期间一直存活。路由处理器会附加 `abort` 监听器，以便客户端断开连接时清理订阅者。
 
 #### `GET /api/v1/events`
 
-Global stream. Emits:
+全局流。发送的事件：
 
-| Event | Data |
+| 事件 | 数据 |
 | --- | --- |
-| `connected` | `{}` (sent immediately on subscribe) |
+| `connected` | `{}`（订阅时立即发送） |
 | `session_created` | `{ sessionId, source }` |
 | `session_updated` | `{ sessionId, source }` |
-| `session_removed` | `{ sessionId }` (currently unused — ingest does not delete rows; here for forward compat) |
+| `session_removed` | `{ sessionId }`（当前未使用 — 摄取服务不删除行；保留为向前兼容） |
 | `sync_complete` | `{ source, sessionsInserted, sessionsUpdated, errors }` |
 
 #### `GET /api/v1/sessions/:id/events`
 
-Per-session stream. Validates `:id` format and verifies the session exists before subscribing (per threat model T-06-02-01).
+每个会话的事件流。在订阅前会校验 `:id` 格式并确认会话存在（依据威胁模型 T-06-02-01）。
 
-| Event | Data |
+| 事件 | 数据 |
 | --- | --- |
 | `connected` | `{}` |
-| `session_created` | `{ sessionId, ... }` (only if it's this session) |
+| `session_created` | `{ sessionId, ... }`（仅当恰好是该会话时） |
 | `session_updated` | `{ sessionId, ... }` |
-| `turn_added` | reserved — emitted by the SSE manager interface but not currently fired by the writer |
+| `turn_added` | 保留 — 由 SSE 管理器接口定义，但当前写入器不触发 |
 
-- **400** invalid session ID format.
-- **404** session not found.
+- **400** 无效的会话 ID 格式。
+- **404** 会话未找到。
 
 ---
 
-### 1.5 Errors & rate limiting
+### 1.5 错误与速率限制
 
-- The global error handler (`app.onError`) returns `{ "error": "Internal server error" }` with status 500 by default. When `INGEST_DEBUG=true`, it returns `{ error, stack }` instead — never enable in shared environments.
-- `rateLimiter` middleware (when `INGEST_RATE_LIMIT_ENABLED=true`, default) caps requests at `INGEST_RATE_LIMIT_RPM` per IP per minute. Excess returns `429 { error: "Too many requests", retryAfter: <seconds> }`. `/health` and `/version` are exempt.
-- IP is taken from the first `x-forwarded-for` entry; falls back to `127.0.0.1`.
+- 全局错误处理器 (`app.onError`) 默认返回状态码为 500 的 `{ "error": "Internal server error" }`。当 `INGEST_DEBUG=true` 时，改为返回 `{ error, stack }` — **切勿在共享环境中启用**。
+- `rateLimiter` 中间件（当 `INGEST_RATE_LIMIT_ENABLED=true` 时，默认为 true）将每个 IP 每分钟的请求限制为 `INGEST_RATE_LIMIT_RPM`。超限返回 `429 { error: "Too many requests", retryAfter: <seconds> }`。`/health` 和 `/version` 不受限制。
+- IP 取自第一个 `x-forwarded-for` 条目；回退为 `127.0.0.1`。
 
 ---
 
 ## 2. Next.js BFF (`:3000/api`)
 
-All BFF routes use `Content-Type: application/json` for both requests (when applicable) and responses. Errors are sanitized — see `sanitizeError` in `lib/agent-tools/server-adapter.ts`.
+所有 BFF 路由对请求（如适用）和响应均使用 `Content-Type: application/json`。错误经过清理 — 参见 `lib/agent-tools/server-adapter.ts` 中的 `sanitizeError`。
 
-### 2.1 Tool-scoped proxies
+### 2.1 按工具划分的代理
 
-Every per-tool endpoint follows the same pattern:
+每个按工具划分的端点均遵循相同的模式：
 
-1. `assertSourceToolId(tool)` — rejects unknown tools with **400**.
-2. Look up the right adapter (`openclaw | claude-code | codex`).
-3. Call the adapter; injecting `source=<tool>` for list queries.
-4. Validate `sessionId` if present (`validateSessionId` regex). **400** on bad format.
-5. Catch and `sanitizeError` — **502** with generic `Ingest service unreachable` for unrecognised errors.
+1. `assertSourceToolId(tool)` — 拒绝未知工具并返回 **400**。
+2. 查找正确的适配器 (`openclaw | claude-code | codex`)。
+3. 调用适配器；为列表查询注入 `source=<tool>`。
+4. 校验 `sessionId`（如果存在）（`validateSessionId` 正则）。格式错误返回 **400**。
+5. 捕获并 `sanitizeError` — 无法识别的错误返回 **502**，消息为通用 `Ingest service unreachable`。
 
 #### `GET /api/agent-tools/[tool]/health`
 
-Pass-through to ingest `/health`. Returns whatever ingest returns (no shape transform).
+透传到摄取服务的 `/health`。返回摄取服务的原始响应（不改变结构）。
 
 #### `GET /api/agent-tools/[tool]/sessions`
 
-Same query params as ingest `GET /api/v1/sessions`, **except** `source` is ignored (the BFF injects it from `[tool]`) and `limit` is capped at **100** before being forwarded.
+与摄取服务 `GET /api/v1/sessions` 相同的查询参数，**区别**在于 `source` 被忽略（BFF 根据 `[tool]` 注入），并且 `limit` 在转发前上限为 **100**。
 
 #### `GET /api/agent-tools/[tool]/sessions/lookup`
 
-Wraps ingest `GET /api/v1/sessions/lookup`.
+包装摄取服务 `GET /api/v1/sessions/lookup`。
 
-- Only `openclaw` is allowed — other tools return **400** `Gateway lookup is only available for OpenClaw`.
-- **400** when `key` is missing.
-- **404** `No matching indexed session found` when ingest returns 404.
+- 仅允许 `openclaw` — 其他工具返回 **400** `Gateway lookup is only available for OpenClaw`。
+- `key` 缺失时返回 **400**。
+- 摄取服务返回 404 时返回 **404** `No matching indexed session found`。
 
 #### `GET /api/agent-tools/[tool]/sessions/[sessionId]`
 
-Validates `sessionId`, then calls `getSourceScopedSession(sessionId, source)`. If the session exists in ingest but its `source` doesn't match `[tool]`, the BFF returns **404** (cross-source isolation).
+校验 `sessionId`，然后调用 `getSourceScopedSession(sessionId, source)`。如果会话在摄取服务中存在但其 `source` 与 `[tool]` 不匹配，BFF 返回 **404**（跨源隔离）。
 
 #### `GET /api/agent-tools/[tool]/sessions/[sessionId]/messages`
 
-Calls `requireSourceScopedSession` first, then proxies to ingest `/api/v1/sessions/:id/messages`. No further query handling at the BFF — pass-through.
+首先调用 `requireSourceScopedSession`，然后代理到摄取服务 `/api/v1/sessions/:id/messages`。BFF 层不做额外的查询处理 — 直接透传。
 
 #### `GET /api/agent-tools/[tool]/sessions/[sessionId]/turns`
 
-| Query | Default | Notes |
+| 查询参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `offset` | `undefined` (passed through to adapter, which defaults to 0) | **400** negative |
-| `limit` | `undefined` (adapter default 50) | **400** negative; capped at 100 before forwarding |
+| `offset` | `undefined`（透传到适配器，默认为 0） | 负数返回 **400** |
+| `limit` | `undefined`（适配器默认 50） | 负数返回 **400**；转发前上限为 100 |
 
-Calls `requireSourceScopedSession`, then `adapter.getSessionTurns()`.
+调用 `requireSourceScopedSession`，然后调用 `adapter.getSessionTurns()`。
 
 #### `POST /api/agent-tools/[tool]/sync`
 
-Per-source sync trigger. Accepts `force` from query (`?force=true`) or JSON body (`{"force":true}`).
+按数据源的同步触发器。接受来自查询参数 (`?force=true`) 或 JSON 请求体 (`{"force":true}`) 的 `force`。
 
-- **400** `Invalid source tool ID` when `tool` is invalid (including `all`).
-- **502** `Ingest service unreachable` on ingest failure.
+- **400** 当 `tool` 无效时返回 `Invalid source tool ID`（包括 `all`）。
+- **502** 摄取服务不可达时返回 `Ingest service unreachable`。
 
 #### `GET /api/agent-tools/[tool]/events`
 
-SSE pass-through. `runtime = 'nodejs'`, `dynamic = 'force-dynamic'`.
+SSE 透传。`runtime = 'nodejs'`，`dynamic = 'force-dynamic'`。
 
-| Query | Behaviour |
+| 查询参数 | 行为 |
 | --- | --- |
-| _(none)_ | Subscribes to the global `/api/v1/events` stream. |
-| `sessionId=<id>` | Subscribes to `/api/v1/sessions/:id/events`. |
+| _(无)_ | 订阅全局 `/api/v1/events` 流。 |
+| `sessionId=<id>` | 订阅 `/api/v1/sessions/:id/events`。 |
 
-The browser-side `EventSource` should set the `Last-Event-ID` header automatically on reconnect. The stream forwards the ingest body verbatim; **502** with `{ "error": "Ingest SSE unavailable" }` if the upstream fetch fails.
+浏览器端的 `EventSource` 在重连时应自动设置 `Last-Event-ID` 头。该流逐字转发摄取服务的响应体；如果上游 fetch 失败则返回 **502** `{ "error": "Ingest SSE unavailable" }`。
 
 ---
 
-### 2.2 Aggregate / utility routes
+### 2.2 聚合 / 工具路由
 
 #### `GET /api/ingest/health`
 
-Frontend-facing health check. Wraps ingest `/health` and returns 502 on unreachable.
+前端使用的健康检查。包装摄取服务 `/health`，不可达时返回 502。
 
 ```json
 { "status": "ok", "ready": true, "version": "0.1.0", "sync": { ... } }
-// or on failure
+// 失败时
 { "status": "error", "error": "<sanitized message>" }
 ```
 
 #### `POST /api/sync`
 
-All-source aggregate sync. Iterates `openclaw → claude-code → codex` calling each `/api/v1/sources/:type/sync` in turn.
+全源聚合同步。按 `openclaw → claude-code → codex` 顺序依次调用每个 `/api/v1/sources/:type/sync`。
 
-| Param | Where | Default |
+| 参数 | 位置 | 默认值 |
 | --- | --- | --- |
-| `force` | query or JSON body | `false` |
+| `force` | 查询参数或 JSON 请求体 | `false` |
 
 ```json
 {
@@ -388,7 +388,7 @@ All-source aggregate sync. Iterates `openclaw → claude-code → codex` calling
 
 #### `GET /api/logs`
 
-Reads activity logs (cron runs and config audits) from the local filesystem via `lib/logs.ts`. Returns up to 200 entries.
+通过 `lib/logs.ts` 从本地文件系统读取活动日志（定时任务运行和配置审计）。最多返回 200 条记录。
 
 ```json
 {
@@ -397,81 +397,81 @@ Reads activity logs (cron runs and config audits) from the local filesystem via 
 }
 ```
 
-- **500** `Failed to load logs` on filesystem error (sanitized via `apiErrorResponse`).
+- **500** 文件系统错误时返回 `Failed to load logs`（经 `apiErrorResponse` 清理）。
 
 #### `GET /api/sessions/messages`
 
-**Legacy file-scan route** preserved from the OVAO era. Reads the last 30 message lines directly from an OpenClaw session JSONL file.
+**遗留的文件扫描路由**，从 OVAO 时代保留至今。直接从 OpenClaw 会话 JSONL 文件读取最后 30 行消息。
 
-| Query | Required |
+| 查询参数 | 是否必需 |
 | --- | --- |
-| `id` | yes |
+| `id` | 是 |
 
-- Session ID is sanitized (`[^a-zA-Z0-9\-_:.]` stripped).
-- `WORKSPACE_PATH` must be set; otherwise **500** `WORKSPACE_PATH not configured`.
-- **400** `Missing session id` if `id` query is absent.
-- Returns `[]` (200) when the session file is not found — no 404.
+- 会话 ID 经过清理（去除 `[^a-zA-Z0-9\-_:.]` 以外的字符）。
+- `WORKSPACE_PATH` 必须设置；否则返回 **500** `WORKSPACE_PATH not configured`。
+- `id` 查询参数缺失时返回 **400** `Missing session id`。
+- 会话文件未找到时返回 `[]`（200）— 不返回 404。
 
-> Don't use this for new code. Prefer `/api/agent-tools/openclaw/sessions/[sessionId]/messages`, which goes through the ingest read model and benefits from index, source scoping, and SSE invalidation.
+> 请勿在新代码中使用此路由。推荐使用 `/api/agent-tools/openclaw/sessions/[sessionId]/messages`，该路由通过摄取服务的读取模型，可享受索引、源范围限定和 SSE 失效机制的优势。
 
 #### `POST /api/action/restart`
 
-Calls `systemctl restart openclaw`, falls back to `systemctl --user restart openclaw`. Used by OpenClaw operational tooling.
+调用 `systemctl restart openclaw`，失败时回退到 `systemctl --user restart openclaw`。供 OpenClaw 运维工具使用。
 
-- **200** `{ "success": true }` on success.
-- **500** `{ "success": false, "error": "All restart attempts failed" }`.
+- 成功时返回 **200** `{ "success": true }`。
+- 失败时返回 **500** `{ "success": false, "error": "All restart attempts failed" }`。
 
-> Host-level. Will fail (or have surprising effects) outside a Linux/systemd machine where OpenClaw is installed as a service.
+> 主机级别操作。在非 Linux/systemd 机器或 OpenClaw 未安装为服务的情况下会失败（或产生意外效果）。
 
 #### `POST /api/action/update`
 
-Runs `npm update -g openclaw` with a 120s timeout.
+运行 `npm update -g openclaw`，超时 120 秒。
 
-- **200** `{ "success": true, "output": "..." }`.
-- **500** `{ "success": false, "error": "<details>" }` on non-zero exit.
+- 成功时返回 **200** `{ "success": true, "output": "..." }`。
+- 非零退出码时返回 **500** `{ "success": false, "error": "<details>" }`。
 
-> Same caveat as `/api/action/restart` — host-level command.
+> 与 `/api/action/restart` 注意事项相同 — 主机级别命令。
 
 ---
 
-## 3. Status code summary
+## 3. 状态码汇总
 
-| Code | When |
+| 状态码 | 含义 |
 | --- | --- |
-| **200** | Success. |
-| **400** | Bad input — invalid tool, session ID, source, role, sort, limit/offset, or missing required param. |
-| **404** | Session / turn / session-not-in-this-source-scope not found. |
-| **429** | Ingest rate limit exceeded (`retryAfter` in body). |
-| **500** | Internal server error (sanitized in production; full stack only with `INGEST_DEBUG=true`). |
-| **502** | BFF cannot reach ingest, or ingest returned a non-2xx the BFF can't classify. |
+| **200** | 成功。 |
+| **400** | 输入错误 — 无效的 tool、session ID、source、role、sort、limit/offset，或缺少必需参数。 |
+| **404** | 会话 / 轮次 / 会话不在该源范围内，未找到。 |
+| **429** | 摄取服务速率限制已达（响应体包含 `retryAfter`）。 |
+| **500** | 内部服务器错误（生产环境中已清理；仅在 `INGEST_DEBUG=true` 时返回完整堆栈）。 |
+| **502** | BFF 无法连接摄取服务，或摄取服务返回了 BFF 无法分类的非 2xx 响应。 |
 
 ---
 
-## 4. End-to-end debug recipe
+## 4. 端到端调试步骤
 
 ```bash
-# 1. Confirm ingest is up and ready
+# 1. 确认摄取服务已启动并就绪
 curl http://localhost:8078/health | jq
 
-# 2. Confirm the source you care about is configured
+# 2. 确认你关心的数据源已配置
 curl 'http://localhost:8078/api/v1/sources/claude-code' | jq
 
-# 3. Force-sync a source (skips cache, reparses)
+# 3. 强制同步某个数据源（跳过缓存，重新解析）
 curl -X POST 'http://localhost:8078/api/v1/sources/claude-code/sync' \
   -H 'content-type: application/json' \
   -d '{"force":true}' | jq
 
-# 4. List newest sessions
+# 4. 列出最新的会话
 curl 'http://localhost:8078/api/v1/sessions?source=claude-code&limit=5' | jq
 
-# 5. Pull a session's turns (replace SID with a real id from above)
+# 5. 获取某个会话的轮次（将 SID 替换为上面返回的真实 id）
 curl 'http://localhost:8078/api/v1/sessions/SID/turns' | jq '.turns | length'
 
-# 6. Same as (4) but through the BFF — should match modulo limit cap
+# 6. 与步骤 (4) 相同，但通过 BFF — 除 limit 上限外应与上面一致
 curl 'http://localhost:3000/api/agent-tools/claude-code/sessions?limit=5' | jq
 
-# 7. Subscribe to live invalidations (Ctrl+C to stop)
+# 7. 订阅实时失效事件（Ctrl+C 停止）
 curl -N 'http://localhost:3000/api/agent-tools/claude-code/events'
 ```
 
-For a deeper guide to what each endpoint actually does internally, see [`services/ingest.md`](services/ingest.md) (parser/sync/SSE) and [`services/frontend.md`](services/frontend.md) (BFF adapters and React hooks).
+关于每个端点内部实际行为的更深入指南，请参阅 [`services/ingest.md`](services/ingest.md)（解析器/同步/SSE）和 [`services/frontend.md`](services/frontend.md)（BFF 适配器和 React 钩子）。

@@ -1,72 +1,72 @@
-# Configuration
+# 配置
 
-agent-tracing-dashboard is configured entirely through environment variables. There is no central config file at runtime — both services parse `process.env` at startup. This document lists every variable the code actually reads, where it's read, the default, and the validation that runs against it.
+agent-tracing-dashboard 完全通过环境变量配置。没有运行时的中央配置文件 — 两个服务都在启动时解析 `process.env`。本文档列出了代码实际读取的每个变量、读取位置、默认值以及对其进行的校验。
 
-> **Convention.** Variables prefixed `NEXT_PUBLIC_` are exposed to browser bundles by Next.js — never put secrets there. Variables prefixed `INGEST_` are read only by the ingest service. Variables without a prefix (e.g. `WORKSPACE_PATH`) are read by both services.
+> **约定。** 以 `NEXT_PUBLIC_` 为前缀的变量由 Next.js 暴露给浏览器打包文件 — 切勿将密钥放在其中。以 `INGEST_` 为前缀的变量仅由摄取服务读取。没有前缀的变量（例如 `WORKSPACE_PATH`）由两个服务共同读取。
 
 ---
 
-## 1. Where to put values
+## 1. 值的存放位置
 
-| File | Loaded by | Committed? |
+| 文件 | 加载方式 | 是否提交？ |
 | --- | --- | --- |
-| `.env.local` | Next.js automatically; the ingest service when launched via `pnpm dev:ingest` (which inherits the parent shell env) | No (gitignored — see `.gitignore`) |
-| Shell exports / launcher script | Both services when started directly | n/a |
-| `.ovao-config.json` | `lib/gateway-config.ts` (Gateway URL/Token persistence) | No (gitignored) — managed at runtime, do not hand-edit |
+| `.env.local` | Next.js 自动加载；摄取服务通过 `pnpm dev:ingest` 启动时继承父 shell 环境 | 否（gitignore 中 — 参见 `.gitignore`） |
+| Shell 导出 / 启动脚本 | 两个服务直接启动时 | 不适用 |
+| `.ovao-config.json` | `lib/gateway-config.ts`（Gateway URL/Token 持久化） | 否（gitignore 中）— 运行时管理，请勿手动编辑 |
 
-There is **no** `.env.example` checked into the repo. The minimum local setup is documented in [`GETTING-STARTED.md`](GETTING-STARTED.md).
+仓库中**没有**签入 `.env.example`。最小的本地设置参见 [`GETTING-STARTED.md`](GETTING-STARTED.md)。
 
 ---
 
-## 2. Source discovery (both services)
+## 2. 数据源发现（两个服务共用）
 
-Both the ingest service (for parsing) and the legacy `app/api/sessions/messages` route (for OpenClaw file-scan fallback) read these.
+摄取服务（用于解析）和遗留的 `app/api/sessions/messages` 路由（用于 OpenClaw 文件扫描回退）都会读取这些变量。
 
 ### `WORKSPACE_PATH`
 
-- **Default:** `~/.openclaw` (after stripping a trailing `/workspace` if present).
-- **Read at:** `ingest/sync/sources.ts → discoverOpenClawSources` and `app/api/sessions/messages/route.ts → getOpenclawBase`.
-- **Resolves to:** `<WORKSPACE_PATH>/agents/<agent-name>/sessions/*.jsonl`.
-- **Behaviour:** the ingest service strips a trailing `/workspace` segment before appending `/agents`, so both `/Users/me/.openclaw` and `/Users/me/.openclaw/workspace` work.
-- **Path containment:** Discovered paths are validated by `isWithinRoot` against the resolved `agentsDir`. Anything outside is dropped with `[sources] Rejected path outside root: ...` printed to the ingest log.
+- **默认值：** `~/.openclaw`（去除尾部的 `/workspace` 之后）。
+- **读取位置：** `ingest/sync/sources.ts → discoverOpenClawSources` 和 `app/api/sessions/messages/route.ts → getOpenclawBase`。
+- **解析为：** `<WORKSPACE_PATH>/agents/<agent-name>/sessions/*.jsonl`。
+- **行为：** 摄取服务在追加 `/agents` 之前会去除尾部的 `/workspace` 段，因此 `/Users/me/.openclaw` 和 `/Users/me/.openclaw/workspace` 均可用。
+- **路径限制：** 发现的路径会通过 `isWithinRoot` 对照解析后的 `agentsDir` 进行校验。任何在根目录之外的路径会被丢弃，并在摄取日志中输出 `[sources] Rejected path outside root: ...`。
 
 ### `CLAUDE_SESSIONS_PATH`
 
-- **Default:** `~/.claude/projects`.
-- **Read at:** `ingest/sync/sources.ts → discoverClaudeSources`.
-- **Resolves to:** any directory under the root containing `.jsonl` files (recursive discovery).
-- **Project extraction:** Claude encodes the original `cwd` by replacing `/` with `-` in the directory name (e.g. `-Users-ebbi-work-foo`). The sync layer decodes this back into the `project` column.
+- **默认值：** `~/.claude/projects`。
+- **读取位置：** `ingest/sync/sources.ts → discoverClaudeSources`。
+- **解析为：** 根目录下任何包含 `.jsonl` 文件的目录（递归发现）。
+- **项目提取：** Claude 通过在目录名中将 `/` 替换为 `-` 来编码原始 `cwd`（例如 `-Users-ebbi-work-foo`）。同步层会将其解码回 `project` 列。
 
 ### `CODEX_SESSIONS_PATH`
 
-- **Default:** `~/.codex/sessions`.
-- **Read at:** `ingest/sync/sources.ts → discoverCodexSources`.
-- **Resolves to:** any directory under the root containing `.jsonl` files (recursive). Codex parent-child relationships are reconstructed from `event_msg.collab_agent_spawn_end` events during sync.
+- **默认值：** `~/.codex/sessions`。
+- **读取位置：** `ingest/sync/sources.ts → discoverCodexSources`。
+- **解析为：** 根目录下任何包含 `.jsonl` 文件的目录（递归）。Codex 的父子关系在同步期间根据 `event_msg.collab_agent_spawn_end` 事件重建。
 
 ---
 
-## 3. Ingest service (`ingest/config/index.ts`)
+## 3. 摄取服务 (`ingest/config/index.ts`)
 
-`loadConfig()` runs at startup and **throws on invalid values** (the service exits). Defaults below match `IngestConfig`. See [`services/ingest.md`](services/ingest.md) for what each knob actually changes at runtime.
+`loadConfig()` 在启动时运行，**遇到无效值会抛出异常**（服务退出）。以下默认值与 `IngestConfig` 匹配。关于每个配置项在运行时实际改变了什么，请参见 [`services/ingest.md`](services/ingest.md)。
 
-| Variable | Default | Validation | Effect |
+| 变量 | 默认值 | 校验规则 | 效果 |
 | --- | --- | --- | --- |
-| `INGEST_PORT` | `8078` | Integer in `[1024, 65535]` | TCP port for the Hono server. |
-| `INGEST_DB_PATH` | `./data/ingest.db` | Non-empty; cannot contain `..` (path traversal) | Resolved to absolute path. Parent directory is created on open. |
-| `INGEST_LOG_LEVEL` | `info` | One of `debug \| info \| warn \| error` | Reserved for the logger; currently used to gate verbose output in tests. |
-| `INGEST_RESYNC_INTERVAL_MS` | `300000` (5 min) | Integer ≥ 5000 | Periodic full-resync interval for the file watcher. |
-| `INGEST_DEBOUNCE_MS` | `500` | Integer ≥ 100 | Debounce window between filesystem events and a sync trigger. |
-| `INGEST_STARTUP_SYNC_LIMIT` | `50` | Integer ≥ 0 | Newest files per source parsed during the warmup pass before `/health` reports `ready: true`. `0` skips warmup entirely. |
-| `INGEST_BACKGROUND_SYNC_ENABLED` | `true` | Truthy: `true \| 1 \| yes` (case-insensitive) | When true, after warmup the service runs a full historical sync per source. |
-| `INGEST_RATE_LIMIT_RPM` | `100` | Falls back to `100` if unparseable | Requests per minute per IP. |
-| `INGEST_RATE_LIMIT_ENABLED` | `true` | Truthy: `true \| 1 \| yes` | Toggles `rateLimiter` middleware. `/health` and `/version` are always exempt. |
-| `INGEST_DEBUG` | `false` | Truthy: `true \| 1 \| yes` | When true, the global error handler returns the actual `err.message` and stack to clients. **Never enable in shared environments** — turn off before sharing logs. |
+| `INGEST_PORT` | `8078` | 整数，范围 `[1024, 65535]` | Hono 服务器的 TCP 端口。 |
+| `INGEST_DB_PATH` | `./data/ingest.db` | 非空；不能包含 `..`（阻止路径穿越） | 解析为绝对路径。父目录在打开时创建。 |
+| `INGEST_LOG_LEVEL` | `info` | 取值为 `debug \| info \| warn \| error` 之一 | 预留给日志器；目前用于在测试中控制详细输出。 |
+| `INGEST_RESYNC_INTERVAL_MS` | `300000`（5 分钟） | 整数，≥ 5000 | 文件监视器的定期全量重新同步间隔。 |
+| `INGEST_DEBOUNCE_MS` | `500` | 整数，≥ 100 | 文件系统事件与同步触发之间的防抖时间窗口。 |
+| `INGEST_STARTUP_SYNC_LIMIT` | `50` | 整数，≥ 0 | 在 `/health` 报告 `ready: true` 之前的预热阶段中，每个数据源解析的最新文件数。设为 `0` 则完全跳过预热。 |
+| `INGEST_BACKGROUND_SYNC_ENABLED` | `true` | 真值：`true \| 1 \| yes`（不区分大小写） | 为 true 时，预热后服务为每个数据源运行全量历史同步。 |
+| `INGEST_RATE_LIMIT_RPM` | `100` | 不可解析时回退到 `100` | 每个 IP 每分钟的请求数。 |
+| `INGEST_RATE_LIMIT_ENABLED` | `true` | 真值：`true \| 1 \| yes` | 切换 `rateLimiter` 中间件。`/health` 和 `/version` 始终免限。 |
+| `INGEST_DEBUG` | `false` | 真值：`true \| 1 \| yes` | 为 true 时，全局错误处理器向客户端返回实际的 `err.message` 和堆栈。**切勿在共享环境中启用** — 分享日志前关闭此选项。 |
 
-`getConfig()` caches the result; `loadConfig()` reloads (used by tests).
+`getConfig()` 缓存结果；`loadConfig()` 重新加载（供测试使用）。
 
-### Invalid-value behaviour
+### 无效值行为
 
-Bad values produce a fatal startup error, e.g.:
+错误值会产生致命启动错误，例如：
 
 ```text
 Error: Invalid INGEST_PORT: 99 must be between 1024 and 65535
@@ -74,20 +74,20 @@ Error: Invalid INGEST_RESYNC_INTERVAL_MS: "1000" must be at least 5000ms
 Error: INGEST_DB_PATH cannot contain ".." (path traversal)
 ```
 
-Set them in `.env.local` or via the launching shell; if the values are wrong, the service exits before binding the port (`pnpm dev` will then show only the `[NEXT]` prefix continuing).
+请在 `.env.local` 中或通过启动 shell 设置它们；如果值错误，服务会在绑定端口之前退出（`pnpm dev` 此时将只显示 `[NEXT]` 前缀继续运行）。
 
 ---
 
-## 4. Frontend (`app/` and `lib/`)
+## 4. 前端 (`app/` 和 `lib/`)
 
-| Variable | Default | Read at | Purpose |
+| 变量 | 默认值 | 读取位置 | 用途 |
 | --- | --- | --- | --- |
-| `INGEST_URL` | `http://localhost:8078` | `lib/agent-tools/server-adapter.ts` (`fetchIngest`); `app/api/agent-tools/[tool]/events/route.ts` | Base URL the BFF uses to talk to the ingest service. Server-side only. |
-| `NEXT_PUBLIC_API_BASE` | _(none — must be set if used)_ | `.env.local` only; **no current import** in source. Documented in `CLAUDE.md` as the expected HTTP API endpoint for older OpenClaw consumers. | Currently unused by code paths in the repo; kept for backwards-compat with the OVAO era. |
-| `NEXT_PUBLIC_GATEWAY_WS` | _(none — must be set if used)_ | `.env.local` only; **no current import** in source. Documented in `CLAUDE.md` as the OpenClaw Gateway WebSocket URL. | Currently unused by repo source. The GatewayBootstrap / WS client is not wired up in the active multi-source frontend; it remains in `.planning/` history. <!-- VERIFY: confirm whether NEXT_PUBLIC_GATEWAY_WS is required by any deployment surface beyond docs --> |
-| `PORT` | _(Next default — typically `3000`)_ | Next.js itself | Standard Next override (e.g. `PORT=3001 pnpm dev:next`). |
+| `INGEST_URL` | `http://localhost:8078` | `lib/agent-tools/server-adapter.ts` (`fetchIngest`)；`app/api/agent-tools/[tool]/events/route.ts` | BFF 用于与摄取服务通信的基础 URL。仅服务端使用。 |
+| `NEXT_PUBLIC_API_BASE` | _(无 — 使用时必须设置)_ | 仅在 `.env.local` 中；**源代码中当前无导入**。`CLAUDE.md` 中记录为旧版 OpenClaw 消费者所期望的 HTTP API 端点。 | 当前未被仓库内的代码路径使用；保留以与 OVAO 时代保持向后兼容。 |
+| `NEXT_PUBLIC_GATEWAY_WS` | _(无 — 使用时必须设置)_ | 仅在 `.env.local` 中；**源代码中当前无导入**。`CLAUDE.md` 中记录为 OpenClaw Gateway WebSocket URL。 | 当前未被仓库源代码使用。GatewayBootstrap / WS 客户端未在当前多源前端中连接；该内容保留在 `.planning/` 历史记录中。<!-- VERIFY: 确认 NEXT_PUBLIC_GATEWAY_WS 是否被文档之外的任何部署界面需要 --> |
+| `PORT` | _(Next 默认值 — 通常为 `3000`)_ | Next.js 本身 | 标准 Next 覆盖（例如 `PORT=3001 pnpm dev:next`）。 |
 
-The empty `.env.local` shipped during local setup typically contains:
+本地设置期间生成的空 `.env.local` 通常包含以下内容：
 
 ```bash
 NEXT_PUBLIC_API_BASE=http://localhost:8000
@@ -95,47 +95,47 @@ NEXT_PUBLIC_GATEWAY_WS=ws://localhost:18789
 WORKSPACE_PATH=/Users/<you>/.openclaw/workspace
 ```
 
-Only `WORKSPACE_PATH` is currently load-bearing for the multi-source pipeline. Keep the others for parity with older OpenClaw tooling unless you're sure nothing in your local stack reads them.
+在多源管道中，目前只有 `WORKSPACE_PATH` 具有实际作用。保留其他变量以与旧版 OpenClaw 工具保持兼容，除非你确定本地技术栈中没有任何内容读取它们。
 
 ---
 
-## 5. Build-time configuration
+## 5. 构建时配置
 
-| File | What it controls |
+| 文件 | 控制内容 |
 | --- | --- |
-| `next.config.ts` | Empty `NextConfig` — Next 16 defaults. No Turbopack flag is set in code; `pnpm dev:next` runs with `--webpack` because Turbopack triggered a compile storm in this codebase (see `docs/ERRORS_LEARNED.md` and the 20260506-001 quick fix). |
-| `postcss.config.mjs` | Loads `@tailwindcss/postcss` — required for Tailwind v4 with Next. |
-| `app/globals.css` | Theme tokens via `@theme inline { ... }`. **There is no `tailwind.config.js`** — change colors / fonts / breakpoints here. |
-| `tsconfig.json` | `target: ES2017`, `moduleResolution: bundler`, strict; includes `ingest/**/*` so types like `@/types/trace` resolve from both projects. |
-| `ingest/tsconfig.json` | Project reference for the ingest service; `tsc -p ingest/tsconfig.json` builds to `ingest/dist/`. |
-| `eslint.config.mjs` | Flat config based on `eslint-config-next`; ignores `.next/`, `out/`, `build/`, `next-env.d.ts`. |
-| `vitest.config.ts` | Includes `tests/**/*.test.{ts,tsx}`, `lib/**/*.test.{ts,tsx}`, `ingest/**/*.test.ts`. Environment is `node` by default; component tests pull in jsdom explicitly. |
-| `components.json` | shadcn config: `style: "radix-nova"`, `baseColor: "neutral"`, `iconLibrary: "lucide"`, components alias `@/components/ui`. |
-| `.gitignore` | `.env*`, `data/`, `ingest/dist/`, `.ovao-config.json`, `.local/real-session-corpus.json`, `.next/`, etc. |
+| `next.config.ts` | 空 `NextConfig` — Next 16 默认值。代码中未设置 Turbopack 标志；`pnpm dev:next` 使用 `--webpack` 运行，因为 Turbopack 在本代码库中触发编译风暴（参见 `../ERRORS_LEARNED.md` 和 20260506-001 快速修复）。 |
+| `postcss.config.mjs` | 加载 `@tailwindcss/postcss` — Tailwind v4 配合 Next 所必需。 |
+| `app/globals.css` | 通过 `@theme inline { ... }` 定义主题令牌。**没有 `tailwind.config.js`** — 在这里更改颜色 / 字体 / 断点。 |
+| `tsconfig.json` | `target: ES2017`，`moduleResolution: bundler`，严格模式；包含 `ingest/**/*`，以便 `@/types/trace` 等类型可在两个项目中解析。 |
+| `ingest/tsconfig.json` | 摄取服务的项目引用；`tsc -p ingest/tsconfig.json` 构建到 `ingest/dist/`。 |
+| `eslint.config.mjs` | 基于 `eslint-config-next` 的扁平配置；忽略 `.next/`、`out/`、`build/`、`next-env.d.ts`。 |
+| `vitest.config.ts` | 包含 `tests/**/*.test.{ts,tsx}`、`lib/**/*.test.{ts,tsx}`、`ingest/**/*.test.ts`。环境默认为 `node`；组件测试显式引入 jsdom。 |
+| `components.json` | shadcn 配置：`style: "radix-nova"`，`baseColor: "neutral"`，`iconLibrary: "lucide"`，组件别名 `@/components/ui`。 |
+| `.gitignore` | `.env*`、`data/`、`ingest/dist/`、`.ovao-config.json`、`.local/real-session-corpus.json`、`.next/` 等。 |
 
 ---
 
-## 6. Runtime / operational settings (not in code)
+## 6. 运行时 / 运维设置（非代码内）
 
-These don't appear in source but show up in operational practice:
+以下内容未出现在源代码中，但出现在运维实践中：
 
-- **`pnpm dev` colour prefixes.** `concurrently -k --names "INGEST,NEXT" --prefix-colors "green,blue"` wraps both services. Override colors with `--prefix-colors` if your terminal can't render them.
-- **Process supervision.** Outside `pnpm dev`, the production startup is `pnpm start` (Next) and `pnpm start:ingest` (Hono). Both are plain `node` processes — wrap in `pm2`, `systemd`, or your launcher of choice; neither is daemonized internally.
-- **DB durability.** SQLite is opened with WAL (`PRAGMA journal_mode = WAL`, `synchronous = NORMAL`). The `data/ingest.db-wal` and `data/ingest.db-shm` files are normal — don't delete them while the service is running. Stop ingest first.
-- **Restart vs reset.** Deleting `data/ingest.db` is the safe full-reset path: the service recreates the schema and migrates from scratch on next start. There is no migration rollback — going backwards means nuking the DB.
+- **`pnpm dev` 的颜色前缀。** `concurrently -k --names "INGEST,NEXT" --prefix-colors "green,blue"` 包装两个服务。如果终端无法渲染这些颜色，可使用 `--prefix-colors` 覆盖。
+- **进程守护。** 在 `pnpm dev` 之外，生产启动方式为 `pnpm start`（Next）和 `pnpm start:ingest`（Hono）。两者均为普通 `node` 进程 — 可用 `pm2`、`systemd` 或你选择的启动器包装；两者均未内部守护化。
+- **数据库持久性。** SQLite 以 WAL 模式打开（`PRAGMA journal_mode = WAL`，`synchronous = NORMAL`）。`data/ingest.db-wal` 和 `data/ingest.db-shm` 文件是正常的 — 请勿在服务运行时删除它们。先停止摄取服务。
+- **重启 vs. 重置。** 删除 `data/ingest.db` 是安全的全量重置路径：服务下次启动时从头重建模式并迁移。没有迁移回滚 — 回退意味着摧毁数据库。
 
 ---
 
-## 7. Configuration troubleshooting
+## 7. 配置故障排除
 
-| Symptom | Likely cause | Fix |
+| 症状 | 可能原因 | 修复方法 |
 | --- | --- | --- |
-| Ingest exits immediately on `pnpm dev:ingest` | Bad `INGEST_*` value (e.g. unparseable port) | Read the printed `Error:` line; values must satisfy the validation table above |
-| `/api/v1/sources` shows `error: "ENOENT: ..."` for a source | Source root does not exist | Set the matching `*_SESSIONS_PATH` / `WORKSPACE_PATH` env var, or create the directory |
-| OpenClaw source appears with `sessionCount: 0, error: "No agent sessions found"` | `~/.openclaw/agents/<agent>/sessions/` is empty | Run an OpenClaw session to create some, or point `WORKSPACE_PATH` at a workspace that has them |
-| `[sources] Rejected path outside root: ...` warnings | Symlink leaving the configured root, or a weird absolute path discovered | Fix the symlink; `isWithinRoot` is intentional and not configurable |
-| BFF returns 502 `Ingest service unreachable` | Ingest crashed or wrong `INGEST_URL` | Check `pnpm dev` logs; `curl http://localhost:8078/health`; reset `INGEST_URL` |
-| BFF returns 400 `Invalid source tool ID` | URL `[tool]` segment is wrong | Use `openclaw`, `claude-code`, or `codex` (note the hyphen). `all` works only at the shell layer, not the BFF. |
-| Health overlay stays in "checking" forever | Ingest is up but `INGEST_STARTUP_SYNC_LIMIT` is huge and warmup hasn't finished | Lower the limit or set it to `0` to skip warmup; full sync still runs in the background |
+| 摄取服务在 `pnpm dev:ingest` 时立即退出 | 错误的 `INGEST_*` 值（例如不可解析的端口） | 阅读打印的 `Error:` 行；值必须满足上述校验表 |
+| `/api/v1/sources` 对某个数据源显示 `error: "ENOENT: ..."` | 数据源根目录不存在 | 设置对应的 `*_SESSIONS_PATH` / `WORKSPACE_PATH` 环境变量，或创建该目录 |
+| OpenClaw 数据源显示 `sessionCount: 0, error: "No agent sessions found"` | `~/.openclaw/agents/<agent>/sessions/` 为空 | 运行一个 OpenClaw 会话来创建一些内容，或将 `WORKSPACE_PATH` 指向已有会话的工作区 |
+| `[sources] Rejected path outside root: ...` 警告 | 符号链接离开了配置的根目录，或发现了奇怪的绝对路径 | 修复符号链接；`isWithinRoot` 是刻意的限制且不可配置 |
+| BFF 返回 502 `Ingest service unreachable` | 摄取服务崩溃或 `INGEST_URL` 错误 | 检查 `pnpm dev` 日志；`curl http://localhost:8078/health`；重新设置 `INGEST_URL` |
+| BFF 返回 400 `Invalid source tool ID` | URL `[tool]` 段错误 | 使用 `openclaw`、`claude-code` 或 `codex`（注意连字符）。`all` 仅在 shell 层工作，BFF 层不行。 |
+| 健康覆盖层永远停留在 "检查中" | 摄取服务已启动但 `INGEST_STARTUP_SYNC_LIMIT` 很大，预热尚未完成 | 降低限制值或设为 `0` 跳过预热；全量同步仍在后台运行 |
 
-For "I made a parser change and the DB is showing stale data," see the skip-cache section of [`services/ingest.md`](services/ingest.md): bump `PARSER_CACHE_VERSION` or call `POST /api/v1/sources/:type/sync` with `{"force": true}`.
+关于"我修改了解析器但数据库显示过时数据"的问题，请参阅 [`services/ingest.md`](services/ingest.md) 中的跳过缓存章节：升级 `PARSER_CACHE_VERSION` 或使用 `{"force": true}` 调用 `POST /api/v1/sources/:type/sync`。

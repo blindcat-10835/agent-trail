@@ -1,46 +1,46 @@
-# Testing
+# 测试
 
-Tests run on **Vitest 4** in Node mode (with jsdom pulled in for component tests). The same runner covers the ingest service, the BFF, the React component code, and the parser fixture suites.
+测试在 **Vitest 4** 的 Node 模式下运行（组件测试引入 jsdom）。同一个运行器覆盖了 ingest 服务、BFF、React 组件代码和解析器 fixture 套件。
 
 ```bash
-pnpm test                 # watch mode
-pnpm test:run             # single pass — what CI runs
-pnpm test:real-sessions   # opt-in local corpus (uses your real local sessions)
-pnpm typecheck            # tsc --noEmit (whole workspace)
-pnpm typecheck:ingest     # ingest project only
-pnpm lint                 # ESLint (eslint-config-next flat)
+pnpm test                 # 监视模式
+pnpm test:run             # 单次运行——CI 执行的命令
+pnpm test:real-sessions   # 可选本地语料库测试（使用你真实的本地会话）
+pnpm typecheck            # tsc --noEmit（整个工作区）
+pnpm typecheck:ingest     # 仅 ingest 项目
+pnpm lint                 # ESLint（eslint-config-next flat 配置）
 ```
 
-For workflow context, see [`DEVELOPMENT.md`](DEVELOPMENT.md). For setup, see [`GETTING-STARTED.md`](GETTING-STARTED.md).
+工作流上下文请参见 [`DEVELOPMENT.md`](DEVELOPMENT.md)。环境搭建请参见 [`GETTING-STARTED.md`](GETTING-STARTED.md)。
 
 ---
 
-## 1. Layout
+## 1. 目录布局
 
-| Path | What lives here |
+| 路径 | 内容说明 |
 | --- | --- |
-| `vitest.config.ts` | Single Vitest config. Includes `tests/**/*.test.{ts,tsx}`, `lib/**/*.test.{ts,tsx}`, `ingest/**/*.test.ts`. Default environment is `node`. Path alias `@` → repo root. |
-| `tests/types.test.ts` | Type-shape assertions on the canonical trace contract. |
-| `tests/fixtures.test.ts` | Golden-file regression: every fixture in `fixtures/{openclaw,claude-code,codex}/` parsed against its `.golden.json`. |
-| `tests/fixtures/` | Source-specific real-shape JSONL captures and parser-regression fixtures. |
-| `tests/unit/ingest/` | Parser, sync, sources, turn-assembler, db-migration, sessions-API, tool-persistence, regression suites. |
-| `tests/unit/bff/` | BFF behaviour: source-switcher routing, sync route, turns pagination, replay store hooks, virtualization, key utils. |
-| `tests/integration/ingest/` | End-to-end DB and API tests using `better-sqlite3` against an isolated SQLite file. |
-| `tests/hooks/` | React hook tests (`client-hooks.test.tsx`) — uses jsdom. |
-| `tests/components/` | Component test slot (currently empty). |
-| `tests/perf/long-session.test.ts` | Performance smoke for very long sessions. |
-| `tests/local/real-session-corpus.test.ts` | Opt-in tests against your local sessions; only runs when `RUN_REAL_SESSION_TESTS=1`. |
-| `tests/helpers/temp-fixture.ts` | Helpers for spinning up temporary parser fixtures during tests. |
-| `ingest/api/*.test.ts`, `ingest/sync/*.test.ts`, `ingest/src/*.test.ts` | Co-located unit tests for ingest internals. |
-| `lib/agent-tools/*.test.ts(x)` | Adapter and registry tests co-located with their modules. |
+| `vitest.config.ts` | 单一 Vitest 配置。包含 `tests/**/*.test.{ts,tsx}`、`lib/**/*.test.{ts,tsx}`、`ingest/**/*.test.ts`。默认环境为 `node`。路径别名 `@` → 仓库根目录。 |
+| `tests/types.test.ts` | 对规范 trace 合约的类型结构断言。 |
+| `tests/fixtures.test.ts` | Golden 文件回归测试：`fixtures/{openclaw,claude-code,codex}/` 下的每个 fixture 与其 `.golden.json` 进行比对。 |
+| `tests/fixtures/` | 各 source 的真实格式 JSONL 样本和解析器回归测试 fixtures。 |
+| `tests/unit/ingest/` | 解析器、同步、数据源、turn 组装器、数据库迁移、sessions API、工具持久化和回归测试套件。 |
+| `tests/unit/bff/` | BFF 行为测试：source 切换路由、sync 路由、turns 分页、replay store hooks、虚拟化和关键工具函数。 |
+| `tests/integration/ingest/` | 端到端数据库和 API 测试，使用 `better-sqlite3` 在隔离的 SQLite 文件上运行。 |
+| `tests/hooks/` | React hook 测试（`client-hooks.test.tsx`）——使用 jsdom。 |
+| `tests/components/` | 组件测试插槽（当前为空）。 |
+| `tests/perf/long-session.test.ts` | 超长会话的性能烟雾测试。 |
+| `tests/local/real-session-corpus.test.ts` | 针对你本地会话的可选测试；仅在 `RUN_REAL_SESSION_TESTS=1` 时运行。 |
+| `tests/helpers/temp-fixture.ts` | 测试期间创建临时解析器 fixtures 的工具函数。 |
+| `ingest/api/*.test.ts`、`ingest/sync/*.test.ts`、`ingest/src/*.test.ts` | ingest 内部模块的同目录单元测试。 |
+| `lib/agent-tools/*.test.ts(x)` | 与各自模块同目录的适配器和注册表测试。 |
 
-`vitest.config.ts` deliberately **does not** include the root `tests/components/` placeholder (no entries yet) but will pick anything matching the include glob automatically.
+`vitest.config.ts` 有意**不包含**根目录下的 `tests/components/` 占位（尚无条目），但会自动选中匹配 include glob 的任何文件。
 
 ---
 
 ## 2. Golden fixtures
 
-The parser regression suite uses a small set of hand-picked JSONL files committed under `fixtures/`:
+解析器回归套件使用 `fixtures/` 下提交的一组精选 JSONL 文件：
 
 ```text
 fixtures/
@@ -55,108 +55,108 @@ fixtures/
     function_calls.jsonl,      function_calls.golden.json
 ```
 
-Each pair is one parser invocation: the `.jsonl` is the input, the `.golden.json` is the expected `ParseResult`. `tests/fixtures.test.ts` runs every parser against its input and `expect(actual).toEqual(expected)`.
+每对文件对应一次解析器调用：`.jsonl` 是输入，`.golden.json` 是期望的 `ParseResult`。`tests/fixtures.test.ts` 对每个解析器以其输入运行，并执行 `expect(actual).toEqual(expected)`。
 
-### Regenerating goldens
+### 重新生成 golden 文件
 
-When you intentionally change parser output shape:
+当你有意修改解析器输出结构时：
 
 ```bash
-# Regenerates all six golden files in place
+# 原地重新生成所有六个 golden 文件
 pnpm tsx scripts/generate-golden.ts
 ```
 
-Then `git diff fixtures/` to confirm the changes match the parser change you intended. **Don't regenerate goldens to make a failing test pass** — the failing diff is the regression you need to look at. Regenerate only after you've confirmed the new shape is correct, then commit fixtures + parser change together.
+然后运行 `git diff fixtures/` 确认变更与你期望的解析器改动一致。**不要为了让失败的测试通过而重新生成 golden 文件**——失败的 diff 正是你需要关注的回归问题。只有在你确认新的输出结构正确后才重新生成，然后将 fixtures 和解析器改动一起提交。
 
-The script source is `scripts/generate-golden.ts`. It uses the same parsers the runtime does (`lib/parseFixture.ts` is a thin dispatch shim).
+脚本源码位于 `scripts/generate-golden.ts`。它使用与运行时相同的解析器（`lib/parseFixture.ts` 是一个薄的分发 shim）。
 
 ---
 
-## 3. The opt-in real-session suite
+## 3. 可选真实会话测试套件
 
-`pnpm test:real-sessions` runs `tests/local/real-session-corpus.test.ts`, which **only executes** when `RUN_REAL_SESSION_TESTS=1` is set. It reads `.local/real-session-corpus.json` (gitignored) — a manifest of paths to your real local session files plus tags describing what invariants they should exercise. Without the manifest the tests skip with a clear message; they will not fail just because you haven't written one.
+`pnpm test:real-sessions` 运行 `tests/local/real-session-corpus.test.ts`，该测试**仅在**设置了 `RUN_REAL_SESSION_TESTS=1` 时执行。它会读取 `.local/real-session-corpus.json`（已被 gitignore）——这是一个清单文件，包含指向你真实本地会话文件的路径以及描述它们应验证哪些不变量的标签。如果没有清单文件，测试会清晰地跳过并给出提示信息；它们不会仅仅因为你没有编写清单文件而失败。
 
-The manifest schema is documented in `.local/real-session-corpus.example.json`. Recognised tags:
+清单文件的 schema 参见 `.local/real-session-corpus.example.json`。可识别的标签：
 
-| Tag | What gets asserted |
+| 标签 | 断言的检查项 |
 | --- | --- |
-| `has-tool-calls` | After parsing + sync, `tool_calls` rows exist |
-| `has-subagent` / `claude-subagent` | At least one `subagent_link` activity in the assembled turns |
-| `has-compact` | At least one turn marked `isTruncated` from a `[compact]` system event |
-| `claude-key-null-risk` | `messages.id` is non-null for every message (regression class 606dac00) |
-| `claude-discoverability` | The session is discoverable in `sessions` after sync (regression class effac644) |
-| `codex-function-output` | After Codex sync, `tool_calls` and `tool_result_events` are populated |
-| `codex-custom-tool` | Same, but for custom-tool variants |
+| `has-tool-calls` | 解析和同步后，存在 `tool_calls` 行 |
+| `has-subagent` / `claude-subagent` | 组装后的 turns 中至少有 1 个 `subagent_link` 活动 |
+| `has-compact` | 至少有 1 个 turn 因 `[compact]` 系统事件被标记为 `isTruncated` |
+| `claude-key-null-risk` | 每条消息的 `messages.id` 均为非空（回归类型 606dac00） |
+| `claude-discoverability` | 同步后该会话可在 `sessions` 中被发现（回归类型 effac644） |
+| `codex-function-output` | Codex 同步后，`tool_calls` 和 `tool_result_events` 已填充 |
+| `codex-custom-tool` | 同上，但针对自定义工具变体 |
 
-Use the real-session suite to keep parser fixes from breaking under your actual workload. The corpus file itself is sensitive — it points to JSONL that may contain code and credentials — so it stays gitignored and is opt-in.
-
----
-
-## 4. Test patterns by area
-
-### Parsers (`tests/unit/ingest/{claude,codex,openclaw}-parser.test.ts`)
-
-- Use the temp-fixture helper to write a JSONL string to disk and invoke the parser.
-- Assert the canonical `ParseResult` shape: `session`, `messages[]`, `activities[]`, `errors[]`.
-- For known formats, prefer extending `tests/fixtures/` over inlining the JSONL — that way the same input can be exercised by both `fixtures.test.ts` and a tighter unit assertion.
-
-### Sync (`tests/unit/ingest/sync.test.ts`, `tool-persistence.test.ts`, `phase8-regression.test.ts`)
-
-- Use an isolated DB: `Database(':memory:')` or `${tmpdir}/ingest-test-XXXX.db`. Don't share the dev DB — tests assume they own the schema.
-- Run `initSchema()` and `runMigrations()` to set up. Migrations are idempotent (the `runMigrations` `try/catch` around `ALTER TABLE` swallows "duplicate column" errors).
-- Verify the skip-cache path by writing the same parse result twice and asserting `sessionsInserted === 1, sessionsUpdated === 0` on the second call.
-
-### Turn assembler (`tests/unit/ingest/turns.test.ts`, `turn-activity-regression.test.ts`)
-
-- Build a fixture session in memory (or via parser), call `assembleTurns(sessionId, db)`, and assert `TraceTurn[]` shape: turn boundaries, `isTruncated` on compact, queued-command merging, `subagent_link` activities.
-- The assembler reads `messages` rows; tests that mutate `messages` (e.g. inserting a system event with `[compact]`) directly are valid.
-
-### BFF (`tests/unit/bff/*.test.ts`)
-
-- Mock `fetchIngest` rather than spinning a real ingest server.
-- Validate the route's input handling: invalid `tool` returns 400, invalid `sessionId` returns 400, ingest failures return sanitized 502.
-- Path-coverage focus: source scoping (`source=` injection), limit capping at 100, error sanitization.
-
-### Components & hooks
-
-- `tests/hooks/client-hooks.test.tsx` uses `@testing-library/react` + jsdom. Wrap consumers in `<AgentToolProvider toolId="openclaw">` to satisfy the context.
-- For data hooks that fetch the BFF, mock `globalThis.fetch` and assert request URLs (e.g. `/api/agent-tools/openclaw/sessions?...`).
-
-### Performance
-
-- `tests/perf/long-session.test.ts` covers worst-case session sizes. Keep the budget realistic (Vitest reports per-test timing); flaky perf tests are worse than no perf tests.
+使用真实会话套件来确保解析器修复不会在你的实际工作负载下出现问题。语料库文件本身是敏感的——它指向可能包含代码和凭据的 JSONL 文件——因此它保持 gitignored 且为可选的。
 
 ---
 
-## 5. Running a single test
+## 4. 各领域测试模式
+
+### 解析器（`tests/unit/ingest/{claude,codex,openclaw}-parser.test.ts`）
+
+- 使用临时 fixture 工具将 JSONL 字符串写入磁盘并调用解析器。
+- 断言规范的 `ParseResult` 结构：`session`、`messages[]`、`activities[]`、`errors[]`。
+- 对于已知格式，优先扩展 `tests/fixtures/` 而不是内联 JSONL——这样相同的输入可以同时被 `fixtures.test.ts` 和更精确的单元断言所使用。
+
+### 同步（`tests/unit/ingest/sync.test.ts`、`tool-persistence.test.ts`、`phase8-regression.test.ts`）
+
+- 使用隔离数据库：`Database(':memory:')` 或 `${tmpdir}/ingest-test-XXXX.db`。不要共用开发数据库——测试假定自己拥有 schema 的全部控制权。
+- 运行 `initSchema()` 和 `runMigrations()` 进行设置。迁移是幂等的（`runMigrations` 对 `ALTER TABLE` 的 `try/catch` 会吞掉"重复列"错误）。
+- 通过写入相同解析结果两次，并断言第二次调用时 `sessionsInserted === 1, sessionsUpdated === 0` 来验证跳过缓存的路径。
+
+### Turn 组装器（`tests/unit/ingest/turns.test.ts`、`turn-activity-regression.test.ts`）
+
+- 在内存中（或通过解析器）构建 fixture 会话，调用 `assembleTurns(sessionId, db)`，并断言 `TraceTurn[]` 结构：turn 边界、compact 事件时的 `isTruncated`、排队命令的合并、`subagent_link` 活动。
+- 组装器读取 `messages` 行；直接修改 `messages`（例如插入带有 `[compact]` 的系统事件）的测试是合法的。
+
+### BFF（`tests/unit/bff/*.test.ts`）
+
+- Mock `fetchIngest` 而不是启动真实的 ingest 服务器。
+- 验证路由的输入处理：无效的 `tool` 返回 400，无效的 `sessionId` 返回 400，ingest 失败返回脱敏后的 502。
+- 路径覆盖重点：source 范围限定（`source=` 注入）、limit 上限为 100、错误脱敏处理。
+
+### 组件与 Hooks
+
+- `tests/hooks/client-hooks.test.tsx` 使用 `@testing-library/react` + jsdom。将消费者包装在 `<AgentToolProvider toolId="openclaw">` 中以满足上下文要求。
+- 对于获取 BFF 的数据 hooks，mock `globalThis.fetch` 并断言请求 URL（例如 `/api/agent-tools/openclaw/sessions?...`）。
+
+### 性能测试
+
+- `tests/perf/long-session.test.ts` 覆盖最坏情况的会话大小。将性能预算保持在实际范围内（Vitest 会报告每个测试的耗时）；不稳定的性能测试比没有性能测试更糟糕。
+
+---
+
+## 5. 运行单个测试
 
 ```bash
-# By file
+# 按文件
 pnpm vitest run tests/unit/ingest/turns.test.ts
 
-# By name
+# 按名称
 pnpm vitest run -t 'should mark turn truncated on compact event'
 
-# Watch a single file
+# 监视单个文件
 pnpm vitest tests/unit/bff/sync-route.test.ts
 ```
 
-`pnpm vitest` (without `run`) defaults to watch mode. Use the printed Vitest UI or `q` to quit.
+`pnpm vitest`（不带 `run`）默认进入监视模式。使用打印的 Vitest UI 或按 `q` 退出。
 
 ---
 
-## 6. Coverage
+## 6. 覆盖率
 
-Coverage is not currently configured (`vitest.config.ts` has no `coverage` block). To add it, install `@vitest/coverage-v8`, add a `test.coverage` block to `vitest.config.ts`, and run `pnpm vitest run --coverage`. <!-- VERIFY: confirm whether coverage is intentionally disabled in CI; if a CI-side coverage step exists, it lives outside this repo -->
+覆盖率目前未配置（`vitest.config.ts` 中没有 `coverage` 块）。要添加它，请安装 `@vitest/coverage-v8`，在 `vitest.config.ts` 中添加 `test.coverage` 块，然后运行 `pnpm vitest run --coverage`。<!-- VERIFY: confirm whether coverage is intentionally disabled in CI; if a CI-side coverage step exists, it lives outside this repo -->
 
 ---
 
-## 7. CI considerations
+## 7. CI 注意事项
 
-There is no CI workflow checked into this repo (`.github/workflows/` is absent). The expected hosted setup runs `pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm test:run`. <!-- VERIFY: confirm the actual CI command if a CI service is configured outside this repo -->
+本仓库中没有签入 CI 工作流（`.github/workflows/` 目录不存在）。预期的托管 CI 设置运行 `pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm test:run`。<!-- VERIFY: confirm the actual CI command if a CI service is configured outside this repo -->
 
-When CI is added, prefer:
+在添加 CI 时，建议：
 
-- A single `vitest run` invocation (watch mode is for humans).
-- `pnpm typecheck` and `pnpm typecheck:ingest` together — they exercise different `tsconfig.json` files and catch cross-project drift.
-- `RUN_REAL_SESSION_TESTS` should remain off in CI; that suite is local-developer-only.
+- 使用单次 `vitest run` 调用（监视模式是面向开发者的）。
+- 同时运行 `pnpm typecheck` 和 `pnpm typecheck:ingest`——它们检查不同的 `tsconfig.json` 文件，能发现跨项目的类型不一致。
+- `RUN_REAL_SESSION_TESTS` 在 CI 中应保持关闭；该套件仅供本地开发者使用。

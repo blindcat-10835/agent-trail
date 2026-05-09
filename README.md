@@ -158,7 +158,7 @@ pnpm test:real-sessions   # tests/local/real-session-corpus.test.ts (your local 
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Every environment variable, defaults, and validation rules |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Dev workflow, hot reload, debugging, code conventions |
 | [`docs/TESTING.md`](docs/TESTING.md) | Vitest setup, fixtures, golden-file workflow, integration tests |
-| [`docs/ERRORS_LEARNED.md`](docs/ERRORS_LEARNED.md) | Past pitfalls (Tailwind v4, Next 16, etc.) — read before writing new components |
+| [`ERRORS_LEARNED.md`](ERRORS_LEARNED.md) | Past pitfalls (Tailwind v4, Next 16, etc.) — read before writing new components |
 | [`docs/preserved-capabilities.md`](docs/preserved-capabilities.md) | Phase 1 audit of OpenClaw Gateway-exclusive vs file-replaceable features |
 | [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | Instructions for AI coding assistants working on this repo |
 

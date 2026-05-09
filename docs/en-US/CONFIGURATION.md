@@ -1,0 +1,141 @@
+# Configuration
+
+agent-tracing-dashboard is configured entirely through environment variables. There is no central config file at runtime — both services parse `process.env` at startup. This document lists every variable the code actually reads, where it's read, the default, and the validation that runs against it.
+
+> **Convention.** Variables prefixed `NEXT_PUBLIC_` are exposed to browser bundles by Next.js — never put secrets there. Variables prefixed `INGEST_` are read only by the ingest service. Variables without a prefix (e.g. `WORKSPACE_PATH`) are read by both services.
+
+---
+
+## 1. Where to put values
+
+| File | Loaded by | Committed? |
+| --- | --- | --- |
+| `.env.local` | Next.js automatically; the ingest service when launched via `pnpm dev:ingest` (which inherits the parent shell env) | No (gitignored — see `.gitignore`) |
+| Shell exports / launcher script | Both services when started directly | n/a |
+| `.ovao-config.json` | `lib/gateway-config.ts` (Gateway URL/Token persistence) | No (gitignored) — managed at runtime, do not hand-edit |
+
+There is **no** `.env.example` checked into the repo. The minimum local setup is documented in [`GETTING-STARTED.md`](GETTING-STARTED.md).
+
+---
+
+## 2. Source discovery (both services)
+
+Both the ingest service (for parsing) and the legacy `app/api/sessions/messages` route (for OpenClaw file-scan fallback) read these.
+
+### `WORKSPACE_PATH`
+
+- **Default:** `~/.openclaw` (after stripping a trailing `/workspace` if present).
+- **Read at:** `ingest/sync/sources.ts → discoverOpenClawSources` and `app/api/sessions/messages/route.ts → getOpenclawBase`.
+- **Resolves to:** `<WORKSPACE_PATH>/agents/<agent-name>/sessions/*.jsonl`.
+- **Behaviour:** the ingest service strips a trailing `/workspace` segment before appending `/agents`, so both `/Users/me/.openclaw` and `/Users/me/.openclaw/workspace` work.
+- **Path containment:** Discovered paths are validated by `isWithinRoot` against the resolved `agentsDir`. Anything outside is dropped with `[sources] Rejected path outside root: ...` printed to the ingest log.
+
+### `CLAUDE_SESSIONS_PATH`
+
+- **Default:** `~/.claude/projects`.
+- **Read at:** `ingest/sync/sources.ts → discoverClaudeSources`.
+- **Resolves to:** any directory under the root containing `.jsonl` files (recursive discovery).
+- **Project extraction:** Claude encodes the original `cwd` by replacing `/` with `-` in the directory name (e.g. `-Users-ebbi-work-foo`). The sync layer decodes this back into the `project` column.
+
+### `CODEX_SESSIONS_PATH`
+
+- **Default:** `~/.codex/sessions`.
+- **Read at:** `ingest/sync/sources.ts → discoverCodexSources`.
+- **Resolves to:** any directory under the root containing `.jsonl` files (recursive). Codex parent-child relationships are reconstructed from `event_msg.collab_agent_spawn_end` events during sync.
+
+---
+
+## 3. Ingest service (`ingest/config/index.ts`)
+
+`loadConfig()` runs at startup and **throws on invalid values** (the service exits). Defaults below match `IngestConfig`. See [`services/ingest.md`](services/ingest.md) for what each knob actually changes at runtime.
+
+| Variable | Default | Validation | Effect |
+| --- | --- | --- | --- |
+| `INGEST_PORT` | `8078` | Integer in `[1024, 65535]` | TCP port for the Hono server. |
+| `INGEST_DB_PATH` | `./data/ingest.db` | Non-empty; cannot contain `..` (path traversal) | Resolved to absolute path. Parent directory is created on open. |
+| `INGEST_LOG_LEVEL` | `info` | One of `debug \| info \| warn \| error` | Reserved for the logger; currently used to gate verbose output in tests. |
+| `INGEST_RESYNC_INTERVAL_MS` | `300000` (5 min) | Integer ≥ 5000 | Periodic full-resync interval for the file watcher. |
+| `INGEST_DEBOUNCE_MS` | `500` | Integer ≥ 100 | Debounce window between filesystem events and a sync trigger. |
+| `INGEST_STARTUP_SYNC_LIMIT` | `50` | Integer ≥ 0 | Newest files per source parsed during the warmup pass before `/health` reports `ready: true`. `0` skips warmup entirely. |
+| `INGEST_BACKGROUND_SYNC_ENABLED` | `true` | Truthy: `true \| 1 \| yes` (case-insensitive) | When true, after warmup the service runs a full historical sync per source. |
+| `INGEST_RATE_LIMIT_RPM` | `100` | Falls back to `100` if unparseable | Requests per minute per IP. |
+| `INGEST_RATE_LIMIT_ENABLED` | `true` | Truthy: `true \| 1 \| yes` | Toggles `rateLimiter` middleware. `/health` and `/version` are always exempt. |
+| `INGEST_DEBUG` | `false` | Truthy: `true \| 1 \| yes` | When true, the global error handler returns the actual `err.message` and stack to clients. **Never enable in shared environments** — turn off before sharing logs. |
+
+`getConfig()` caches the result; `loadConfig()` reloads (used by tests).
+
+### Invalid-value behaviour
+
+Bad values produce a fatal startup error, e.g.:
+
+```text
+Error: Invalid INGEST_PORT: 99 must be between 1024 and 65535
+Error: Invalid INGEST_RESYNC_INTERVAL_MS: "1000" must be at least 5000ms
+Error: INGEST_DB_PATH cannot contain ".." (path traversal)
+```
+
+Set them in `.env.local` or via the launching shell; if the values are wrong, the service exits before binding the port (`pnpm dev` will then show only the `[NEXT]` prefix continuing).
+
+---
+
+## 4. Frontend (`app/` and `lib/`)
+
+| Variable | Default | Read at | Purpose |
+| --- | --- | --- | --- |
+| `INGEST_URL` | `http://localhost:8078` | `lib/agent-tools/server-adapter.ts` (`fetchIngest`); `app/api/agent-tools/[tool]/events/route.ts` | Base URL the BFF uses to talk to the ingest service. Server-side only. |
+| `NEXT_PUBLIC_API_BASE` | _(none — must be set if used)_ | `.env.local` only; **no current import** in source. Documented in `CLAUDE.md` as the expected HTTP API endpoint for older OpenClaw consumers. | Currently unused by code paths in the repo; kept for backwards-compat with the OVAO era. |
+| `NEXT_PUBLIC_GATEWAY_WS` | _(none — must be set if used)_ | `.env.local` only; **no current import** in source. Documented in `CLAUDE.md` as the OpenClaw Gateway WebSocket URL. | Currently unused by repo source. The GatewayBootstrap / WS client is not wired up in the active multi-source frontend; it remains in `.planning/` history. <!-- VERIFY: confirm whether NEXT_PUBLIC_GATEWAY_WS is required by any deployment surface beyond docs --> |
+| `PORT` | _(Next default — typically `3000`)_ | Next.js itself | Standard Next override (e.g. `PORT=3001 pnpm dev:next`). |
+
+The empty `.env.local` shipped during local setup typically contains:
+
+```bash
+NEXT_PUBLIC_API_BASE=http://localhost:8000
+NEXT_PUBLIC_GATEWAY_WS=ws://localhost:18789
+WORKSPACE_PATH=/Users/<you>/.openclaw/workspace
+```
+
+Only `WORKSPACE_PATH` is currently load-bearing for the multi-source pipeline. Keep the others for parity with older OpenClaw tooling unless you're sure nothing in your local stack reads them.
+
+---
+
+## 5. Build-time configuration
+
+| File | What it controls |
+| --- | --- |
+| `next.config.ts` | Empty `NextConfig` — Next 16 defaults. No Turbopack flag is set in code; `pnpm dev:next` runs with `--webpack` because Turbopack triggered a compile storm in this codebase (see `../../ERRORS_LEARNED.md` and the 20260506-001 quick fix). |
+| `postcss.config.mjs` | Loads `@tailwindcss/postcss` — required for Tailwind v4 with Next. |
+| `app/globals.css` | Theme tokens via `@theme inline { ... }`. **There is no `tailwind.config.js`** — change colors / fonts / breakpoints here. |
+| `tsconfig.json` | `target: ES2017`, `moduleResolution: bundler`, strict; includes `ingest/**/*` so types like `@/types/trace` resolve from both projects. |
+| `ingest/tsconfig.json` | Project reference for the ingest service; `tsc -p ingest/tsconfig.json` builds to `ingest/dist/`. |
+| `eslint.config.mjs` | Flat config based on `eslint-config-next`; ignores `.next/`, `out/`, `build/`, `next-env.d.ts`. |
+| `vitest.config.ts` | Includes `tests/**/*.test.{ts,tsx}`, `lib/**/*.test.{ts,tsx}`, `ingest/**/*.test.ts`. Environment is `node` by default; component tests pull in jsdom explicitly. |
+| `components.json` | shadcn config: `style: "radix-nova"`, `baseColor: "neutral"`, `iconLibrary: "lucide"`, components alias `@/components/ui`. |
+| `.gitignore` | `.env*`, `data/`, `ingest/dist/`, `.ovao-config.json`, `.local/real-session-corpus.json`, `.next/`, etc. |
+
+---
+
+## 6. Runtime / operational settings (not in code)
+
+These don't appear in source but show up in operational practice:
+
+- **`pnpm dev` colour prefixes.** `concurrently -k --names "INGEST,NEXT" --prefix-colors "green,blue"` wraps both services. Override colors with `--prefix-colors` if your terminal can't render them.
+- **Process supervision.** Outside `pnpm dev`, the production startup is `pnpm start` (Next) and `pnpm start:ingest` (Hono). Both are plain `node` processes — wrap in `pm2`, `systemd`, or your launcher of choice; neither is daemonized internally.
+- **DB durability.** SQLite is opened with WAL (`PRAGMA journal_mode = WAL`, `synchronous = NORMAL`). The `data/ingest.db-wal` and `data/ingest.db-shm` files are normal — don't delete them while the service is running. Stop ingest first.
+- **Restart vs reset.** Deleting `data/ingest.db` is the safe full-reset path: the service recreates the schema and migrates from scratch on next start. There is no migration rollback — going backwards means nuking the DB.
+
+---
+
+## 7. Configuration troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| Ingest exits immediately on `pnpm dev:ingest` | Bad `INGEST_*` value (e.g. unparseable port) | Read the printed `Error:` line; values must satisfy the validation table above |
+| `/api/v1/sources` shows `error: "ENOENT: ..."` for a source | Source root does not exist | Set the matching `*_SESSIONS_PATH` / `WORKSPACE_PATH` env var, or create the directory |
+| OpenClaw source appears with `sessionCount: 0, error: "No agent sessions found"` | `~/.openclaw/agents/<agent>/sessions/` is empty | Run an OpenClaw session to create some, or point `WORKSPACE_PATH` at a workspace that has them |
+| `[sources] Rejected path outside root: ...` warnings | Symlink leaving the configured root, or a weird absolute path discovered | Fix the symlink; `isWithinRoot` is intentional and not configurable |
+| BFF returns 502 `Ingest service unreachable` | Ingest crashed or wrong `INGEST_URL` | Check `pnpm dev` logs; `curl http://localhost:8078/health`; reset `INGEST_URL` |
+| BFF returns 400 `Invalid source tool ID` | URL `[tool]` segment is wrong | Use `openclaw`, `claude-code`, or `codex` (note the hyphen). `all` works only at the shell layer, not the BFF. |
+| Health overlay stays in "checking" forever | Ingest is up but `INGEST_STARTUP_SYNC_LIMIT` is huge and warmup hasn't finished | Lower the limit or set it to `0` to skip warmup; full sync still runs in the background |
+
+For "I made a parser change and the DB is showing stale data," see the skip-cache section of [`services/ingest.md`](services/ingest.md): bump `PARSER_CACHE_VERSION` or call `POST /api/v1/sources/:type/sync` with `{"force": true}`.
