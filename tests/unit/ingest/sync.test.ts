@@ -7,16 +7,19 @@ import { join } from 'path';
 const mockAccess = vi.fn();
 const mockReaddir = vi.fn();
 const mockReadFile = vi.fn();
+const mockStat = vi.fn();
 
 vi.mock('fs/promises', () => ({
   default: {
     access: (...args: any[]) => mockAccess(...args),
     readdir: (...args: any[]) => mockReaddir(...args),
     readFile: (...args: any[]) => mockReadFile(...args),
+    stat: (...args: any[]) => mockStat(...args),
   },
   access: (...args: any[]) => mockAccess(...args),
   readdir: (...args: any[]) => mockReaddir(...args),
   readFile: (...args: any[]) => mockReadFile(...args),
+  stat: (...args: any[]) => mockStat(...args),
 }));
 
 vi.mock('os', () => ({
@@ -98,6 +101,7 @@ describe('sync pipeline', () => {
     vi.clearAllMocks();
     delete process.env.CLAUDE_SESSIONS_PATH;
     delete process.env.CODEX_SESSIONS_PATH;
+    mockStat.mockResolvedValue({ mtimeMs: 0 });
     db = createTestDb();
   });
 
@@ -298,6 +302,31 @@ describe('sync pipeline', () => {
       const result = await syncSource('openclaw' as any, '/some/path' as any);
 
       expect(result).toHaveProperty('errors');
+    });
+
+    it('syncSource limit bounds parsed files using newest-first ordering', async () => {
+      const { syncSource } = await import('@/ingest/sync/index');
+      const { parseClaudeSession } = await import('@/ingest/parser/claude');
+
+      mockAccess.mockResolvedValue(undefined);
+      mockReaddir.mockResolvedValue(['old.jsonl', 'new.jsonl', 'middle.jsonl']);
+      mockStat.mockImplementation(async (filePath: string) => ({
+        mtimeMs: filePath.includes('new')
+          ? 300
+          : filePath.includes('middle')
+            ? 200
+            : 100,
+      }));
+
+      const result = await syncSource('claude-code' as any, {
+        limit: 2,
+        sortByMtimeDesc: true,
+      });
+
+      expect(result).toHaveProperty('errors');
+      expect(parseClaudeSession).toHaveBeenCalledTimes(2);
+      expect((parseClaudeSession as any).mock.calls[0][0]).toContain('new.jsonl');
+      expect((parseClaudeSession as any).mock.calls[1][0]).toContain('middle.jsonl');
     });
 
     it('writeSessionToDatabase accepts WriteSessionOptions with force', async () => {

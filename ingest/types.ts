@@ -21,17 +21,30 @@ export interface ServiceContext {
   server: any; // Hono server type (simplified for now)
   sseManager: SSEManager;
   watcher: WatcherInstance | null;
+  syncState: StartupSyncState;
 }
 
 // ============================================================================
 // Health Status Types
 // ============================================================================
 
+export interface StartupSyncState {
+  phase: 'starting' | 'discovering' | 'warming' | 'indexing' | 'idle' | 'error';
+  startupComplete: boolean;
+  foregroundLimit: number;
+  backgroundSyncEnabled: boolean;
+  currentSource: TraceSource | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+}
+
 export interface HealthStatus {
   status: 'ok' | 'error';
+  ready: boolean;
   version: string;
   uptime: number;
   database: 'connected' | 'disconnected';
+  sync: StartupSyncState | null;
 }
 
 export interface VersionInfo {

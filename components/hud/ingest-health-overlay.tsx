@@ -5,11 +5,14 @@ import { Loader2, AlertTriangle } from 'lucide-react'
 import { useIngestHealthStore } from '@/stores/ingest-health-store'
 import { cn } from '@/lib/utils'
 
-const POLL_INTERVAL_MS = 2000
-const TIMEOUT_MS = 60000
+const POLL_INTERVAL_MS = 1000
+const TIMEOUT_MS = 30000
+const HEALTH_FETCH_TIMEOUT_MS = 5000
+const HEALTH_ENDPOINT = '/api/ingest/health'
 
 export function IngestHealthOverlay() {
   const status = useIngestHealthStore((s) => s.status)
+  const hasConnectedOnce = useIngestHealthStore((s) => s.hasConnectedOnce)
   const retry = useIngestHealthStore((s) => s.retry)
   const setConnected = useIngestHealthStore((s) => s.setConnected)
   const setTimeout_ = useIngestHealthStore((s) => s.setTimeout)
@@ -27,21 +30,23 @@ export function IngestHealthOverlay() {
   }, [])
 
   const checkHealth = useCallback(async () => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), HEALTH_FETCH_TIMEOUT_MS)
+
     try {
-      // Use BFF proxy to avoid CORS issues — frontend never calls ingest directly
-      const res = await fetch('/api/agent-tools/openclaw/health')
+      const res = await fetch(HEALTH_ENDPOINT, { signal: controller.signal })
+      clearTimeout(timeoutId)
       if (res.ok) {
-        const data = await res.json()
-        if (data.status === 'ok') {
+        const data = await res.json() as { status?: string; ready?: boolean }
+        if (data.status === 'ok' && data.ready !== false) {
           setConnected()
           return
         }
       }
     } catch {
-      // Network error — fall through to timeout check
+      clearTimeout(timeoutId)
     }
 
-    // Not healthy — check timeout
     if (statusRef.current === 'connected') {
       startedAtRef.current = Date.now()
       retry()
@@ -62,7 +67,6 @@ export function IngestHealthOverlay() {
     checkHealth()
   }, [checkHealth, stopPolling])
 
-  // Single effect: resets store on mount, starts/stops polling on status change
   useEffect(() => {
     if (status === 'checking') {
       startPolling()
@@ -70,13 +74,25 @@ export function IngestHealthOverlay() {
     return () => stopPolling()
   }, [status, startPolling, stopPolling])
 
-  // On mount, force store back to 'checking' to recover from stale Zustand state (HMR)
   useEffect(() => {
     retry()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (status === 'connected') return null
+
+  // If we've connected before (page refresh), show a compact non-blocking bar
+  if (hasConnectedOnce && status !== 'timeout') {
+    return (
+      <div
+        className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-center gap-2 bg-muted/80 px-4 py-1.5 text-sm text-muted-foreground backdrop-blur-sm"
+        aria-live="polite"
+      >
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        <span>Reconnecting to data service...</span>
+      </div>
+    )
+  }
 
   const isTimeout = status === 'timeout'
 

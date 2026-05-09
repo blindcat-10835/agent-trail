@@ -543,6 +543,76 @@ export interface SyncSourceOptions {
   basePath?: string;
   /** Force reparse — bypasses file_hash skip cache; reparses all session files */
   force?: boolean;
+  /** Maximum number of session files to parse for this sync call */
+  limit?: number;
+  /** Sort candidate files by newest mtime before applying limit */
+  sortByMtimeDesc?: boolean;
+}
+
+interface SyncFileCandidate {
+  filePath: string;
+  project: string;
+  mtimeMs: number;
+}
+
+function isSessionFileName(sourceType: SyncSourceType, fileName: string): boolean {
+  if (sourceType !== 'openclaw') return fileName.endsWith('.jsonl');
+  if (fileName.endsWith('.jsonl')) return true;
+  const idx = fileName.indexOf('.jsonl.');
+  if (idx <= 0) return false;
+  const suffix = fileName.slice(idx + 7); // after ".jsonl."
+  return suffix.startsWith('deleted.') || suffix.startsWith('reset.') || suffix === 'full.bak';
+}
+
+async function collectSessionFileCandidates(
+  sources: Array<{ path: string; error?: string; sessionCount: number }>,
+  sourceType: SyncSourceType,
+  opts: SyncSourceOptions
+): Promise<SyncFileCandidate[]> {
+  const fsp = await import('fs/promises');
+  const candidates: SyncFileCandidate[] = [];
+
+  for (const source of sources) {
+    if (source.error || source.sessionCount === 0) continue;
+
+    let files: string[];
+    try {
+      files = await fsp.readdir(source.path);
+    } catch {
+      continue;
+    }
+
+    for (const file of files) {
+      if (!isSessionFileName(sourceType, file)) continue;
+
+      const filePath = path.join(source.path, file);
+      let mtimeMs = 0;
+      if (opts.sortByMtimeDesc || typeof opts.limit === 'number') {
+        try {
+          const stats = await fsp.stat(filePath);
+          mtimeMs = stats.mtimeMs;
+        } catch {
+          // Keep candidate with lowest priority; parser will report read errors.
+        }
+      }
+
+      candidates.push({
+        filePath,
+        project: extractProjectFromPath(filePath, sourceType),
+        mtimeMs,
+      });
+    }
+  }
+
+  if (opts.sortByMtimeDesc || typeof opts.limit === 'number') {
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs || a.filePath.localeCompare(b.filePath));
+  }
+
+  if (typeof opts.limit === 'number') {
+    return candidates.slice(0, Math.max(0, opts.limit));
+  }
+
+  return candidates;
 }
 
 /**
@@ -614,44 +684,29 @@ async function syncOpenClawSource(opts: SyncSourceOptions): Promise<SyncResult> 
     errors: [],
   };
 
-  for (const source of sources) {
-    if (source.error || source.sessionCount === 0) continue;
+  try {
+    const candidates = await collectSessionFileCandidates(sources, 'openclaw', opts);
 
-    try {
-      // Find all session files in source path — include active (.jsonl) and
-      // archived (.jsonl.deleted.*, .jsonl.reset.*, .jsonl.full.bak) formats.
-      const fs = await import('fs/promises');
-      const files = await fs.readdir(source.path);
-      const sessionFiles = files.filter((f) => {
-        if (f.endsWith('.jsonl')) return true;
-        const idx = f.indexOf('.jsonl.');
-        if (idx <= 0) return false;
-        const suffix = f.slice(idx + 7); // after ".jsonl."
-        return suffix.startsWith('deleted.') || suffix.startsWith('reset.') || suffix === 'full.bak';
-      });
+    for (const candidate of candidates) {
+      const filePath = candidate.filePath;
 
-      for (const file of sessionFiles) {
-        const filePath = `${source.path}/${file}`;
-        const project = extractProjectFromPath(filePath, 'openclaw');
-
-        try {
-          const parseResult = await parseOpenClawSession(filePath, project);
-          parseResult.session.name = extractSessionName(parseResult);
-          parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
-          const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
-          totalResult.sessionsInserted += result.sessionsInserted;
-          totalResult.sessionsUpdated += result.sessionsUpdated;
-          totalResult.messagesInserted += result.messagesInserted;
-          totalResult.toolCallsInserted += result.toolCallsInserted;
-          totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
-          totalResult.errors.push(...result.errors);
-        } catch (err) {
-          totalResult.errors.push(`Failed to parse ${filePath}: ${err}`);
-        }
+      try {
+        const parseResult = await parseOpenClawSession(filePath, candidate.project);
+        parseResult.session.name = extractSessionName(parseResult);
+        parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
+        const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
+        totalResult.sessionsInserted += result.sessionsInserted;
+        totalResult.sessionsUpdated += result.sessionsUpdated;
+        totalResult.messagesInserted += result.messagesInserted;
+        totalResult.toolCallsInserted += result.toolCallsInserted;
+        totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
+        totalResult.errors.push(...result.errors);
+      } catch (err) {
+        totalResult.errors.push(`Failed to parse ${filePath}: ${err}`);
       }
-    } catch (err) {
-      totalResult.errors.push(`Failed to sync source ${source.path}: ${err}`);
     }
+  } catch (err) {
+    totalResult.errors.push(`Failed to collect OpenClaw session files: ${err}`);
   }
 
   sseManager.emit('sync_complete', {
@@ -688,40 +743,31 @@ async function syncClaudeCodeSource(opts: SyncSourceOptions): Promise<SyncResult
     errors: [],
   };
 
-  for (const source of sources) {
-    if (source.error || source.sessionCount === 0) continue;
+  try {
+    const candidates = await collectSessionFileCandidates(sources, 'claude-code', opts);
 
-    try {
-      const fs = await import('fs/promises');
-      const files = await fs.readdir(source.path);
-      const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
+    for (const candidate of candidates) {
+      const filePath = candidate.filePath;
 
-      for (const file of sessionFiles) {
-        const filePath = `${source.path}/${file}`;
-        const project = extractProjectFromPath(filePath, 'claude-code');
-
-        try {
-          const parseResult = await parseClaudeSession(filePath, project);
-          parseResult.session.name = extractSessionName(parseResult);
-          parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
-          const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
-          totalResult.sessionsInserted += result.sessionsInserted;
-          totalResult.sessionsUpdated += result.sessionsUpdated;
-          totalResult.messagesInserted += result.messagesInserted;
-          totalResult.toolCallsInserted += result.toolCallsInserted;
-          totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
-          totalResult.errors.push(...result.errors);
-        } catch (err) {
-          totalResult.errors.push(
-            `Failed to parse Claude session ${filePath}: ${err}`
-          );
-        }
+      try {
+        const parseResult = await parseClaudeSession(filePath, candidate.project);
+        parseResult.session.name = extractSessionName(parseResult);
+        parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
+        const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
+        totalResult.sessionsInserted += result.sessionsInserted;
+        totalResult.sessionsUpdated += result.sessionsUpdated;
+        totalResult.messagesInserted += result.messagesInserted;
+        totalResult.toolCallsInserted += result.toolCallsInserted;
+        totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
+        totalResult.errors.push(...result.errors);
+      } catch (err) {
+        totalResult.errors.push(
+          `Failed to parse Claude session ${filePath}: ${err}`
+        );
       }
-    } catch (err) {
-      totalResult.errors.push(
-        `Failed to sync Claude source ${source.path}: ${err}`
-      );
     }
+  } catch (err) {
+    totalResult.errors.push(`Failed to collect Claude session files: ${err}`);
   }
 
   sseManager.emit('sync_complete', {
@@ -749,7 +795,9 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const { parseCodexSession } = await import('../parser/codex');
 
   const sources = await discoverCodexSources();
-  const relationshipsByChild = await collectCodexRelationships(sources);
+  const relationshipsByChild = typeof opts.limit === 'number'
+    ? new Map<string, { parentSessionId: string; rootSessionId?: string }>()
+    : await collectCodexRelationships(sources);
   const totalResult: SyncResult = {
     sessionsInserted: 0,
     sessionsUpdated: 0,
@@ -759,47 +807,38 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
     errors: [],
   };
 
-  for (const source of sources) {
-    if (source.error || source.sessionCount === 0) continue;
+  try {
+    const candidates = await collectSessionFileCandidates(sources, 'codex', opts);
 
-    try {
-      const fs = await import('fs/promises');
-      const files = await fs.readdir(source.path);
-      const sessionFiles = files.filter((f) => f.endsWith('.jsonl'));
+    for (const candidate of candidates) {
+      const filePath = candidate.filePath;
 
-      for (const file of sessionFiles) {
-        const filePath = `${source.path}/${file}`;
-        const project = extractProjectFromPath(filePath, 'codex');
-
-        try {
-          const parseResult = await parseCodexSession(filePath, project);
-          const relationship = relationshipsByChild.get(parseResult.session.id);
-          if (relationship) {
-            parseResult.session.parentSessionId = relationship.parentSessionId;
-            parseResult.session.rootSessionId = relationship.rootSessionId || relationship.parentSessionId;
-            parseResult.session.relationshipType = 'subagent';
-            parseResult.session.sourceSessionId = parseResult.session.sourceSessionId || parseResult.session.id;
-          }
-          parseResult.session.name = extractSessionName(parseResult);
-          parseResult.session.project = extractProjectFromParsedSession(parseResult, project);
-          const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
-          totalResult.sessionsInserted += result.sessionsInserted;
-          totalResult.sessionsUpdated += result.sessionsUpdated;
-          totalResult.messagesInserted += result.messagesInserted;
-          totalResult.toolCallsInserted += result.toolCallsInserted;
-          totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
-          totalResult.errors.push(...result.errors);
-        } catch (err) {
-          totalResult.errors.push(
-            `Failed to parse Codex session ${filePath}: ${err}`
-          );
+      try {
+        const parseResult = await parseCodexSession(filePath, candidate.project);
+        const relationship = relationshipsByChild.get(parseResult.session.id);
+        if (relationship) {
+          parseResult.session.parentSessionId = relationship.parentSessionId;
+          parseResult.session.rootSessionId = relationship.rootSessionId || relationship.parentSessionId;
+          parseResult.session.relationshipType = 'subagent';
+          parseResult.session.sourceSessionId = parseResult.session.sourceSessionId || parseResult.session.id;
         }
+        parseResult.session.name = extractSessionName(parseResult);
+        parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
+        const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
+        totalResult.sessionsInserted += result.sessionsInserted;
+        totalResult.sessionsUpdated += result.sessionsUpdated;
+        totalResult.messagesInserted += result.messagesInserted;
+        totalResult.toolCallsInserted += result.toolCallsInserted;
+        totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
+        totalResult.errors.push(...result.errors);
+      } catch (err) {
+        totalResult.errors.push(
+          `Failed to parse Codex session ${filePath}: ${err}`
+        );
       }
-    } catch (err) {
-      totalResult.errors.push(
-        `Failed to sync Codex source ${source.path}: ${err}`
-      );
     }
+  } catch (err) {
+    totalResult.errors.push(`Failed to collect Codex session files: ${err}`);
   }
 
   sseManager.emit('sync_complete', {

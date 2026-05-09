@@ -129,7 +129,13 @@ Or set in `.env.local`:
 WORKSPACE_PATH=/path/to/openclaw/workspace
 INGEST_PORT=8078
 INGEST_DB_PATH=./data/ingest.db
+INGEST_STARTUP_SYNC_LIMIT=50
+INGEST_BACKGROUND_SYNC_ENABLED=true
 ```
+
+`INGEST_STARTUP_SYNC_LIMIT` controls how many newest session files per source
+are indexed before `/health` reports `ready: true`. Full historical indexing
+continues in the background when `INGEST_BACKGROUND_SYNC_ENABLED=true`.
 
 #### API Endpoints
 

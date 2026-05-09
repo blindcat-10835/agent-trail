@@ -21,7 +21,7 @@ import {
   discoverClaudeSources,
   discoverCodexSources,
 } from './sync/sources.js';
-import type { ServiceContext, HealthStatus, VersionInfo } from './types.js';
+import type { ServiceContext, HealthStatus, StartupSyncState, VersionInfo } from './types.js';
 import type { TraceSource } from '../types/trace.js';
 import type { SyncSourceType } from './sync/index.js';
 
@@ -49,9 +49,11 @@ export function getServiceContext(): ServiceContext | null {
 app.get('/health', (c) => {
   const health: HealthStatus = {
     status: context ? 'ok' : 'error',
+    ready: Boolean(context?.syncState.startupComplete),
     version: '0.1.0',
     uptime: process.uptime(),
     database: context?.db ? 'connected' : 'disconnected',
+    sync: context?.syncState ?? null,
   };
 
   return c.json(health);
@@ -128,6 +130,45 @@ export async function start(): Promise<void> {
     console.log('Initializing database schema...');
     initSchema();
 
+    const syncState: StartupSyncState = {
+      phase: 'starting',
+      startupComplete: config.startupSyncLimit === 0,
+      foregroundLimit: config.startupSyncLimit,
+      backgroundSyncEnabled: config.backgroundSyncEnabled,
+      currentSource: null,
+      lastSyncAt: null,
+      lastError: null,
+    };
+
+    // Start HTTP server before filesystem discovery and initial indexing. Health
+    // reports ready=false until the bounded warmup sync completes, but TCP is
+    // available immediately so Next.js startup is no longer blocked by history.
+    const server = serve({
+      fetch: app.fetch,
+      port: config.port,
+    });
+
+    // Store context before background initialization so routes/health can answer.
+    context = { config, db, server, sseManager, watcher: null, syncState };
+
+    console.log(`Ingest service listening on port ${config.port}`);
+    console.log(`Health check: http://localhost:${config.port}/health`);
+    console.log(`Version info: http://localhost:${config.port}/version`);
+
+    void initializeSourcesAndSync();
+  } catch (err) {
+    console.error('Failed to start ingest service:', err);
+    throw err;
+  }
+}
+
+async function initializeSourcesAndSync(): Promise<void> {
+  const active = context;
+  if (!active) return;
+
+  try {
+    active.syncState.phase = 'discovering';
+
     // Discover source directories for watcher
     console.log('Discovering source directories...');
     const openClawSources = await discoverOpenClawSources();
@@ -143,8 +184,8 @@ export async function start(): Promise<void> {
     console.log('Starting file watcher...');
     const watcher = createWatcher({
       sourceDirs,
-      debounceMs: config.debounceMs,
-      resyncIntervalMs: config.resyncIntervalMs,
+      debounceMs: active.config.debounceMs,
+      resyncIntervalMs: active.config.resyncIntervalMs,
       fileExtensions: ['.jsonl', '.json', '.md'],
       onSyncTrigger: async (sourceType) => {
         try {
@@ -156,34 +197,71 @@ export async function start(): Promise<void> {
       },
     });
     await watcher.start();
+    if (context) {
+      context.watcher = watcher;
+    }
 
-    // Initial sync on startup to populate name/project for existing sessions
-    console.log('Running initial sync for all sources...');
+    // Bounded startup warmup: parse a small latest-first slice before reporting
+    // ready=true. Full historical indexing continues in the background below.
     const { syncSource } = await import('./sync/index.js');
-    for (const sourceType of ['openclaw', 'claude-code', 'codex'] as SyncSourceType[]) {
-      try {
-        const result = await syncSource(sourceType);
-        console.log(`  Initial sync ${sourceType}: +${result.sessionsInserted} new, ~${result.sessionsUpdated} updated`);
-      } catch (err) {
-        console.error(`  Initial sync failed for ${sourceType}:`, err);
+    const sourceTypes = ['openclaw', 'claude-code', 'codex'] as SyncSourceType[];
+
+    if (active.config.startupSyncLimit > 0) {
+      active.syncState.phase = 'warming';
+      console.log(`Running startup warmup sync: latest ${active.config.startupSyncLimit} files per source...`);
+
+      for (const sourceType of sourceTypes) {
+        active.syncState.currentSource = sourceType;
+        try {
+          const result = await syncSource(sourceType, {
+            limit: active.config.startupSyncLimit,
+            sortByMtimeDesc: true,
+          });
+          active.syncState.lastSyncAt = new Date().toISOString();
+          console.log(`  Warmup sync ${sourceType}: +${result.sessionsInserted} new, ~${result.sessionsUpdated} updated`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          active.syncState.lastError = message;
+          console.error(`  Warmup sync failed for ${sourceType}:`, err);
+        }
       }
     }
 
-    // Start HTTP server
-    const server = serve({
-      fetch: app.fetch,
-      port: config.port,
-    });
+    active.syncState.startupComplete = true;
+    active.syncState.currentSource = null;
 
-    // Store context
-    context = { config, db, server, sseManager, watcher };
+    if (!active.config.backgroundSyncEnabled) {
+      active.syncState.phase = 'idle';
+      console.log('Background sync disabled; ingest is ready after startup warmup.');
+      return;
+    }
 
-    console.log(`Ingest service started on port ${config.port}`);
-    console.log(`Health check: http://localhost:${config.port}/health`);
-    console.log(`Version info: http://localhost:${config.port}/version`);
+    active.syncState.phase = 'indexing';
+    console.log('Running background full sync for all sources...');
+    for (const sourceType of sourceTypes) {
+      active.syncState.currentSource = sourceType;
+      try {
+        const result = await syncSource(sourceType);
+        active.syncState.lastSyncAt = new Date().toISOString();
+        console.log(`  Background sync ${sourceType}: +${result.sessionsInserted} new, ~${result.sessionsUpdated} updated`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        active.syncState.lastError = message;
+        console.error(`  Background sync failed for ${sourceType}:`, err);
+      }
+    }
+
+    active.syncState.phase = 'idle';
+    active.syncState.currentSource = null;
   } catch (err) {
-    console.error('Failed to start ingest service:', err);
-    throw err;
+    const activeContext = context;
+    if (activeContext) {
+      activeContext.syncState.phase = 'error';
+      activeContext.syncState.startupComplete = true;
+      activeContext.syncState.currentSource = null;
+      activeContext.syncState.lastError = err instanceof Error ? err.message : String(err);
+    }
+    console.error('Failed to initialize sources and sync:', err);
   }
 }
 

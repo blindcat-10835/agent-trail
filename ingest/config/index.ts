@@ -15,6 +15,8 @@ export interface IngestConfig {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   resyncIntervalMs: number;      // default 300000 (5 min)
   debounceMs: number;            // default 500
+  startupSyncLimit: number;      // default 50 sessions per source before ready=true
+  backgroundSyncEnabled: boolean; // default true
   rateLimitRPM: number;          // default 100
   rateLimitEnabled: boolean;     // default true (parse from INGEST_RATE_LIMIT_ENABLED)
   debugMode: boolean;            // default false (parse from INGEST_DEBUG)
@@ -87,6 +89,19 @@ export function loadConfig(): IngestConfig {
     throw new Error(`Invalid INGEST_DEBOUNCE_MS: "${debounceMsStr}" must be at least 100ms`);
   }
 
+  // Parse startup sync warmup limit. This bounds foreground indexing so the
+  // service can become ready before scanning a large historical corpus.
+  const startupSyncLimitStr = process.env.INGEST_STARTUP_SYNC_LIMIT || '50';
+  const startupSyncLimit = parseInt(startupSyncLimitStr, 10);
+  if (isNaN(startupSyncLimit) || startupSyncLimit < 0) {
+    throw new Error(`Invalid INGEST_STARTUP_SYNC_LIMIT: "${startupSyncLimitStr}" must be a non-negative number`);
+  }
+
+  // Parse background sync toggle (default true; accepts "true"/"1"/"yes")
+  const backgroundSyncEnabled = ['true', '1', 'yes'].includes(
+    (process.env.INGEST_BACKGROUND_SYNC_ENABLED || 'true').toLowerCase()
+  );
+
   // Parse rate limit RPM (default 100)
   const rateLimitRPM = parseInt(process.env.INGEST_RATE_LIMIT_RPM || '100', 10) || 100;
 
@@ -106,6 +121,8 @@ export function loadConfig(): IngestConfig {
     logLevel,
     resyncIntervalMs,
     debounceMs,
+    startupSyncLimit,
+    backgroundSyncEnabled,
     rateLimitRPM,
     rateLimitEnabled,
     debugMode,
@@ -117,6 +134,8 @@ export function loadConfig(): IngestConfig {
     logLevel: config.logLevel,
     resyncIntervalMs: config.resyncIntervalMs,
     debounceMs: config.debounceMs,
+    startupSyncLimit: config.startupSyncLimit,
+    backgroundSyncEnabled: config.backgroundSyncEnabled,
     rateLimitRPM: config.rateLimitRPM,
     rateLimitEnabled: config.rateLimitEnabled,
     debugMode: config.debugMode,

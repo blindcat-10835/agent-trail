@@ -184,6 +184,9 @@ export function sanitizeError(err: unknown): { error: string; code: number } {
  * @returns Parsed JSON response body
  * @throws Error if the ingest service returns a non-2xx status
  */
+/** Default timeout for ingest fetch calls (ms) */
+const INGEST_FETCH_TIMEOUT_MS = 5_000
+
 export async function fetchIngest<T>(
   path: string,
   options?: {
@@ -193,13 +196,19 @@ export async function fetchIngest<T>(
     next?: { revalidate?: number; tags?: string[] }
     /** Next.js fetch cache mode */
     cache?: RequestCache
+    /** Custom timeout in ms (default: 5s) */
+    timeout?: number
   },
 ): Promise<T> {
   const url = `${INGEST_BASE}${path}`
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), options?.timeout ?? INGEST_FETCH_TIMEOUT_MS)
+
   const fetchOptions: RequestInit & { next?: { revalidate?: number; tags?: string[] } } = {
     method: options?.method || 'GET',
     headers: { 'Content-Type': 'application/json' },
     body: options?.body ? JSON.stringify(options.body) : undefined,
+    signal: controller.signal,
   }
 
   // Forward Next.js fetch caching options if provided
@@ -210,7 +219,16 @@ export async function fetchIngest<T>(
     fetchOptions.cache = options.cache
   }
 
-  const res = await fetch(url, fetchOptions)
+  let res: Response
+  try {
+    res = await fetch(url, fetchOptions)
+  } catch (err) {
+    throw err instanceof Error && err.name === 'AbortError'
+      ? new Error('Ingest service request timed out')
+      : err
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (!res.ok) {
     let body: Record<string, unknown> = {}
