@@ -177,12 +177,12 @@ function extractProjectFromParsedSession(
  *
  * Path structure: {openclaw-dir}/agents/{agentName}/sessions/{file}.jsonl
  */
-function extractAgentNameFromPath(filePath: string, sourceType: SyncSourceType): string | null {
-  if (sourceType !== 'openclaw') return null
+function extractAgentNameFromPath(filePath: string, sourceType: SyncSourceType): string | undefined {
+  if (sourceType !== 'openclaw') return undefined
   const parts = path.dirname(filePath).split(path.sep)
   const agentsIdx = parts.lastIndexOf('agents')
   if (agentsIdx >= 0 && agentsIdx + 1 < parts.length) return parts[agentsIdx + 1]
-  return null
+  return undefined
 }
 
 // ============================================================================
