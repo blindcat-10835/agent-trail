@@ -12,6 +12,7 @@ import { openDatabase, initSchema, closeDatabase } from './db/index.js';
 import { sourcesRoutes } from './api/sources.js';
 import { sessionsRoutes } from './api/sessions.js';
 import { turnsRoutes } from './api/turns.js';
+import { agentsRoutes } from './api/agents.js';
 import { eventsRoutes } from './api/routes/events.js';
 import { rateLimiter } from './api/middleware/rate-limit.js';
 import { createWatcher } from './src/watcher.js';
@@ -78,6 +79,7 @@ app.route('/', sourcesRoutes);
 // Mount sessions and turns API routes
 app.route('/', sessionsRoutes);
 app.route('/', turnsRoutes);
+app.route('/', agentsRoutes);
 
 // Mount SSE event routes (global + per-session streams)
 app.route('/', eventsRoutes);
