@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { JetBrains_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { IngestHealthOverlay } from "@/components/hud/ingest-health-overlay";
+import { StarredStoreInit } from "@/components/starred-store-init";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -51,6 +52,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
+        <StarredStoreInit />
         {children}
         <IngestHealthOverlay />
       </body>
