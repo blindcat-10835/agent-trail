@@ -11,11 +11,6 @@ interface ReplayState {
   expandAll: (turnIds: string[]) => void
   collapseAll: () => void
 
-  // Filter — multi-select, persisted in URL search params
-  activeFilters: Set<'user' | 'assistant' | 'tools' | 'skills' | 'subagents' | 'system'>
-  toggleFilter: (filter: string) => void
-  setFilters: (filters: string[]) => void
-
   // Search
   searchQuery: string
   setSearchQuery: (query: string) => void
@@ -55,41 +50,6 @@ export const useReplayStore = create<ReplayState>((set) => ({
     set({ expandedTurns: new Set(turnIds) }),
   collapseAll: () =>
     set({ expandedTurns: new Set<string>() }),
-
-  // Filter
-  activeFilters: new Set<string>() as Set<
-    'user' | 'assistant' | 'tools' | 'skills' | 'subagents' | 'system'
-  >,
-  toggleFilter: (filter) =>
-    set((s) => {
-      const validFilters = [
-        'user',
-        'assistant',
-        'tools',
-        'skills',
-        'subagents',
-        'system',
-      ] as const
-      type ValidFilter = (typeof validFilters)[number]
-
-      if (filter === 'all') {
-        return { activeFilters: new Set<string>() as Set<ValidFilter> }
-      }
-
-      const next = new Set(s.activeFilters)
-      if (next.has(filter as ValidFilter)) {
-        next.delete(filter as ValidFilter)
-      } else {
-        next.add(filter as ValidFilter)
-      }
-      return { activeFilters: next as Set<ValidFilter> }
-    }),
-  setFilters: (filters) =>
-    set({
-      activeFilters: new Set(filters) as Set<
-        'user' | 'assistant' | 'tools' | 'skills' | 'subagents' | 'system'
-      >,
-    }),
 
   // Search
   searchQuery: '',

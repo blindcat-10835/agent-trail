@@ -22,8 +22,7 @@ describe('useReplayStore', () => {
     useReplayStore.setState({
       scrollPositions: {},
       expandedTurns: new Set<string>(),
-      activeFilters: new Set(),
-      searchQuery: '',
+searchQuery: '',
       searchMatches: [],
       currentMatchIndex: 0,
     })
@@ -65,29 +64,6 @@ describe('useReplayStore', () => {
       useReplayStore.getState().collapseAll()
     })
     expect(useReplayStore.getState().expandedTurns.size).toBe(0)
-  })
-
-  // Test 7: toggleFilter
-  it('toggleFilter adds and manages activeFilters, toggleFilter("all") clears', async () => {
-    const { useReplayStore } = await import('@/stores/replay-store')
-
-    act(() => {
-      useReplayStore.getState().toggleFilter('tools')
-    })
-    expect(useReplayStore.getState().activeFilters.has('tools')).toBe(true)
-    expect(useReplayStore.getState().activeFilters.size).toBe(1)
-
-    act(() => {
-      useReplayStore.getState().toggleFilter('user')
-    })
-    expect(useReplayStore.getState().activeFilters.has('user')).toBe(true)
-    expect(useReplayStore.getState().activeFilters.size).toBe(2)
-
-    // toggleFilter('all') clears all others
-    act(() => {
-      useReplayStore.getState().toggleFilter('all')
-    })
-    expect(useReplayStore.getState().activeFilters.size).toBe(0)
   })
 
   // Test 8: scrollPosition

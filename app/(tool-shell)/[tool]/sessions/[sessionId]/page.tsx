@@ -7,7 +7,6 @@ import { ReplayHeader } from '@/components/replay/replay-header'
 import { ReplayRightRail } from '@/components/replay/replay-right-rail'
 import { TurnTimeline } from '@/components/replay/turn-timeline'
 import { ReplaySearchBar } from '@/components/replay/replay-search-bar'
-import { ReplayFilterBar } from '@/components/replay/replay-filter-bar'
 import { TurnNavigator } from '@/components/replay/turn-navigator'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { TraceTurn } from '@/types/trace'
@@ -126,7 +125,6 @@ export default function SessionReplayPage({
         <div className="px-4 py-2">
           <ReplaySearchBar turns={turns} />
         </div>
-        <ReplayFilterBar />
       </div>
 
       {/* Turn navigator */}

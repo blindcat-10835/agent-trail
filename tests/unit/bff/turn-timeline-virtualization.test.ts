@@ -22,8 +22,7 @@ describe('useReplayStore — turn navigation fields (RED — fields not added ye
     useReplayStore.setState({
       scrollPositions: {},
       expandedTurns: new Set<string>(),
-      activeFilters: new Set(),
-      searchQuery: '',
+searchQuery: '',
       searchMatches: [],
       currentMatchIndex: 0,
     })
