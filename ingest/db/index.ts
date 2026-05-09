@@ -108,7 +108,7 @@ export function initSchema(): void {
     )
     .all() as { name: string }[];
 
-  const expectedTables = ['sessions', 'messages', 'tool_calls', 'tool_result_events', 'turns', 'sync_status'];
+  const expectedTables = ['sessions', 'messages', 'tool_calls', 'tool_result_events', 'turns', 'sync_status', 'session_stars'];
   const missingTables = expectedTables.filter(
     (t) => !tables.find((table) => table.name === t)
   );
@@ -133,7 +133,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 7;
+  const targetVersion = 8;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -219,6 +219,16 @@ export function runMigrations(): void {
     {
       desc: 'Invalidate openclaw sessions cache to backfill agent_name',
       sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'openclaw' AND agent_name IS NULL",
+    },
+    {
+      desc: 'Create session_stars table for starred sessions',
+      sql: `
+        CREATE TABLE IF NOT EXISTS session_stars (
+          session_id TEXT NOT NULL,
+          starred_at TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (session_id)
+        )
+      `,
     },
   ];
 
