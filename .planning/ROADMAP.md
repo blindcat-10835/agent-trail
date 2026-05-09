@@ -422,11 +422,11 @@ Plans:
 **Plans:** 5 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — Real-shape fixture corpus and opt-in local session harness
-- [ ] 08-02-PLAN.md — Repair Claude and Codex parsers for real JSONL formats
-- [ ] 08-03-PLAN.md — Persist message ids, tool calls, result events, and force reparse
-- [ ] 08-04-PLAN.md — Wire sync-first refresh through ingest API, BFF, and right rail
-- [ ] 08-05-PLAN.md — Target-session verification and regression closure
+- [x] 08-01-PLAN.md — Real-shape fixture corpus and opt-in local session harness
+- [x] 08-02-PLAN.md — Repair Claude and Codex parsers for real JSONL formats
+- [x] 08-03-PLAN.md — Persist message ids, tool calls, result events, and force reparse
+- [x] 08-04-PLAN.md — Wire sync-first refresh through ingest API, BFF, and right rail
+- [x] 08-05-PLAN.md — Target-session verification and regression closure
 
 ---
 

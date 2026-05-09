@@ -34,10 +34,13 @@ export function ToolBlock({ tool }: ToolBlockProps) {
 
   return (
     <div className="border-t border-border/50 bg-secondary/20">
-      {/* Collapsed header */}
-      <button
+      {/* Collapsed header — uses div[role=button] to avoid nesting <button> inside <button> */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((prev) => !prev)}
-        className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-secondary/30 transition-colors"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded((prev) => !prev) } }}
+        className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-secondary/30 transition-colors cursor-pointer"
       >
         <Wrench className="w-3 h-3 text-muted-foreground flex-shrink-0" />
         <span className="text-[11px] font-semibold text-foreground">{tool.name}</span>
@@ -59,7 +62,7 @@ export function ToolBlock({ tool }: ToolBlockProps) {
           {copied ? <Check className="w-2.5 h-2.5 text-accent" /> : <Copy className="w-2.5 h-2.5" />}
         </button>
         {expanded ? <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />}
-      </button>
+      </div>
 
       {/* Expanded content */}
       {expanded && (
