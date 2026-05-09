@@ -75,13 +75,17 @@ interface StarredStore {
 **为什么不用 Zustand**: filter dropdown 和 session list 都在 `sessions-right-rail.tsx` 内部，不需要跨组件树共享。与 agentsview 保持一致。
 
 ```typescript
+type TraceSource = 'openclaw' | 'claude-code' | 'codex';
+
 interface FilterState {
   groupMode: 'none' | 'agent' | 'project';
-  agentFilter: string | null;
+  sourceFilter: Set<TraceSource>;   // 选中的 source 集合，空 = 全部
   starredOnly: boolean;
   searchQuery: string;
 }
 ```
+
+`sourceFilter` 为空集时等价于 "All sources"。过滤逻辑匹配 `TraceSession.source` 字段。
 
 `groupMode` 持久化到 localStorage（key: `agents-tracing-group-mode`），其余状态仅在组件生命周期内有效。
 
@@ -152,7 +156,7 @@ interface FilterState {
 ```
 所有 sessions (from API, ~500 条)
   → searchQuery: client-side 文本匹配 (session.name, session.project)
-  → agentFilter: client-side 按 source 过滤
+  → sourceFilter: client-side 按 TraceSession.source 过滤（Set<TraceSource>）
   → starredOnly: client-side 查 starredStore.ids 交集
   → groupMode: 按分组 key 排列 + 渲染 group headers
   → 渲染到 right rail
