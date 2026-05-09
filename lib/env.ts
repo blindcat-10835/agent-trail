@@ -15,7 +15,7 @@
  *
  * @example
  * ```ts
- * const workspacePath = requireEnv('WORKSPACE_PATH')
+ * const port = requireEnv('INGEST_PORT')
  * ```
  */
 export function requireEnv(key: string): string {

@@ -122,7 +122,7 @@ async function collectJsonlDirectories(
 /**
  * Discover OpenClaw sources from workspace configuration
  *
- * Uses WORKSPACE_PATH environment variable to locate OpenClaw agents directory.
+ * Locates OpenClaw agents directory under ~/.openclaw.
  * Each agent has its own sessions subdirectory, which is treated as a separate source.
  *
  * @param config - Optional workspace path override
@@ -133,12 +133,9 @@ export async function discoverOpenClawSources(config?: {
 }): Promise<DiscoveredSource[]> {
   const sources: DiscoveredSource[] = [];
 
-  // Default path: ~/.openclaw/agents (overridable via WORKSPACE_PATH or config)
   const openclawBase = config?.workspacePath
     ? config.workspacePath.replace(/\/+$/, '').replace(/\/workspace$/, '')
-    : process.env.WORKSPACE_PATH
-      ? process.env.WORKSPACE_PATH.replace(/\/+$/, '').replace(/\/workspace$/, '')
-      : path.join(os.homedir(), '.openclaw');
+    : path.join(os.homedir(), '.openclaw');
   const agentsDir = path.join(openclawBase, 'agents');
 
   try {
@@ -325,10 +322,7 @@ export async function getSourceConfig(sourceType: TraceSource): Promise<SourceCo
 export function getSourcePath(sourceType: TraceSource): string {
   switch (sourceType) {
     case 'openclaw': {
-      const workspace = process.env.WORKSPACE_PATH
-        ? process.env.WORKSPACE_PATH.replace(/\/+$/, '').replace(/\/workspace$/, '')
-        : path.join(os.homedir(), '.openclaw');
-      return path.join(workspace, 'agents');
+      return path.join(os.homedir(), '.openclaw', 'agents');
     }
     case 'claude-code':
       return process.env.CLAUDE_SESSIONS_PATH || path.join(os.homedir(), '.claude', 'projects');

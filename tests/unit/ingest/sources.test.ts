@@ -365,7 +365,7 @@ describe('getSourcePath', () => {
   it('should return empty string for unknown sources', () => {
     const path = getSourcePath('openclaw' as any);
 
-    // openclaw path depends on WORKSPACE_PATH which is not set
+    // openclaw path defaults to ~/.openclaw/agents
     expect(typeof path).toBe('string');
   });
 });

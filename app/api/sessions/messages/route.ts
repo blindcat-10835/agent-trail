@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const WORKSPACE_PATH = process.env.WORKSPACE_PATH || "";
-
-function getOpenclawBase(): string {
-  if (!WORKSPACE_PATH) return "";
-  // WORKSPACE_PATH=/Users/xxx/.openclaw/workspace -> parent is /Users/xxx/.openclaw
-  const parts = WORKSPACE_PATH.replace(/\/+$/, "").split("/");
-  parts.pop(); // remove "workspace"
-  return parts.join("/");
-}
+import path from "path";
+import os from "os";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -33,17 +25,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const fs = await import("fs/promises");
-    const path = await import("path");
 
-    const baseDir = getOpenclawBase();
-    if (!baseDir) {
-      return NextResponse.json(
-        { error: "WORKSPACE_PATH not configured" },
-        { status: 500 }
-      );
-    }
-
-    const agentsDir = path.join(baseDir, "agents");
+    const agentsDir = path.join(os.homedir(), ".openclaw", "agents");
 
     // If agent name is known, search directly in that agent's sessions dir
     if (agentName) {

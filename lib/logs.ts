@@ -8,6 +8,7 @@
 import type { LogEntry, LogSummary } from '@/types/activity'
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs'
 import path from 'path'
+import os from 'os'
 
 /**
  * Parse a single cron run JSONL line into a LogEntry.
@@ -147,16 +148,14 @@ function buildConfigSummary(obj: Record<string, unknown>): string {
   return parts.join(' ')
 }
 
-/** Derive the cron runs directory from WORKSPACE_PATH */
+/** Derive the cron runs directory */
 function getRunsDir(): string {
-  const ws = process.env.WORKSPACE_PATH || path.join(process.env.HOME || '~', '.openclaw', 'workspace')
-  return path.resolve(ws, '..', 'cron', 'runs')
+  return path.resolve(os.homedir(), '.openclaw', 'cron', 'runs')
 }
 
-/** Derive the config audit log path from WORKSPACE_PATH */
+/** Derive the config audit log path */
 function getConfigAuditPath(): string {
-  const ws = process.env.WORKSPACE_PATH || path.join(process.env.HOME || '~', '.openclaw', 'workspace')
-  return path.resolve(ws, '..', 'logs', 'config-audit.jsonl')
+  return path.resolve(os.homedir(), '.openclaw', 'logs', 'config-audit.jsonl')
 }
 
 /**
