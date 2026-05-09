@@ -172,6 +172,19 @@ function extractProjectFromParsedSession(
   return cwd || fallbackProject || 'default'
 }
 
+/**
+ * Extract agent name from OpenClaw file path.
+ *
+ * Path structure: {openclaw-dir}/agents/{agentName}/sessions/{file}.jsonl
+ */
+function extractAgentNameFromPath(filePath: string, sourceType: SyncSourceType): string | null {
+  if (sourceType !== 'openclaw') return null
+  const parts = path.dirname(filePath).split(path.sep)
+  const agentsIdx = parts.lastIndexOf('agents')
+  if (agentsIdx >= 0 && agentsIdx + 1 < parts.length) return parts[agentsIdx + 1]
+  return null
+}
+
 // ============================================================================
 // Database Write Operations
 // ============================================================================
@@ -253,9 +266,10 @@ export function writeSessionToDatabase(
           file_mtime = ?,
           last_sync_at = ?,
           name = CASE WHEN (name IS NULL OR name = '') THEN ? ELSE name END,
-          project = CASE WHEN (project IS NULL OR project = '' OR project = 'default') THEN ? ELSE project END
+          project = CASE WHEN (project IS NULL OR project = '' OR project = 'default') THEN ? ELSE project END,
+          agent_name = COALESCE(?, agent_name)
         WHERE id = ?
-      `).run(fileSize, fileMtime, lastSyncAt, parseResult.session.name || '', parseResult.session.project || '', parseResult.session.id);
+      `).run(fileSize, fileMtime, lastSyncAt, parseResult.session.name || '', parseResult.session.project || '', parseResult.session.agentName || null, parseResult.session.id);
 
       return {
         sessionsInserted: 0,
@@ -319,6 +333,7 @@ export function writeSessionToDatabase(
             git_branch = ?,
             source_session_id = ?,
             source_version = ?,
+            agent_name = ?,
             file_path = ?,
             file_size = ?,
             file_mtime = ?,
@@ -345,6 +360,7 @@ export function writeSessionToDatabase(
           parseResult.session.gitBranch || null,
           parseResult.session.sourceSessionId || null,
           parseResult.session.sourceVersion || null,
+          parseResult.session.agentName || null,
           sourceFile || parseResult.session.id,
           fileSize,
           fileMtime,
@@ -362,8 +378,8 @@ export function writeSessionToDatabase(
             message_count, user_message_count, total_output_tokens, has_tool_calls,
             parser_malformed_lines, is_truncated, termination_status,
             file_path, file_size, file_mtime, file_hash, last_sync_at,
-            cwd, git_branch, source_session_id, source_version
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cwd, git_branch, source_session_id, source_version, agent_name
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           parseResult.session.id,
           parseResult.session.source,
@@ -390,7 +406,8 @@ export function writeSessionToDatabase(
           parseResult.session.cwd || null,
           parseResult.session.gitBranch || null,
           parseResult.session.sourceSessionId || null,
-          parseResult.session.sourceVersion || null
+          parseResult.session.sourceVersion || null,
+          parseResult.session.agentName || null
         );
         sessionsInserted++;
       }
@@ -697,6 +714,7 @@ async function syncOpenClawSource(opts: SyncSourceOptions): Promise<SyncResult> 
         const parseResult = await parseOpenClawSession(filePath, candidate.project);
         parseResult.session.name = extractSessionName(parseResult);
         parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
+        parseResult.session.agentName = extractAgentNameFromPath(filePath, 'openclaw')
         const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
         totalResult.sessionsInserted += result.sessionsInserted;
         totalResult.sessionsUpdated += result.sessionsUpdated;

@@ -93,6 +93,7 @@ export interface TraceSession {
   cwd?: string;
   gitBranch?: string;
   sourceVersion?: string;
+  agentName?: string;
   metrics: SessionMetrics;
   turns: TraceTurn[];
 }
