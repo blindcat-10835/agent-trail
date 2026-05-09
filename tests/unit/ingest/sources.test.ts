@@ -26,21 +26,28 @@ vi.mock('fs/promises', () => ({
   readdir: (...args: any[]) => mockReaddir(...args),
 }));
 
+// Mock ingest/config to return predictable toolDirs
+vi.mock('@/ingest/config', () => ({
+  getConfig: () => ({
+    toolDirs: new Map([
+      ['openclaw', ['/mock/home/user/.openclaw/agents']],
+      ['claude-code', ['/mock/home/user/.claude/projects']],
+      ['codex', ['/mock/home/user/.codex/sessions']],
+    ]),
+  }),
+}));
+
 import {
   discoverClaudeSources,
   discoverCodexSources,
   getSourceConfig,
-  getSourcePath,
-  SourceConfig,
-  DiscoveredSource,
+  type SourceConfig,
+  type DiscoveredSource,
 } from '@/ingest/sync/sources';
 
 describe('Claude Code Source Discovery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Clear env vars
-    delete process.env.CLAUDE_SESSIONS_PATH;
-    delete process.env.CODEX_SESSIONS_PATH;
   });
 
   describe('discoverClaudeSources', () => {
@@ -55,36 +62,25 @@ describe('Claude Code Source Discovery', () => {
       expect(sources[0].type).toBe('claude-code');
     });
 
-    it('should use default path ~/.claude/projects/', async () => {
+    it('should use dirs from config when no dirs param', async () => {
       mockAccess.mockResolvedValue(undefined);
       mockReaddir.mockResolvedValue(['session1.jsonl']);
 
       await discoverClaudeSources();
 
-      // Should access the default path derived from os.homedir()
       expect(mockAccess).toHaveBeenCalled();
       const accessedPath = mockAccess.mock.calls[0][0];
       expect(accessedPath).toContain('.claude');
       expect(accessedPath).toContain('projects');
     });
 
-    it('should use CLAUDE_SESSIONS_PATH env var when set', async () => {
-      process.env.CLAUDE_SESSIONS_PATH = '/custom/claude/sessions';
+    it('should use dirs param override when provided', async () => {
       mockAccess.mockResolvedValue(undefined);
       mockReaddir.mockResolvedValue(['session1.jsonl']);
 
-      await discoverClaudeSources();
+      await discoverClaudeSources(['/custom/claude/sessions']);
 
       expect(mockAccess.mock.calls[0][0]).toBe('/custom/claude/sessions');
-    });
-
-    it('should use config.sessionsPath override when provided', async () => {
-      mockAccess.mockResolvedValue(undefined);
-      mockReaddir.mockResolvedValue(['session1.jsonl']);
-
-      await discoverClaudeSources({ sessionsPath: '/override/path' });
-
-      expect(mockAccess.mock.calls[0][0]).toBe('/override/path');
     });
 
     it('should filter to only .jsonl files', async () => {
@@ -176,8 +172,6 @@ describe('Claude Code Source Discovery', () => {
 describe('Codex Source Discovery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete process.env.CLAUDE_SESSIONS_PATH;
-    delete process.env.CODEX_SESSIONS_PATH;
   });
 
   describe('discoverCodexSources', () => {
@@ -204,23 +198,13 @@ describe('Codex Source Discovery', () => {
       expect(accessedPath).toContain('sessions');
     });
 
-    it('should use CODEX_SESSIONS_PATH env var when set', async () => {
-      process.env.CODEX_SESSIONS_PATH = '/custom/codex/sessions';
+    it('should use dirs param override when provided', async () => {
       mockAccess.mockResolvedValue(undefined);
       mockReaddir.mockResolvedValue(['session1.jsonl']);
 
-      await discoverCodexSources();
+      await discoverCodexSources(['/custom/codex/sessions']);
 
       expect(mockAccess.mock.calls[0][0]).toBe('/custom/codex/sessions');
-    });
-
-    it('should use config.sessionsPath override when provided', async () => {
-      mockAccess.mockResolvedValue(undefined);
-      mockReaddir.mockResolvedValue(['session1.jsonl']);
-
-      await discoverCodexSources({ sessionsPath: '/override/codex/path' });
-
-      expect(mockAccess.mock.calls[0][0]).toBe('/override/codex/path');
     });
 
     it('should handle missing directory gracefully', async () => {
@@ -278,8 +262,6 @@ describe('Codex Source Discovery', () => {
 describe('getSourceConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete process.env.CLAUDE_SESSIONS_PATH;
-    delete process.env.CODEX_SESSIONS_PATH;
   });
 
   it('should return non-empty arrays for claude-code', async () => {
@@ -321,51 +303,5 @@ describe('getSourceConfig', () => {
     const configs = await getSourceConfig('codex');
 
     expect(configs[0].enabled).toBe(false);
-  });
-});
-
-describe('getSourcePath', () => {
-  beforeEach(() => {
-    delete process.env.CLAUDE_SESSIONS_PATH;
-    delete process.env.CODEX_SESSIONS_PATH;
-  });
-
-  it('should return correct path for claude-code (default)', () => {
-    const path = getSourcePath('claude-code');
-
-    expect(path).toContain('.claude');
-    expect(path).toContain('projects');
-    expect(path).toBe('/mock/home/user/.claude/projects');
-  });
-
-  it('should return correct path for claude-code (env var)', () => {
-    process.env.CLAUDE_SESSIONS_PATH = '/env/claude/path';
-
-    const path = getSourcePath('claude-code');
-
-    expect(path).toBe('/env/claude/path');
-  });
-
-  it('should return correct path for codex (default)', () => {
-    const path = getSourcePath('codex');
-
-    expect(path).toContain('.codex');
-    expect(path).toContain('sessions');
-    expect(path).toBe('/mock/home/user/.codex/sessions');
-  });
-
-  it('should return correct path for codex (env var)', () => {
-    process.env.CODEX_SESSIONS_PATH = '/env/codex/path';
-
-    const path = getSourcePath('codex');
-
-    expect(path).toBe('/env/codex/path');
-  });
-
-  it('should return empty string for unknown sources', () => {
-    const path = getSourcePath('openclaw' as any);
-
-    // openclaw path defaults to ~/.openclaw/agents
-    expect(typeof path).toBe('string');
   });
 });
