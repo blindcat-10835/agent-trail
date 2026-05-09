@@ -43,6 +43,17 @@ export interface TraceSourceMetadata {
   sessionCount: number;
 }
 
+/**
+ * Agent summary aggregated from sessions
+ */
+export interface AgentInfo {
+  name: string
+  sessionCount: number
+  lastActiveAt: string | null
+  latestStatus: SessionStatus
+  toolCallCount: number
+}
+
 // ============================================================================
 // Session Types
 // ============================================================================

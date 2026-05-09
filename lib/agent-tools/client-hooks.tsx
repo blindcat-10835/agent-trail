@@ -32,7 +32,7 @@ import type {
 } from './types'
 import { getDefinition, TOOL_IDS } from './registry'
 import type { TraceSession } from '@/types/trace'
-import type { TraceTurn } from '@/types/trace'
+import type { TraceTurn, AgentInfo } from '@/types/trace'
 
 export const SESSION_REFRESH_EVENT = 'agent-tracing-dashboard:sessions-refresh'
 
@@ -385,6 +385,35 @@ export function useSourceStatus(toolId: AgentToolId) {
   }, [toolId])
 
   return status
+}
+
+/**
+ * Hook: Fetch agents for a tool from ingest via BFF proxy.
+ *
+ * Returns aggregated agent statistics (session count, last active, status,
+ * tool call count) grouped by agent_name.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @returns { agents, loading, error }
+ */
+export function useToolAgents(toolId: AgentToolId) {
+  const [agents, setAgents] = useState<AgentInfo[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchToolApi<{ agents: AgentInfo[] }>(toolId, '/agents')
+      .then((data) => {
+        setAgents(data.agents)
+        setError(null)
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Failed to load agents'),
+      )
+      .finally(() => setLoading(false))
+  }, [toolId])
+
+  return { agents, loading, error }
 }
 
 /**
