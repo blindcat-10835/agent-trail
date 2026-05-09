@@ -156,6 +156,7 @@ Trace Contract
 | 260508-fkt | Fix session updated_at computation: remove last_sync_at from UPDATED_AT_EXPR, and lastSyncAt from client-side freshness | 2026-05-08 | 1a89b1c | [260508-fkt-fix-session-updated-at-computation-remov](./quick/260508-fkt-fix-session-updated-at-computation-remov/) |
 | 260508-myy | Ensure ingest starts before frontend + health check overlay | 2026-05-08 | f6b7495, 6ad5aae, 5d77586 | [260508-myy-ensure-ingest-starts-before-frontend-in-](./quick/260508-myy-ensure-ingest-starts-before-frontend-in-/) |
 | 260509-nwg | Decouple ingest readiness from full session indexing and start frontend immediately while background sync progressively indexes sessions | 2026-05-09 | c272c76 | [260509-nwg-decouple-ingest-readiness-from-full-sess](./quick/260509-nwg-decouple-ingest-readiness-from-full-sess/) |
+| 260509-pk2 | 清理死代码：删除 (shell), (legacy) 路由组及孤儿组件 | 2026-05-09 | 7a5c632 | [260509-pk2-app-shell-app-legacy-components-dashboar](./quick/260509-pk2-app-shell-app-legacy-components-dashboar/) |
 
 ### Todos
 
@@ -204,5 +205,5 @@ Trace Contract
 
 *State created: 2026-05-06*
 *Last updated: 2026-05-07 after project initialization*
-*Last activity: 2026-05-09 - Completed quick task 260509-nwg: Decouple ingest readiness from full session indexing*
+*Last activity: 2026-05-09 - Completed quick task 260509-pk2: 清理死代码，删除 48 个文件（(shell), (legacy) 路由组及孤儿组件），构建验证通过*
 | 2026-05-08 | fast | 整理 fixture vs 真实数据格式对比文档 | ✅ |
