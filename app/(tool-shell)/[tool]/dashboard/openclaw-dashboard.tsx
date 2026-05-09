@@ -2,7 +2,9 @@
 
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useToolSessions } from '@/lib/agent-tools/client-hooks'
+import { useToolAgents } from '@/lib/agent-tools/client-hooks'
 import { EmptyState } from '@/components/dashboard/empty-state'
+import { AgentCard } from '@/components/dashboard/agent-card'
 
 /**
  * OpenClaw Dashboard Overview
@@ -13,6 +15,7 @@ import { EmptyState } from '@/components/dashboard/empty-state'
 export function OpenClawDashboard() {
   const { toolId, definition } = useAgentTool()
   const { sessions, loading: sessionsLoading } = useToolSessions(toolId, { limit: '10' })
+  const { agents, loading: agentsLoading } = useToolAgents(toolId)
 
   return (
     <div className="p-4 space-y-6 min-h-0 overflow-y-auto">
@@ -38,15 +41,27 @@ export function OpenClawDashboard() {
         </p>
       </section>
 
-      {/* Agent Cards — skeleton, empty */}
+      {/* Agent Cards */}
       <section>
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-3">
           AGENTS
         </h2>
-        <EmptyState
-          heading="NO AGENT DATA"
-          body="Agent data will be populated from local file data sources in Phase 6+."
-        />
+        {agentsLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
+          </div>
+        ) : agents.length === 0 ? (
+          <EmptyState
+            heading="NO AGENT DATA"
+            body="Agent data will be populated from local file data sources in Phase 6+."
+          />
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+            {agents.map((agent) => (
+              <AgentCard key={agent.name} agent={agent} />
+            ))}
+          </div>
+        )}
       </section>
 
       {/* SESSIONS — from ingest */}
