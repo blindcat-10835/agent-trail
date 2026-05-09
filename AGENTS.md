@@ -42,7 +42,7 @@ app/
   layout.tsx            # Root layout
 ingest/                 # Hono 独立服务（port 8078）
   api/                  #   REST + SSE 端点
-  config/               #   环境变量配置
+  config/               #   环境变量配置 + tool-dirs 目录注册表
   db/                   #   SQLite (better-sqlite3, WAL)
   parser/               #   JSONL 解析器 (claude/openclaw/codex)
   src/                  #   文件监听 + SSE 管理
@@ -72,6 +72,12 @@ types/                  # 共享类型 (trace.ts 等)
 环境变量详见 [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)。关键项：
 
 - `INGEST_PORT` — Ingest 服务端口（默认 `8078`）
+- `OPENCLAW_DIR` — OpenClaw 根目录（默认 `~/.openclaw/agents`）
+- `CLAUDE_PROJECTS_DIR` — Claude Code 项目目录（默认 `~/.claude/projects`）
+- `CODEX_SESSIONS_DIR` — Codex 会话目录（默认 `~/.codex/sessions`）
+- `AGENTS_TRACING_CONFIG` — 自定义配置文件路径（默认 `~/.agents-tracing/config.json`）
+
+工具目录解析逻辑：环境变量 > `~/.agents-tracing/config.json` > 内置默认值。详见 `ingest/config/tool-dirs.ts`。
 
 ## Gotchas
 

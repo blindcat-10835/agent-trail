@@ -59,7 +59,7 @@ This is a **local-only developer tool**:
 - **No data uploads.** JSONL files are parsed and indexed locally into SQLite (`data/ingest.db`). Nothing leaves your machine.
 - **No share links.** No cloud sync, no public URLs, no team sharing.
 - **No tool execution.** The dashboard is read-only. It replays recorded tool calls — it never re-runs them.
-- **Local files only.** Source discovery is restricted to configured roots (`WORKSPACE_PATH`, `CLAUDE_SESSIONS_PATH`, `CODEX_SESSIONS_PATH`) and validated with absolute-path containment checks (`isWithinRoot`).
+- **Local files only.** Source discovery is restricted to configured roots (`OPENCLAW_DIR`, `CLAUDE_PROJECTS_DIR`, `CODEX_SESSIONS_DIR`) and validated with absolute-path containment checks (`isWithinRoot`). Paths can also be configured via `~/.agents-tracing/config.json`.
 - **No telemetry.** No usage metrics, error reports, or analytics are collected.
 
 Treat session files like source code — they may contain code snippets, file paths, command output, and credentials.
@@ -154,7 +154,7 @@ pnpm test:real-sessions   # tests/local/real-session-corpus.test.ts (your local 
 | [`docs/services/ingest.md`](docs/services/ingest.md) | Ingest service deep-dive: parsers, watcher, sync, SSE |
 | [`docs/services/frontend.md`](docs/services/frontend.md) | Next.js frontend deep-dive: shell, BFF adapters, replay UI, stores |
 | [`docs/API.md`](docs/API.md) | Every endpoint (ingest + BFF) with parameters, status codes, examples |
-| [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) | First-run setup including `WORKSPACE_PATH`/`CLAUDE_SESSIONS_PATH`/`CODEX_SESSIONS_PATH` |
+| [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) | First-run setup including `OPENCLAW_DIR`/`CLAUDE_PROJECTS_DIR`/`CODEX_SESSIONS_DIR` and `~/.agents-tracing/config.json` |
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Every environment variable, defaults, and validation rules |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Dev workflow, hot reload, debugging, code conventions |
 | [`docs/TESTING.md`](docs/TESTING.md) | Vitest setup, fixtures, golden-file workflow, integration tests |

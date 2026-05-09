@@ -12,7 +12,7 @@ This guide takes a fresh checkout to a working dashboard with at least one sourc
 - **pnpm 9+.** Use pnpm — `pnpm-lock.yaml` is the source of truth. `corepack enable && corepack prepare pnpm@latest --activate` works on a fresh machine.
 - **A platform with native `better-sqlite3`.** macOS (arm64/x64), Linux, and Windows all have prebuilds. If `pnpm install` rebuilds it from source, you need a working C/C++ toolchain.
 - **At least one source directory** (otherwise the dashboard will load with empty source lists):
-  - OpenClaw: a `~/.openclaw/agents/<agent-name>/sessions/*.jsonl` tree (or your own location pointed at by `WORKSPACE_PATH`).
+  - OpenClaw: a `~/.openclaw/agents/<agent-name>/sessions/*.jsonl` tree (or your own location pointed at by `OPENCLAW_DIR`).
   - Claude Code: `~/.claude/projects/<encoded-cwd>/<uuid>.jsonl` (Claude Code creates these automatically when you run sessions).
   - Codex: `~/.codex/sessions/*.jsonl`.
 
@@ -34,19 +34,23 @@ pnpm install
 
 ## 3. Configure
 
-Create `.env.local` in the repo root if you have one of the non-default source layouts:
+Tool directories are resolved through a three-layer config (highest priority first): **environment variables** > **config file** > **built-in defaults**.
+
+### Option A: Environment variables (`.env.local`)
+
+Create `.env.local` in the repo root:
 
 ```bash
 # .env.local — only set the lines you actually need
 
 # OpenClaw — only needed if your OpenClaw root is not ~/.openclaw
-WORKSPACE_PATH=/Users/you/.openclaw/workspace
+# OPENCLAW_DIR=/path/to/openclaw
 
 # Claude Code — only needed if Claude saves sessions somewhere other than ~/.claude/projects
-# CLAUDE_SESSIONS_PATH=/path/to/claude/projects
+# CLAUDE_PROJECTS_DIR=/path/to/claude/projects
 
 # Codex — only needed if Codex saves sessions somewhere other than ~/.codex/sessions
-# CODEX_SESSIONS_PATH=/path/to/codex/sessions
+# CODEX_SESSIONS_DIR=/path/to/codex/sessions
 
 # Optional ingest tuning (defaults are usually fine)
 # INGEST_PORT=8078
@@ -54,6 +58,20 @@ WORKSPACE_PATH=/Users/you/.openclaw/workspace
 # INGEST_STARTUP_SYNC_LIMIT=50
 # INGEST_BACKGROUND_SYNC_ENABLED=true
 ```
+
+### Option B: Config file (`~/.agents-tracing/config.json`)
+
+If you prefer not to create a `.env.local` per project, use the global config file:
+
+```json
+{
+  "openclaw_dirs": ["/path/to/openclaw"],
+  "claude_project_dirs": ["/path/to/claude/projects"],
+  "codex_sessions_dirs": ["/path/to/codex/sessions"]
+}
+```
+
+The config file path can be overridden via the `AGENTS_TRACING_CONFIG` environment variable. Config values support multiple directories (as arrays) and relative paths (resolved against `$HOME`).
 
 The full variable list with defaults and validation rules lives in [`CONFIGURATION.md`](CONFIGURATION.md).
 
@@ -147,7 +165,7 @@ For the full request path from URL to React, see [`DATA-FLOW.md`](DATA-FLOW.md).
 | `Port 3000 already in use` | Another dev server | `lsof -ti:3000 \| xargs kill` or run `PORT=3001 pnpm dev:next` |
 | `Port 8078 already in use` | Stale ingest from a prior session | `lsof -ti:8078 \| xargs kill`, or set `INGEST_PORT=8079` |
 | "INGEST OFFLINE" in the status bar | Ingest crashed or hasn't started | Check the `[INGEST]` lines for stack traces; restart with `pnpm dev:ingest` |
-| Empty session list for OpenClaw | `WORKSPACE_PATH` wrong, or `~/.openclaw/agents/*/sessions/` is empty | Verify with `curl http://localhost:8078/api/v1/sources/openclaw`; the `path` field in the response is what the discoverer is looking at |
+| Empty session list for OpenClaw | `OPENCLAW_DIR` wrong, or `~/.openclaw/agents/*/sessions/` is empty | Verify with `curl http://localhost:8078/api/v1/sources/openclaw`; the `path` field in the response is what the discoverer is looking at. Paths are configurable via env vars or `~/.agents-tracing/config.json` |
 | Empty session list for Claude Code | Claude saves elsewhere (or hasn't run yet) | `ls ~/.claude/projects/` should show project directories with `.jsonl` files; if not, Claude Code hasn't recorded any sessions |
 | Type errors after pulling | Frontend and ingest share `types/trace.ts` — old build cache | `pnpm typecheck` to confirm; remove `tsconfig.tsbuildinfo` if it lies |
 | Compile storm / 100% CPU on `pnpm dev:next` | Don't switch to Turbopack — keep the `--webpack` flag | See `../../ERRORS_LEARNED.md` for context |
