@@ -13,7 +13,6 @@ const definition: AgentToolDefinition = {
   shortLabel: 'CLAUDE:CODE',
   defaultRoute: '/dashboard',
   capabilities: {
-    liveGateway: false,
     sessions: true,
     replay: true,
     activity: true,

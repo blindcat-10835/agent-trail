@@ -2,13 +2,12 @@
  * Canonical Trace Contract
  *
  * This module defines the canonical trace data model for agent-tracing-dashboard.
- * It is completely independent from Gateway types (gateway/types.ts) to support
- * multi-source architecture (OpenClaw, Claude Code, Codex).
+ * It supports multi-source architecture (OpenClaw, Claude Code, Codex).
  *
- * The trace model will be used by:
- * - Ingest service (Phase 2) for parsing and indexing
- * - Parsers (Phase 2-3) for source-specific log conversion
- * - Frontend (Phase 4-5) for session replay and visualization
+ * The trace model is used by:
+ * - Ingest service for parsing and indexing
+ * - Parsers for source-specific log conversion
+ * - Frontend for session replay and visualization
  *
  * @see ../references/agentsview/internal/parser/types.go for behavioral reference
  */
@@ -34,24 +33,12 @@ export type IngestStatus =
   | 'parser-warning'; // Parsed with warnings
 
 /**
- * Gateway connection status (OpenClaw-only)
- */
-export type GatewayStatus =
-  | 'connected'
-  | 'disconnected'
-  | 'connecting'
-  | 'error';
-
-/**
- * Source metadata with dual-status model (ingest + gateway)
- *
- * Per D-14: Claude/Codex have only ingestStatus; OpenClaw has both.
+ * Source metadata
  */
 export interface TraceSourceMetadata {
   type: TraceSource;
   path: string;
   ingestStatus: IngestStatus;
-  gatewayStatus?: GatewayStatus; // Only for OpenClaw
   lastSyncAt?: string;
   sessionCount: number;
 }

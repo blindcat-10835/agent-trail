@@ -148,7 +148,6 @@ export function isAgentToolCapabilities(
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
   return (
-    typeof v.liveGateway === 'boolean' &&
     typeof v.sessions === 'boolean' &&
     typeof v.replay === 'boolean' &&
     typeof v.activity === 'boolean' &&

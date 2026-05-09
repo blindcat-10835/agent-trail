@@ -65,14 +65,12 @@ describe('Type Compilation', () => {
       type: 'openclaw',
       path: '/path/to/openclaw',
       ingestStatus: 'configured',
-      gatewayStatus: 'connected',
       lastSyncAt: '2024-01-01T00:00:00Z',
       sessionCount: 10,
     };
 
     expect(sourceMetadata.type).toBe('openclaw');
     expect(sourceMetadata.ingestStatus).toBe('configured');
-    expect(sourceMetadata.gatewayStatus).toBe('connected');
   });
 
   it('should create valid TraceSession', () => {
@@ -284,30 +282,28 @@ describe('Type Compilation', () => {
   });
 });
 
-describe('Dual-Status Model', () => {
-  it('should allow TraceSourceMetadata with both ingestStatus and gatewayStatus', () => {
-    const sourceWithBoth: TraceSourceMetadata = {
+describe('Source Metadata', () => {
+  it('should create valid TraceSourceMetadata with ingestStatus', () => {
+    const source: TraceSourceMetadata = {
       type: 'openclaw',
       path: '/path/to/openclaw',
       ingestStatus: 'configured',
-      gatewayStatus: 'connected',
       sessionCount: 5,
     };
 
-    expect(sourceWithBoth.ingestStatus).toBe('configured');
-    expect(sourceWithBoth.gatewayStatus).toBe('connected');
+    expect(source.ingestStatus).toBe('configured');
   });
 
-  it('should allow TraceSourceMetadata with only ingestStatus (no gatewayStatus)', () => {
-    const sourceIngestOnly: TraceSourceMetadata = {
+  it('should allow TraceSourceMetadata with optional lastSyncAt', () => {
+    const source: TraceSourceMetadata = {
       type: 'claude-code',
       path: '/path/to/claude-code',
       ingestStatus: 'configured',
       sessionCount: 3,
     };
 
-    expect(sourceIngestOnly.ingestStatus).toBe('configured');
-    expect(sourceIngestOnly.gatewayStatus).toBeUndefined();
+    expect(source.ingestStatus).toBe('configured');
+    expect(source.lastSyncAt).toBeUndefined();
   });
 });
 

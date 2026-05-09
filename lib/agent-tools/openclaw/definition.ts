@@ -13,7 +13,6 @@ const definition: AgentToolDefinition = {
   shortLabel: 'OPENCLAW',
   defaultRoute: '/dashboard',
   capabilities: {
-    liveGateway: true,
     sessions: true,
     replay: true,
     activity: true,
@@ -64,7 +63,7 @@ const definition: AgentToolDefinition = {
   ui: {
     brand: {
       name: 'OpenClaw',
-      versionLabel: 'GATEWAY · v3.2.1',
+      versionLabel: 'v3.2.1',
     },
     sessionColumns: [
       { id: 'label', header: 'SESSION', accessor: 'label', sortable: true },

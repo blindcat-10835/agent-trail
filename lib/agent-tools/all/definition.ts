@@ -13,7 +13,6 @@ const definition: AgentToolDefinition = {
   shortLabel: 'ALL',
   defaultRoute: '/dashboard',
   capabilities: {
-    liveGateway: false,
     sessions: true,
     replay: false,
     activity: false,

@@ -59,8 +59,6 @@ export interface SessionColumnDef {
  * - All others: false
  */
 export interface AgentToolCapabilities {
-  /** OpenClaw-only: live Gateway WebSocket connection */
-  liveGateway: boolean
   /** Session browsing (list + detail) */
   sessions: boolean
   /** Turn-level session replay */

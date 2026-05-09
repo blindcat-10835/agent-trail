@@ -1,13 +1,12 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { notifySessionsRefresh, syncAllSessions, useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { notifySessionsRefresh, syncAllSessions } from '@/lib/agent-tools/client-hooks'
 import { useUIStore } from '@/stores/ui-store'
 import { SourceSwitcher } from './source-switcher'
 import { ThemeToggle } from '@/components/hud/theme-toggle'
 
 export function ShellHeader() {
-  const { capabilities } = useAgentTool()
   const rightRailOpen = useUIStore((s) => s.rightRailOpen)
   const toggleRightRail = useUIStore((s) => s.toggleRightRail)
   const [syncing, setSyncing] = useState(false)
@@ -43,10 +42,6 @@ export function ShellHeader() {
 
       {/* Controls */}
       <div className="flex items-center gap-3.5 text-xs tracking-[0.12em]">
-        <div className="hud-clip-sm flex items-center gap-1.5 border border-border/40 px-2.5 py-1 text-[11px] font-semibold">
-          <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-          <span>LOCAL</span>
-        </div>
         <button
           onClick={handleSync}
           disabled={syncing}

@@ -60,8 +60,7 @@ describe('AgentToolCapabilities', () => {
     const caps: AgentToolCapabilities = def.capabilities
 
     // Per plan: sessions, replay, activity default to true; rest false
-    // But openclaw specifically has liveGateway=true, office=true, workspace=true, cost=true
-    expect(typeof caps.liveGateway).toBe('boolean')
+    // But openclaw specifically has office=true, workspace=true, cost=true
     expect(typeof caps.sessions).toBe('boolean')
     expect(typeof caps.replay).toBe('boolean')
     expect(typeof caps.activity).toBe('boolean')
@@ -71,9 +70,9 @@ describe('AgentToolCapabilities', () => {
     expect(typeof caps.cost).toBe('boolean')
     expect(typeof caps.approvals).toBe('boolean')
 
-    // All 9 capability fields must be present
+    // All 8 capability fields must be present
     const keys = Object.keys(caps) as (keyof AgentToolCapabilities)[]
-    expect(keys).toHaveLength(9)
+    expect(keys).toHaveLength(8)
   })
 })
 
@@ -131,11 +130,10 @@ describe('getAllDefinitions', () => {
 })
 
 describe('getDefinition', () => {
-  it('returns all definition with aggregate label and no live gateway', () => {
+  it('returns all definition with aggregate label', () => {
     const def = getDefinition('all')
     expect(def.label).toBe('All Sources')
     expect(def.shortLabel).toBe('ALL')
-    expect(def.capabilities.liveGateway).toBe(false)
     expect(def.capabilities.sessions).toBe(true)
     expect(def.ui.sessionColumns.some((col) => col.id === 'project')).toBe(true)
   })
@@ -147,9 +145,8 @@ describe('getDefinition', () => {
     expect(def.defaultRoute).toBe('/dashboard')
   })
 
-  it('returns openclaw definition with liveGateway=true and office=true', () => {
+  it('returns openclaw definition with office=true', () => {
     const def = getDefinition('openclaw')
-    expect(def.capabilities.liveGateway).toBe(true)
     expect(def.capabilities.office).toBe(true)
     expect(def.capabilities.workspace).toBe(true)
     expect(def.capabilities.cost).toBe(true)
@@ -158,10 +155,9 @@ describe('getDefinition', () => {
     expect(def.capabilities.activity).toBe(true)
   })
 
-  it('returns claude-code definition with replay=true and liveGateway=false', () => {
+  it('returns claude-code definition with replay=true', () => {
     const def = getDefinition('claude-code')
     expect(def.capabilities.replay).toBe(true)
-    expect(def.capabilities.liveGateway).toBe(false)
     expect(def.capabilities.sessions).toBe(true)
     expect(def.capabilities.activity).toBe(true)
     expect(def.capabilities.subagents).toBe(true)
@@ -177,7 +173,6 @@ describe('getDefinition', () => {
   it('returns codex definition with approvals=false', () => {
     const def = getDefinition('codex')
     expect(def.capabilities.approvals).toBe(false)
-    expect(def.capabilities.liveGateway).toBe(false)
     expect(def.capabilities.sessions).toBe(true)
     expect(def.capabilities.replay).toBe(true)
     expect(def.capabilities.activity).toBe(true)

@@ -13,18 +13,12 @@ export async function POST() {
           resolve(NextResponse.json({ success: true }));
           return;
         }
-        exec("systemctl --user restart openclaw-gateway", (err3) => {
-          if (!err3) {
-            resolve(NextResponse.json({ success: true }));
-            return;
-          }
-          resolve(
-            NextResponse.json(
-              { success: false, error: "All restart attempts failed" },
-              { status: 500 }
-            )
-          );
-        });
+        resolve(
+          NextResponse.json(
+            { success: false, error: "All restart attempts failed" },
+            { status: 500 }
+          )
+        );
       });
     });
   });

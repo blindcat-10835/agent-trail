@@ -13,7 +13,6 @@ const definition: AgentToolDefinition = {
   shortLabel: 'CODEX',
   defaultRoute: '/dashboard',
   capabilities: {
-    liveGateway: false,
     sessions: true,
     replay: true,
     activity: true,
