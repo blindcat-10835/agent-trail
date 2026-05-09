@@ -58,7 +58,7 @@ types/                  # 共享类型
 - **视觉令牌**：用语义化 token（`bg-background`, `text-foreground`, `border-border`），不要硬编码颜色值
 - **双主题**：light/dark 都要验证，WCAG AA 对比度
 - **Multi-source 架构**：支持 OpenClaw、Claude Code、Codex 三个数据来源，通过 source switcher 切换
-- **数据层锁定**：`gateway/` 和 `stores/` 主体不改 —— 只允许加 selector / 类型导出，**禁止**重构核心逻辑（从旧版 OVAO 迁移过来，功能稳定）
+- 遵从代码范式：实现相似功能时先看有没有已经存在的类似代码。并且参考。
 
 ## Environment
 
