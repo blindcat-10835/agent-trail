@@ -1,6 +1,6 @@
 # Configuration
 
-agent-tracing-dashboard is configured entirely through environment variables. There is no central config file at runtime — both services parse `process.env` at startup. This document lists every variable the code actually reads, where it's read, the default, and the validation that runs against it.
+agent-tracing-dashboard is configured through environment variables and an optional config file. Source directory resolution follows a three-layer priority: **env var > config.json > built-in defaults**. Both services parse `process.env` at startup. This document lists every variable the code actually reads, where it's read, the default, and the validation that runs against it.
 
 > **Convention.** Variables prefixed `NEXT_PUBLIC_` are exposed to browser bundles by Next.js — never put secrets there. Variables prefixed `INGEST_` are read only by the ingest service. Variables without a prefix (e.g. `WORKSPACE_PATH`) are read by both services.
 
@@ -11,6 +11,7 @@ agent-tracing-dashboard is configured entirely through environment variables. Th
 | File | Loaded by | Committed? |
 | --- | --- | --- |
 | `.env.local` | Next.js automatically; the ingest service when launched via `pnpm dev:ingest` (which inherits the parent shell env) | No (gitignored — see `.gitignore`) |
+| `~/.agents-tracing/config.json` | `ingest/config/tool-dirs.ts → loadConfigFile` — multi-path source directory configuration | No (user home directory) |
 | Shell exports / launcher script | Both services when started directly | n/a |
 | `.ovao-config.json` | `lib/gateway-config.ts` (Gateway URL/Token persistence) | No (gitignored) — managed at runtime, do not hand-edit |
 
@@ -18,30 +19,57 @@ There is **no** `.env.example` checked into the repo. The minimum local setup is
 
 ---
 
-## 2. Source discovery (both services)
+## 2. Source discovery (Tool Directory Registry)
 
-Both the ingest service (for parsing) and the legacy `app/api/sessions/messages` route (for OpenClaw file-scan fallback) read these.
+Source directories are managed centrally via `TOOL_DIR_REGISTRY` and `resolveToolDirs()` in `ingest/config/tool-dirs.ts`. Resolution follows a three-layer priority: **env var > config.json > built-in defaults**.
 
-### `WORKSPACE_PATH`
+### `AGENTS_TRACING_CONFIG`
 
-- **Default:** `~/.openclaw` (after stripping a trailing `/workspace` if present).
-- **Read at:** `ingest/sync/sources.ts → discoverOpenClawSources` and `app/api/sessions/messages/route.ts → getOpenclawBase`.
-- **Resolves to:** `<WORKSPACE_PATH>/agents/<agent-name>/sessions/*.jsonl`.
-- **Behaviour:** the ingest service strips a trailing `/workspace` segment before appending `/agents`, so both `/Users/me/.openclaw` and `/Users/me/.openclaw/workspace` work.
-- **Path containment:** Discovered paths are validated by `isWithinRoot` against the resolved `agentsDir`. Anything outside is dropped with `[sources] Rejected path outside root: ...` printed to the ingest log.
+- **Default:** `~/.agents-tracing/config.json`.
+- **Read at:** `ingest/config/tool-dirs.ts → loadConfigFile`.
+- **Purpose:** Override the config file path. If unset, reads `~/.agents-tracing/config.json`. If the file does not exist, it is silently ignored (returns `null`).
 
-### `CLAUDE_SESSIONS_PATH`
+### `OPENCLAW_DIR`
+
+- **Default:** `~/.openclaw/agents`.
+- **Config file key:** `openclaw_dirs` (array, supports multiple paths).
+- **Read at:** `ingest/config/tool-dirs.ts → TOOL_DIR_REGISTRY`.
+- **Resolves to:** `<dir>/<agent-name>/sessions/*.jsonl` (grouped by agent under each directory).
+- **Path containment:** Discovered paths are validated by `isWithinRoot` against the resolved root. Anything outside is dropped with `[sources] Rejected path outside root: ...` printed to the ingest log.
+
+### `CLAUDE_PROJECTS_DIR`
 
 - **Default:** `~/.claude/projects`.
-- **Read at:** `ingest/sync/sources.ts → discoverClaudeSources`.
+- **Config file key:** `claude_project_dirs` (array, supports multiple paths).
+- **Read at:** `ingest/config/tool-dirs.ts → TOOL_DIR_REGISTRY`.
 - **Resolves to:** any directory under the root containing `.jsonl` files (recursive discovery).
 - **Project extraction:** Claude encodes the original `cwd` by replacing `/` with `-` in the directory name (e.g. `-Users-ebbi-work-foo`). The sync layer decodes this back into the `project` column.
 
-### `CODEX_SESSIONS_PATH`
+### `CODEX_SESSIONS_DIR`
 
 - **Default:** `~/.codex/sessions`.
-- **Read at:** `ingest/sync/sources.ts → discoverCodexSources`.
+- **Config file key:** `codex_sessions_dirs` (array, supports multiple paths).
+- **Read at:** `ingest/config/tool-dirs.ts → TOOL_DIR_REGISTRY`.
 - **Resolves to:** any directory under the root containing `.jsonl` files (recursive). Codex parent-child relationships are reconstructed from `event_msg.collab_agent_spawn_end` events during sync.
+
+### `WORKSPACE_PATH` (deprecated)
+
+- **Default:** `~/.openclaw` (after stripping a trailing `/workspace` if present).
+- **Note:** This variable has been superseded by `OPENCLAW_DIR`. Kept for backwards compatibility. If `OPENCLAW_DIR` is also set, `OPENCLAW_DIR` takes precedence.
+
+### Config file format
+
+`~/.agents-tracing/config.json` supports multi-directory scanning:
+
+```json
+{
+  "openclaw_dirs": ["/Users/<you>/.openclaw/agents"],
+  "claude_project_dirs": ["/Users/<you>/.claude/projects"],
+  "codex_sessions_dirs": ["/Users/<you>/.codex/sessions"]
+}
+```
+
+Each key accepts an array of paths. Relative paths are resolved from the user's home directory (`~`). When an env var is set, the corresponding config file key is ignored (env var takes priority).
 
 ---
 
@@ -92,10 +120,12 @@ The empty `.env.local` shipped during local setup typically contains:
 ```bash
 NEXT_PUBLIC_API_BASE=http://localhost:8000
 NEXT_PUBLIC_GATEWAY_WS=ws://localhost:18789
-WORKSPACE_PATH=/Users/<you>/.openclaw/workspace
+OPENCLAW_DIR=/Users/<you>/.openclaw/agents
+CLAUDE_PROJECTS_DIR=/Users/<you>/.claude/projects
+CODEX_SESSIONS_DIR=/Users/<you>/.codex/sessions
 ```
 
-Only `WORKSPACE_PATH` is currently load-bearing for the multi-source pipeline. Keep the others for parity with older OpenClaw tooling unless you're sure nothing in your local stack reads them.
+`OPENCLAW_DIR`, `CLAUDE_PROJECTS_DIR`, and `CODEX_SESSIONS_DIR` control source discovery. You can also configure them via `~/.agents-tracing/config.json` (which supports multiple directories). Keep the `NEXT_PUBLIC_*` variables for parity with older OpenClaw tooling unless you're sure nothing in your local stack reads them.
 
 ---
 
@@ -131,8 +161,8 @@ These don't appear in source but show up in operational practice:
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | Ingest exits immediately on `pnpm dev:ingest` | Bad `INGEST_*` value (e.g. unparseable port) | Read the printed `Error:` line; values must satisfy the validation table above |
-| `/api/v1/sources` shows `error: "ENOENT: ..."` for a source | Source root does not exist | Set the matching `*_SESSIONS_PATH` / `WORKSPACE_PATH` env var, or create the directory |
-| OpenClaw source appears with `sessionCount: 0, error: "No agent sessions found"` | `~/.openclaw/agents/<agent>/sessions/` is empty | Run an OpenClaw session to create some, or point `WORKSPACE_PATH` at a workspace that has them |
+| `/api/v1/sources` shows `error: "ENOENT: ..."` for a source | Source root does not exist | Set the matching `OPENCLAW_DIR` / `CLAUDE_PROJECTS_DIR` / `CODEX_SESSIONS_DIR` env var, or configure paths in `~/.agents-tracing/config.json`, or create the directory |
+| OpenClaw source appears with `sessionCount: 0, error: "No agent sessions found"` | `~/.openclaw/agents/<agent>/sessions/` is empty | Run an OpenClaw session to create some, or point `OPENCLAW_DIR` at a directory that has them |
 | `[sources] Rejected path outside root: ...` warnings | Symlink leaving the configured root, or a weird absolute path discovered | Fix the symlink; `isWithinRoot` is intentional and not configurable |
 | BFF returns 502 `Ingest service unreachable` | Ingest crashed or wrong `INGEST_URL` | Check `pnpm dev` logs; `curl http://localhost:8078/health`; reset `INGEST_URL` |
 | BFF returns 400 `Invalid source tool ID` | URL `[tool]` segment is wrong | Use `openclaw`, `claude-code`, or `codex` (note the hyphen). `all` works only at the shell layer, not the BFF. |
