@@ -60,12 +60,14 @@ export function ReplaySearchBar({ turns }: ReplaySearchBarProps) {
     }
   }, [searchQuery, turns, setSearchMatches, setCurrentMatchIndex])
 
-  // Scroll to current match
+  // Scroll to current match — target the <mark> inside the turn card
   const scrollToTurn = useCallback((turnId: string) => {
     const turn = turns.find((t) => t.id === turnId)
     if (turn) {
-      const el = document.getElementById(`turn-${turn.index}`)
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const card = document.getElementById(`turn-${turn.index}`)
+      const mark = card?.querySelector('mark')
+      const target = mark ?? card
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }, [turns])
 
