@@ -16,10 +16,9 @@ interface SubagentBlockProps {
 
 const MAX_DEPTH = 2
 
-export function SubagentBlock({ subagent, parentTurnIndex, depth = 0 }: SubagentBlockProps) {
+export function SubagentBlock({ subagent, depth = 0 }: SubagentBlockProps) {
   const [expanded, setExpanded] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const { toolId, href } = useAgentTool()
   const router = useRouter()
 
@@ -30,14 +29,17 @@ export function SubagentBlock({ subagent, parentTurnIndex, depth = 0 }: Subagent
     { limit: 20 },
   )
 
-  // Watch for fetch errors
-  if (loaded && error && !loadError) {
-    setLoadError(error)
-  }
+  const loadError = loaded ? error : null
 
   const handleLoad = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     setLoaded(true)
+  }, [])
+
+  const handleRetry = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    setLoaded(false)
+    window.setTimeout(() => setLoaded(true), 0)
   }, [])
 
   const handleOpenFull = useCallback((e: React.MouseEvent) => {
@@ -91,7 +93,7 @@ export function SubagentBlock({ subagent, parentTurnIndex, depth = 0 }: Subagent
               <div className="text-[10px] font-bold text-destructive uppercase">ERR</div>
               <div className="text-[9px] text-muted-foreground text-center">Could not load subagent turns.</div>
               <div className="flex gap-2">
-                <button onClick={handleLoad} className="text-[9px] text-accent hover:underline">RETRY</button>
+                <button onClick={handleRetry} className="text-[9px] text-accent hover:underline">RETRY</button>
                 <button onClick={() => setLoaded(false)} className="text-[9px] text-muted-foreground hover:underline">DISMISS</button>
               </div>
             </div>

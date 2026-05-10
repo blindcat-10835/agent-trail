@@ -36,6 +36,7 @@ const SOURCE_LABELS: Record<TraceSource, string> = {
 
 interface SessionFilterDropdownProps {
   filter: SessionFilterState
+  scope: 'all' | 'source'
   onGroupModeChange: (mode: GroupMode) => void
   onSourceToggle: (source: TraceSource) => void
   onClearSources: () => void
@@ -48,7 +49,11 @@ interface SessionFilterDropdownProps {
 // Helpers
 // ============================================================================
 
-function hasActiveFilters(filter: SessionFilterState): boolean {
+function hasActiveFilters(filter: SessionFilterState, scope: 'all' | 'source'): boolean {
+  if (scope === 'source') {
+    return filter.groupMode !== 'none' || filter.starredOnly
+  }
+
   return (
     filter.groupMode !== 'none' ||
     filter.starredOnly ||
@@ -90,6 +95,7 @@ function CheckIcon({ className }: { className?: string }) {
 
 export function SessionFilterDropdown({
   filter,
+  scope,
   onGroupModeChange,
   onSourceToggle,
   onClearSources,
@@ -101,9 +107,13 @@ export function SessionFilterDropdown({
   const [mounted, setMounted] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const starredCount = useStarredStore((s) => s.ids.size)
-  const filtersActive = hasActiveFilters(filter)
+  const filtersActive = hasActiveFilters(filter, scope)
+  const isAggregateScope = scope === 'all'
 
-  useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true)
+  }, [])
 
   // Close on outside click
   useEffect(() => {
@@ -143,41 +153,47 @@ export function SessionFilterDropdown({
       {open && (
         <div className="absolute right-0 top-full mt-1 w-52 border border-border bg-background rounded-md shadow-lg p-2 z-50">
           {/* Search */}
-          <div className="relative mb-2">
-            <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-            <input
-              type="text"
-              value={filter.searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search sessions..."
-              className="w-full bg-muted border border-border rounded-sm py-1 pl-6 pr-5 text-[11px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-green-500/40"
-            />
-            {filter.searchQuery && (
-              <button
-                type="button"
-                onClick={() => onSearchChange('')}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                aria-label="Clear search"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
+          {isAggregateScope && (
+            <div className="relative mb-2">
+              <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+              <input
+                type="text"
+                value={filter.searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Search sessions..."
+                className="w-full bg-muted border border-border rounded-sm py-1 pl-6 pr-5 text-[11px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-green-500/40"
+              />
+              {filter.searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => onSearchChange('')}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* DISPLAY section */}
-          <div className="mb-2">
-            <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 px-0.5">
-              Display
-            </div>
+          <div className={cn(isAggregateScope && 'mb-2')}>
+            {isAggregateScope && (
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 px-0.5">
+                Display
+              </div>
+            )}
+            {isAggregateScope && (
+              <FilterToggle
+                label="Group by Tool"
+                active={filter.groupMode === 'agent'}
+                onClick={() =>
+                  onGroupModeChange(filter.groupMode === 'agent' ? 'none' : 'agent')
+                }
+              />
+            )}
             <FilterToggle
-              label="Group by tool"
-              active={filter.groupMode === 'agent'}
-              onClick={() =>
-                onGroupModeChange(filter.groupMode === 'agent' ? 'none' : 'agent')
-              }
-            />
-            <FilterToggle
-              label="Group by project"
+              label="Group by Project"
               active={filter.groupMode === 'project'}
               onClick={() =>
                 onGroupModeChange(filter.groupMode === 'project' ? 'none' : 'project')
@@ -186,10 +202,12 @@ export function SessionFilterDropdown({
           </div>
 
           {/* STARRED section */}
-          <div className="mb-2">
-            <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 px-0.5">
-              Starred
-            </div>
+          <div className={cn(isAggregateScope && 'mb-2')}>
+            {isAggregateScope && (
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 px-0.5">
+                Starred
+              </div>
+            )}
             <button
               type="button"
               onClick={onStarredOnlyToggle}
@@ -222,35 +240,37 @@ export function SessionFilterDropdown({
           </div>
 
           {/* SOURCE section */}
-          <div className="mb-2">
-            <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 px-0.5">
-              Source
-            </div>
-            {/* All sources toggle */}
-            <SourceRow
-              label="All"
-              checked={isAllSourcesSelected(filter)}
-              onClick={() => {
-                if (!isAllSourcesSelected(filter)) {
-                  onClearSources()
-                }
-              }}
-            />
-            {TOOL_IDS.map((source) => (
+          {isAggregateScope && (
+            <div className="mb-2">
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 px-0.5">
+                Source
+              </div>
+              {/* All sources toggle */}
               <SourceRow
-                key={source}
-                label={SOURCE_LABELS[source]}
-                checked={
-                  isAllSourcesSelected(filter) ||
-                  filter.sourceFilter.has(source)
-                }
-                onClick={() => onSourceToggle(source)}
+                label="All"
+                checked={isAllSourcesSelected(filter)}
+                onClick={() => {
+                  if (!isAllSourcesSelected(filter)) {
+                    onClearSources()
+                  }
+                }}
               />
-            ))}
-          </div>
+              {TOOL_IDS.map((source) => (
+                <SourceRow
+                  key={source}
+                  label={SOURCE_LABELS[source]}
+                  checked={
+                    isAllSourcesSelected(filter) ||
+                    filter.sourceFilter.has(source)
+                  }
+                  onClick={() => onSourceToggle(source)}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Clear filters */}
-          {filtersActive && (
+          {isAggregateScope && filtersActive && (
             <button
               type="button"
               onClick={onClearAll}

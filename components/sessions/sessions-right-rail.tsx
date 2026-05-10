@@ -59,7 +59,7 @@ function AggregateSessionsRightRail({
   const { definition, href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const { sessions, totalCount, groupCounts, sources, loading, error, hasMore, isLoadingMore, loadMore } = useAggregateSessions({ limit: '100' })
+  const { sessions, totalCount, groupCounts, loading, error, hasMore, isLoadingMore, loadMore } = useAggregateSessions({ limit: '100' })
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
 
@@ -205,23 +205,36 @@ function SessionsRailContent({
     if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('agents-tracing-group-mode')
-        if (stored === 'agent' || stored === 'project') groupMode = stored
+        if (stored === 'agent' || stored === 'project') {
+          groupMode = currentToolId === 'all' || stored === 'project' ? stored : 'none'
+        }
       } catch {}
     }
     return { groupMode, sourceFilter: new Set(), starredOnly: false, searchQuery: '' }
   })
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const starredIds = useStarredStore((s) => s.ids)
   const starredToggle = useStarredStore((s) => s.toggle)
   const starredIsStarred = useStarredStore((s) => s.isStarred)
+
+  const visibleFilter = useMemo<SessionFilterState>(() => {
+    if (currentToolId === 'all') return filter
+
+    return {
+      ...filter,
+      groupMode: filter.groupMode === 'agent' ? 'none' : filter.groupMode,
+      sourceFilter: new Set(),
+      searchQuery: '',
+    }
+  }, [currentToolId, filter])
 
   // -- Filtered sessions --
   const filteredSessions = useMemo(() => {
     let result = sessions
 
     // Search filter
-    if (filter.searchQuery) {
-      const q = filter.searchQuery.toLowerCase()
+    if (visibleFilter.searchQuery) {
+      const q = visibleFilter.searchQuery.toLowerCase()
       result = result.filter(
         (s) =>
           (s.name && s.name.toLowerCase().includes(q)) ||
@@ -230,26 +243,26 @@ function SessionsRailContent({
     }
 
     // Source filter (empty set = show all)
-    if (filter.sourceFilter.size > 0) {
-      result = result.filter((s) => filter.sourceFilter.has(s.source))
+    if (visibleFilter.sourceFilter.size > 0) {
+      result = result.filter((s) => visibleFilter.sourceFilter.has(s.source))
     }
 
     // Starred only filter
-    if (filter.starredOnly) {
+    if (visibleFilter.starredOnly) {
       result = result.filter((s) => starredIds.has(s.id))
     }
 
     return result
-  }, [sessions, filter.searchQuery, filter.sourceFilter, filter.starredOnly, starredIds])
+  }, [sessions, visibleFilter.searchQuery, visibleFilter.sourceFilter, visibleFilter.starredOnly, starredIds])
 
   // -- Grouped sessions --
   const groupedSessions = useMemo((): GroupSection[] | null => {
-    if (filter.groupMode === 'none') return null
+    if (visibleFilter.groupMode === 'none') return null
 
     const map = new Map<string, TraceSession[]>()
     for (const s of filteredSessions) {
       const key =
-        filter.groupMode === 'agent'
+        visibleFilter.groupMode === 'agent'
           ? s.source
           : (s.project || 'default')
       const list = map.get(key) || []
@@ -260,12 +273,14 @@ function SessionsRailContent({
     return Array.from(map.entries())
       .sort((a, b) => b[1].length - a[1].length)
       .map(([label, sessions]) => ({ label, sessions }))
-  }, [filteredSessions, filter.groupMode])
+  }, [filteredSessions, visibleFilter.groupMode])
 
   // -- Filter callback handlers --
   const handleGroupModeChange = (mode: GroupMode) => {
-    setFilter((prev) => ({ ...prev, groupMode: mode }))
-    try { localStorage.setItem('agents-tracing-group-mode', mode) } catch {}
+    const nextMode = currentToolId === 'all' || mode !== 'agent' ? mode : 'none'
+    setFilter((prev) => ({ ...prev, groupMode: nextMode }))
+    setExpandedGroups(new Set())
+    try { localStorage.setItem('agents-tracing-group-mode', nextMode) } catch {}
   }
 
   const handleSourceToggle = (source: TraceSource) => {
@@ -279,11 +294,12 @@ function SessionsRailContent({
 
   const handleClearAll = () => {
     setFilter({ groupMode: 'none', sourceFilter: new Set(), starredOnly: false, searchQuery: '' })
+    setExpandedGroups(new Set())
     try { localStorage.removeItem('agents-tracing-group-mode') } catch {}
   }
 
   const toggleGroupCollapse = (label: string) => {
-    setCollapsedGroups((prev) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev)
       if (next.has(label)) next.delete(label)
       else next.add(label)
@@ -333,7 +349,8 @@ function SessionsRailContent({
           </button>
         )}
         <SessionFilterDropdown
-          filter={filter}
+          filter={visibleFilter}
+          scope={currentToolId === 'all' ? 'all' : 'source'}
           onGroupModeChange={handleGroupModeChange}
           onSourceToggle={handleSourceToggle}
           onClearSources={() => setFilter((prev) => ({ ...prev, sourceFilter: new Set() }))}
@@ -385,9 +402,9 @@ function SessionsRailContent({
           <div className="divide-y divide-border">
             {groupedSessions.map((group) => {
               let groupCount: number | undefined
-              if (groupCounts && filter.groupMode === 'agent') {
+              if (groupCounts && visibleFilter.groupMode === 'agent') {
                 groupCount = groupCounts.agent?.find(g => g.label === group.label)?.count
-              } else if (groupCounts && filter.groupMode === 'project') {
+              } else if (groupCounts && visibleFilter.groupMode === 'project') {
                 groupCount = groupCounts.project?.find(g => g.label === group.label)?.count
               }
 
@@ -398,7 +415,7 @@ function SessionsRailContent({
                     onClick={() => toggleGroupCollapse(group.label)}
                     className="flex w-full items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1.5 text-left transition-colors hover:bg-muted/50"
                   >
-                    <span className="text-[9px] text-muted-foreground/60 transition-transform" style={{ transform: collapsedGroups.has(group.label) ? 'rotate(-90deg)' : undefined }}>
+                    <span className="text-[9px] text-muted-foreground/60 transition-transform" style={{ transform: expandedGroups.has(group.label) ? undefined : 'rotate(-90deg)' }}>
                       &#9662;
                     </span>
                     <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -408,7 +425,7 @@ function SessionsRailContent({
                       ({groupCount ?? group.sessions.length})
                     </span>
                   </button>
-                  {!collapsedGroups.has(group.label) &&
+                  {expandedGroups.has(group.label) &&
                     group.sessions.map((session, index) => (
                       <SessionRailRow
                         key={session.id || `${session.source}-${index}`}

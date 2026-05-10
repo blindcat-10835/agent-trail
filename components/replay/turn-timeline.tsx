@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import type { TraceTurn } from '@/types/trace'
 import { useReplayStore } from '@/stores/replay-store'
 import { TurnCard } from './turn-card'
@@ -36,6 +37,7 @@ export function TurnTimeline({ turns, sessionId, hasMore, loadingMore, onLoadMor
   }, [turns.length, isLongSession]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Virtualizer (only for long sessions)
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: turns.length + (hasMore ? 1 : 0), // +1 for loading indicator
     getScrollElement: () => parentRef.current,
@@ -43,6 +45,10 @@ export function TurnTimeline({ turns, sessionId, hasMore, loadingMore, onLoadMor
     overscan: 5,
     enabled: isLongSession,
   })
+
+  useEffect(() => {
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false
+  }, [virtualizer])
 
   // Restore scroll position on mount
   useEffect(() => {
@@ -73,20 +79,26 @@ export function TurnTimeline({ turns, sessionId, hasMore, loadingMore, onLoadMor
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Expand All / Collapse All toggle */}
-      {isLongSession && turns.length > 10 && (
-        <div className="flex items-center gap-3 px-6 pt-4 pb-2 flex-shrink-0">
+      {turns.length > 0 && (
+        <div className="flex items-center justify-end px-6 pt-4 pb-2 flex-shrink-0">
           <button
-            onClick={() => expandAll(turns.map((t) => t.id))}
-            className="text-[10px] font-semibold uppercase tracking-wider text-accent hover:text-accent/80 transition-colors"
+            type="button"
+            onClick={() => {
+              if (allExpanded) {
+                collapseAll()
+              } else {
+                expandAll(turns.map((t) => t.id))
+              }
+            }}
+            className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+            aria-pressed={allExpanded}
           >
-            Expand All
-          </button>
-          <button
-            onClick={collapseAll}
-            className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Collapse All
+            {allExpanded ? (
+              <ChevronsDownUp className="h-3 w-3" />
+            ) : (
+              <ChevronsUpDown className="h-3 w-3" />
+            )}
+            {allExpanded ? 'Collapse All' : 'Expand All'}
           </button>
         </div>
       )}
@@ -95,6 +107,7 @@ export function TurnTimeline({ turns, sessionId, hasMore, loadingMore, onLoadMor
       <div
         ref={parentRef}
         className="flex-1 min-h-0 overflow-auto px-6 pb-4"
+        style={{ overflowAnchor: 'none' }}
         onScroll={handleScrollWithPrefetch}
       >
         {isLongSession ? (
