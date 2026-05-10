@@ -1,10 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import type { AgentInfo } from '@/types/trace'
 import { AGENT_STATUS_META } from './agent-status-meta'
 
 export function AgentAvatar({ agent, size = 32 }: { agent: AgentInfo; size?: number }) {
+  const [imgError, setImgError] = useState(false)
   const glyph = agent.name.charAt(0).toUpperCase()
+  const avatarUrl = `/api/agent-tools/openclaw/agents/${encodeURIComponent(agent.name)}/avatar`
 
   return (
     <div
@@ -16,7 +19,16 @@ export function AgentAvatar({ agent, size = 32 }: { agent: AgentInfo; size?: num
         color: AGENT_STATUS_META[agent.latestStatus]?.color,
       }}
     >
-      <span>{glyph}</span>
+      {imgError ? (
+        <span>{glyph}</span>
+      ) : (
+        <img
+          src={avatarUrl}
+          alt={agent.name}
+          onError={() => setImgError(true)}
+          className="w-full h-full object-cover"
+        />
+      )}
     </div>
   )
 }

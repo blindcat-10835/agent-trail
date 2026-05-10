@@ -122,7 +122,7 @@ agentsRoutes.get('/api/v1/agents/:name/avatar', (c) => {
     return c.json({ error: 'Avatar not found' }, 404)
   }
 
-  return new Response(result.data, {
+  return new Response(new Uint8Array(result.data), {
     status: 200,
     headers: {
       'Content-Type': result.mime,
