@@ -235,6 +235,7 @@ export async function parseCodexSession(
 
   // Tool call registry for pairing with function_call_output events (D-11)
   const toolCallMap = new Map<string, TraceToolCall>();
+  const toolCallOrdinalMap = new Map<string, number>();
 
   const ensureTurn = (turnId?: string, startedAtForTurn?: string | null): void => {
     if (!turnId && currentTurnId) {
@@ -505,6 +506,7 @@ export async function parseCodexSession(
             const oldIdx = toolCallMap.get(callId);
             if (oldIdx) {
               toolCallMap.delete(callId);
+              toolCallOrdinalMap.delete(callId);
             }
           }
 
@@ -521,6 +523,7 @@ export async function parseCodexSession(
           };
 
           toolCallMap.set(callId, toolCall);
+          toolCallOrdinalMap.set(callId, ordinal);
           // Store in messageVersions for dedup tracking
           messageVersions.set(dedupKey, { tokenCount, message: {
             id: callId,
@@ -562,6 +565,7 @@ export async function parseCodexSession(
               continue;
             }
             toolCallMap.delete(callId);
+            toolCallOrdinalMap.delete(callId);
           }
 
           const toolCall: TraceToolCall = {
@@ -577,6 +581,7 @@ export async function parseCodexSession(
           };
 
           toolCallMap.set(callId, toolCall);
+          toolCallOrdinalMap.set(callId, ordinal);
           messageVersions.set(dedupKey, {
             tokenCount,
             message: {
@@ -684,12 +689,20 @@ export async function parseCodexSession(
           }
         }
 
-        if (ev.type === 'collab_agent_spawn_end' && ev.new_thread_id) {
+        if (
+          ev.type === 'collab_agent_spawn_end' &&
+          typeof ev.new_thread_id === 'string' &&
+          ev.new_thread_id.length > 0
+        ) {
+          const messageOrdinal = typeof ev.call_id === 'string'
+            ? toolCallOrdinalMap.get(ev.call_id)
+            : undefined;
           const subagentLink: TraceSubagentLink = {
             type: 'subagent_link',
             subagentSessionId: ev.new_thread_id,
             subagentSource: 'codex',
             relationship: 'spawned',
+            ...(messageOrdinal !== undefined ? { messageOrdinal } : {}),
           };
           activities.push(subagentLink);
         }
@@ -933,6 +946,15 @@ function handleDedup(
 function inferToolCategory(name: string): ToolCategory {
   const lower = name.toLowerCase();
   if (lower.includes('bash') || lower.includes('shell')) return 'Bash';
+  if (
+    lower === 'apply_patch' ||
+    lower === 'patch' ||
+    lower.includes('apply_patch') ||
+    lower.includes('file_edit') ||
+    lower.includes('patch')
+  ) {
+    return 'Edit';
+  }
   if (lower.includes('edit')) return 'Edit';
   if (lower.includes('read')) return 'Read';
   if (lower.includes('grep') || lower.includes('search')) return 'Grep';
