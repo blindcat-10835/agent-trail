@@ -866,6 +866,14 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
     totalResult.errors.push(`Failed to collect Codex session files: ${err}`);
   }
 
+  if (relationshipsByChild.size > 0) {
+    try {
+      backfillCodexRelationships(getDatabase(), relationshipsByChild);
+    } catch (err) {
+      totalResult.errors.push(`Codex relationship backfill failed: ${err}`);
+    }
+  }
+
   sseManager.emit('sync_complete', {
     source: 'codex',
     sessionsInserted: totalResult.sessionsInserted,
@@ -874,6 +882,47 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   });
 
   return totalResult;
+}
+
+/**
+ * Backfill Codex subagent relationship columns for already-indexed child sessions.
+ *
+ * Iterates over a map of child IDs → parent/root IDs and updates matching
+ * Codex session rows that still have root/null relationship_type. The function
+ * is idempotent: running it twice on the same data produces identical rows.
+ *
+ * @param database - better-sqlite3 database instance
+ * @param relationships - Map from child session ID to { parentSessionId, rootSessionId? }
+ * @returns Number of rows updated
+ */
+export function backfillCodexRelationships(
+  database: Database.Database,
+  relationships: Map<string, { parentSessionId: string; rootSessionId?: string }>
+): number {
+  let totalUpdated = 0;
+
+  const backfill = database.transaction(() => {
+    const stmt = database.prepare(`
+      UPDATE sessions
+      SET parent_session_id = ?,
+          root_session_id = ?,
+          relationship_type = 'subagent',
+          source_session_id = COALESCE(source_session_id, id)
+      WHERE source = 'codex'
+        AND id = ?
+    `);
+
+    for (const [childId, rel] of relationships) {
+      if (!childId || childId === rel.parentSessionId || !rel.parentSessionId) {
+        continue;
+      }
+      const result = stmt.run(rel.parentSessionId, rel.rootSessionId || rel.parentSessionId, childId);
+      totalUpdated += result.changes;
+    }
+  });
+
+  backfill();
+  return totalUpdated;
 }
 
 async function collectCodexRelationships(
