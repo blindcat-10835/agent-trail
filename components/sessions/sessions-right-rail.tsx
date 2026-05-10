@@ -59,7 +59,7 @@ function AggregateSessionsRightRail({
   const { definition, href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const { sessions, totalCount, groupCounts, sources, loading, error } = useAggregateSessions({ limit: '100' })
+  const { sessions, totalCount, groupCounts, sources, loading, error, hasMore, isLoadingMore, loadMore } = useAggregateSessions({ limit: '100' })
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
 
@@ -96,8 +96,9 @@ function AggregateSessionsRightRail({
       currentToolId="all"
       syncing={syncing}
       groupCounts={groupCounts}
-      hasMore={false}
-      isLoadingMore={false}
+      hasMore={hasMore}
+      isLoadingMore={isLoadingMore}
+      loadMore={loadMore}
     />
   )
 }

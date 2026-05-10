@@ -475,6 +475,8 @@ export interface AggregateSourceStatus {
   error?: string
 }
 
+type SourcePagination = { total: number; limit: number; offset: number; hasMore: boolean }
+
 interface AggregateToolResult {
   toolId: SourceToolId
   sessions: TraceSession[]
@@ -482,6 +484,7 @@ interface AggregateToolResult {
     agent?: Array<{ label: string; count: number }>
     project?: Array<{ label: string; count: number }>
   } | undefined
+  pagination: SourcePagination | null
   status: AggregateSourceStatus
 }
 
@@ -495,11 +498,16 @@ export function useAggregateSessions(query?: Record<string, string>) {
     agent: Array<{ label: string; count: number }>
     project: Array<{ label: string; count: number }>
   } | null>(null)
+  const [paginationBySource, setPaginationBySource] = useState<
+    Partial<Record<SourceToolId, SourcePagination>>
+  >({})
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const queryKey = JSON.stringify(query ?? {})
 
   const fetchAggregateSessions = useCallback(() => {
     setLoading(true)
     setError(null)
+    setIsLoadingMore(false)
     const parsedQuery = JSON.parse(queryKey) as Record<string, string>
     Promise.all(
       TOOL_IDS.map((toolId) =>
@@ -519,6 +527,7 @@ export function useAggregateSessions(query?: Record<string, string>) {
             toolId,
             sessions: d.sessions,
             _groupCounts: d.groupCounts,
+            pagination: d.pagination,
             status: {
               toolId,
               status: 'loaded' as const,
@@ -530,6 +539,7 @@ export function useAggregateSessions(query?: Record<string, string>) {
             toolId,
             sessions: [],
             _groupCounts: undefined,
+            pagination: null,
             status: {
               toolId,
               status: 'error' as const,
@@ -545,10 +555,18 @@ export function useAggregateSessions(query?: Record<string, string>) {
         const sourceStatuses = results.map((result) => result.status)
         const allSourcesFailed = sourceStatuses.every((source) => source.status === 'error')
 
+        const newPaginationBySource: Partial<Record<SourceToolId, SourcePagination>> = {}
+        for (const result of results) {
+          if (result.pagination) {
+            newPaginationBySource[result.toolId] = result.pagination
+          }
+        }
+
         setSessions(merged)
         setSources(sourceStatuses)
         setTotalCount(sourceStatuses.reduce((sum, source) => sum + source.total, 0))
         setError(allSourcesFailed ? 'All ingest sources unreachable' : null)
+        setPaginationBySource(newPaginationBySource)
 
         const mergedAgent = new Map<string, number>()
         const mergedProject = new Map<string, number>()
@@ -587,6 +605,112 @@ export function useAggregateSessions(query?: Record<string, string>) {
       })
   }, [queryKey])
 
+  const hasMore = Object.values(paginationBySource).some((p) => p?.hasMore === true)
+
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore) return
+    const sourcesToFetch = (Object.entries(paginationBySource) as [SourceToolId, SourcePagination][])
+      .filter(([, p]) => p.hasMore)
+
+    if (sourcesToFetch.length === 0) return
+
+    setIsLoadingMore(true)
+    const parsedQuery = JSON.parse(queryKey) as Record<string, string>
+
+    try {
+      const results = await Promise.all(
+        sourcesToFetch.map(([toolId, p]) =>
+          fetchToolApi<{
+            sessions: TraceSession[]
+            pagination: { total: number; limit: number; offset: number; hasMore: boolean }
+            groupCounts?: {
+              agent?: Array<{ label: string; count: number }>
+              project?: Array<{ label: string; count: number }>
+            }
+          }>(
+            toolId,
+            '/sessions',
+            {
+              ...parsedQuery,
+              limit: String(p.limit),
+              offset: String(p.offset + p.limit),
+              groupBy: 'agent,project',
+            },
+          )
+            .then((d): AggregateToolResult => ({
+              toolId,
+              sessions: d.sessions,
+              _groupCounts: d.groupCounts,
+              pagination: d.pagination,
+              status: {
+                toolId,
+                status: 'loaded' as const,
+                count: d.sessions.length,
+                total: d.pagination.total,
+              },
+            }))
+            .catch((): AggregateToolResult => ({
+              toolId,
+              sessions: [],
+              _groupCounts: undefined,
+              pagination: null,
+              status: {
+                toolId,
+                status: 'error' as const,
+                count: 0,
+                total: 0,
+              },
+            })),
+        ),
+      )
+
+      setSessions((prev) => {
+        const map = new Map<string, TraceSession>()
+        for (const s of prev) map.set(s.id, s)
+        for (const result of results) {
+          for (const s of result.sessions) map.set(s.id, s)
+        }
+        return Array.from(map.values()).sort(compareSessionsByFreshness)
+      })
+
+      setPaginationBySource((prev) => {
+        const next = { ...prev }
+        for (const result of results) {
+          if (result.pagination) {
+            next[result.toolId] = result.pagination
+          }
+        }
+        return next
+      })
+
+      setSources((prev) => {
+        const map = new Map(prev.map((s) => [s.toolId, s]))
+        for (const result of results) {
+          if (result.status.status === 'loaded') {
+            map.set(result.toolId, result.status)
+          }
+        }
+        return Array.from(map.values())
+      })
+
+      setTotalCount((prev) => {
+        const base = prev
+        let delta = 0
+        for (const result of results) {
+          if (result.pagination && result.status.status === 'loaded') {
+            const oldP = paginationBySource[result.toolId]
+            if (oldP) delta += result.pagination.total - oldP.total
+          }
+        }
+        return base + delta
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load more sessions')
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [queryKey, isLoadingMore, paginationBySource])
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- query/source changes should show aggregate loading immediately
     fetchAggregateSessions()
@@ -601,7 +725,23 @@ export function useAggregateSessions(query?: Record<string, string>) {
     return () => window.removeEventListener(SESSION_REFRESH_EVENT, handleRefresh)
   }, [fetchAggregateSessions])
 
-  return { sessions, totalCount, groupCounts, sources, loading, error }
+  const refetch = useCallback(() => {
+    fetchAggregateSessions()
+  }, [fetchAggregateSessions])
+
+  return {
+    sessions,
+    totalCount,
+    groupCounts,
+    sources,
+    loading,
+    error,
+    paginationBySource,
+    hasMore,
+    isLoadingMore,
+    loadMore,
+    refetch,
+  }
 }
 
 function compareSessionsByFreshness(a: TraceSession, b: TraceSession): number {
