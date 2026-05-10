@@ -127,7 +127,8 @@ describe('resolveAvatar', () => {
   })
 
   function setupWorkspace(agentName: string, identityContent: string | null, avatarFileName?: string, avatarData?: Buffer) {
-    const workspaceDir = path.join(tempDir, '.openclaw', `workspace-${agentName}`)
+    const suffix = agentName === 'main' ? 'workspace' : `workspace-${agentName}`
+    const workspaceDir = path.join(tempDir, '.openclaw', suffix)
     fs.mkdirSync(workspaceDir, { recursive: true })
     if (identityContent !== null) {
       fs.writeFileSync(path.join(workspaceDir, 'IDENTITY.md'), identityContent, 'utf-8')
@@ -184,5 +185,18 @@ describe('resolveAvatar', () => {
     expect(result).not.toBeNull()
     expect(result!.mime).toBe('image/png')
     expect(result!.data).toEqual(fakeImage)
+  })
+
+  it('resolves "main" agent to workspace/ (no suffix)', () => {
+    const fakeImage = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    // Should create ~/.openclaw/workspace/ not workspace-main/
+    setupWorkspace('main', `# IDENTITY.md\n- **Avatar:** avatar.png\n`, 'avatar.png', fakeImage)
+    const result = resolveAvatar('main', tempDir)
+    expect(result).not.toBeNull()
+    expect(result!.mime).toBe('image/png')
+    expect(result!.data).toEqual(fakeImage)
+    // Verify the directory was created at workspace/ not workspace-main/
+    expect(fs.existsSync(path.join(tempDir, '.openclaw', 'workspace', 'IDENTITY.md'))).toBe(true)
+    expect(fs.existsSync(path.join(tempDir, '.openclaw', 'workspace-main'))).toBe(false)
   })
 })

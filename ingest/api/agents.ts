@@ -92,7 +92,9 @@ const AGENT_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/
  * Extracted for testability — accepts explicit baseDir to avoid os.homedir() mocking.
  */
 export function resolveAvatar(name: string, baseDir: string): { data: Buffer; mime: string } | null {
-  const workspaceDir = path.join(baseDir, '.openclaw', `workspace-${name}`)
+  // "main" agent uses ~/.openclaw/workspace/ (no suffix); others use workspace-{name}
+  const workspaceSuffix = name === 'main' ? 'workspace' : `workspace-${name}`
+  const workspaceDir = path.join(baseDir, '.openclaw', workspaceSuffix)
 
   const identityPath = path.join(workspaceDir, 'IDENTITY.md')
   if (!fs.existsSync(identityPath)) return null
