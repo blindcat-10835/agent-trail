@@ -52,6 +52,7 @@ export interface AgentInfo {
   lastActiveAt: string | null
   latestStatus: SessionStatus
   toolCallCount: number
+  emoji?: string
 }
 
 // ============================================================================

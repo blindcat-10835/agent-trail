@@ -3,11 +3,16 @@
  *
  * REST API endpoint for listing agents aggregated from session data.
  * Groups sessions by agent_name and returns summary statistics.
+ * Also serves agent avatar images from workspace IDENTITY.md files.
  */
 
 import { Hono } from 'hono'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as os from 'os'
 import { getDatabase } from '../db'
 import type { SessionStatus } from '../../types/trace'
+import { parseIdentityMarkdown } from '../parser/identity.js'
 
 export const agentsRoutes = new Hono()
 
@@ -68,4 +73,60 @@ agentsRoutes.get('/api/v1/agents', (c) => {
   `).all(source) as AgentRow[]
 
   return c.json({ agents: rows.map(parseAgentRow) })
+})
+
+// --- Avatar endpoint ---
+
+const MIME_MAP: Record<string, string> = {
+  webp: 'image/webp',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  svg: 'image/svg+xml',
+}
+
+const AGENT_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/
+
+/**
+ * Resolve and read an agent's avatar file.
+ * Extracted for testability — accepts explicit baseDir to avoid os.homedir() mocking.
+ */
+export function resolveAvatar(name: string, baseDir: string): { data: Buffer; mime: string } | null {
+  const workspaceDir = path.join(baseDir, '.openclaw', `workspace-${name}`)
+
+  const identityPath = path.join(workspaceDir, 'IDENTITY.md')
+  if (!fs.existsSync(identityPath)) return null
+
+  const content = fs.readFileSync(identityPath, 'utf-8')
+  const fields = parseIdentityMarkdown(content)
+  if (!fields.avatar) return null
+
+  const avatarPath = path.resolve(workspaceDir, fields.avatar)
+  if (!avatarPath.startsWith(workspaceDir + path.sep)) return null
+  if (!fs.existsSync(avatarPath)) return null
+
+  const ext = path.extname(avatarPath).slice(1).toLowerCase()
+  return { data: fs.readFileSync(avatarPath), mime: MIME_MAP[ext] || 'application/octet-stream' }
+}
+
+agentsRoutes.get('/api/v1/agents/:name/avatar', (c) => {
+  const name = c.req.param('name')
+
+  if (!AGENT_NAME_RE.test(name)) {
+    return c.json({ error: 'Invalid agent name' }, 400)
+  }
+
+  const result = resolveAvatar(name, os.homedir())
+
+  if (!result) {
+    return c.json({ error: 'Avatar not found' }, 404)
+  }
+
+  return new Response(result.data, {
+    status: 200,
+    headers: {
+      'Content-Type': result.mime,
+      'Cache-Control': 'public, max-age=3600',
+    },
+  })
 })
