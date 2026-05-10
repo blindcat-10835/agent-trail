@@ -286,7 +286,7 @@ export function writeSessionToDatabase(
     const toolCallsByOrdinal = new Map<number, typeof parseResult.activities[number][]>();
     for (const activity of parseResult.activities) {
       if (activity.type !== 'tool_call') continue;
-      const ordinal = (activity as any).messageOrdinal;
+      const ordinal = activity.messageOrdinal;
       if (typeof ordinal === 'number') {
         const list = toolCallsByOrdinal.get(ordinal) ?? [];
         list.push(activity);
@@ -308,6 +308,7 @@ export function writeSessionToDatabase(
           )
         `).run(parseResult.session.id);
         database.prepare('DELETE FROM tool_calls WHERE session_id = ?').run(parseResult.session.id);
+        database.prepare('DELETE FROM subagent_links WHERE session_id = ?').run(parseResult.session.id);
         database.prepare('DELETE FROM turns WHERE session_id = ?').run(parseResult.session.id);
         database.prepare('DELETE FROM messages WHERE session_id = ?').run(parseResult.session.id);
 
@@ -461,6 +462,12 @@ export function writeSessionToDatabase(
         VALUES (?, ?, ?, ?)
       `);
 
+      const insertSubagentLink = database.prepare(`
+        INSERT INTO subagent_links (
+          session_id, subagent_session_id, subagent_source, relationship, message_ordinal
+        ) VALUES (?, ?, ?, ?, ?)
+      `);
+
       for (const activity of parseResult.activities) {
         if (activity.type !== 'tool_call') continue;
 
@@ -492,6 +499,19 @@ export function writeSessionToDatabase(
           );
           toolResultEventsInserted++;
         }
+      }
+
+      for (const activity of parseResult.activities) {
+        if (activity.type !== 'subagent_link') continue;
+
+        const link = activity as import('@/types/trace').TraceSubagentLink;
+        insertSubagentLink.run(
+          parseResult.session.id,
+          link.subagentSessionId,
+          link.subagentSource,
+          link.relationship,
+          typeof link.messageOrdinal === 'number' ? link.messageOrdinal : null
+        );
       }
     });
 

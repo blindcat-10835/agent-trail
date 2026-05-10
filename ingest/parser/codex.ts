@@ -624,9 +624,9 @@ export async function parseCodexSession(
         const ev = eventMsg;
 
         if (ev.type === 'user_message') {
-          ensureTurn(ev.turn_id, parsed.timestamp);
           const content = extractCodexUserEventContent(ev);
-          if (content) {
+          if (content && !isCodexMetadataUserMessage(content)) {
+            ensureTurn(ev.turn_id, parsed.timestamp);
             if (
               pendingUserResponseMessage &&
               normalizeCodexUserContent(pendingUserResponseMessage.message.content) === normalizeCodexUserContent(content)

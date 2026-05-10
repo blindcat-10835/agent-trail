@@ -151,6 +151,30 @@ CREATE TABLE IF NOT EXISTS tool_result_events (
 );
 
 -- ============================================================================
+-- Subagent Links Table
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS subagent_links (
+  -- Primary key
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+  -- Parent session relationship
+  session_id TEXT NOT NULL,
+
+  -- Child session reference. The child row may not have been indexed yet, so this
+  -- intentionally does not use a foreign key to sessions(id).
+  subagent_session_id TEXT NOT NULL,
+  subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex')),
+  relationship TEXT NOT NULL CHECK(relationship IN ('spawned', 'attached')),
+
+  -- Ordinal of the message/tool call that spawned or attached the child session.
+  message_ordinal INTEGER,
+
+  -- Foreign key
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+-- ============================================================================
 -- Turns Table (NEW - turn-first read model)
 -- ============================================================================
 
@@ -201,6 +225,10 @@ CREATE INDEX IF NOT EXISTS idx_tool_calls_message_ordinal ON tool_calls(message_
 
 -- Tool result events indexes
 CREATE INDEX IF NOT EXISTS idx_tool_result_events_tool_call_id ON tool_result_events(tool_call_id);
+
+-- Subagent link indexes
+CREATE INDEX IF NOT EXISTS idx_subagent_links_session_id ON subagent_links(session_id);
+CREATE INDEX IF NOT EXISTS idx_subagent_links_message_ordinal ON subagent_links(message_ordinal);
 
 -- Turns indexes
 CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);

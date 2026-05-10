@@ -90,6 +90,7 @@ describe('Codex parser — parseCodexSession()', () => {
     it('should use event_msg user_message as canonical user input and skip injected metadata', async () => {
       const jsonl = [
         '{"timestamp":"2026-05-08T14:52:18.211Z","type":"session_meta","payload":{"id":"codex-real-turn-001","cwd":"/repo","model_provider":"openai"}}',
+        '{"timestamp":"2026-05-08T14:52:18.212Z","type":"event_msg","payload":{"type":"user_message","message":"<subagent_notification> {\\"agent_path\\":\\"child-thread\\",\\"status\\":{\\"completed\\":\\"done\\"}} </subagent_notification>","images":[]}}',
         '{"timestamp":"2026-05-08T14:52:18.219Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}',
         '{"timestamp":"2026-05-08T14:52:18.220Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for /repo\\n<environment_context>...</environment_context>"}]}}',
         '{"timestamp":"2026-05-08T14:52:18.221Z","type":"turn_context","payload":{"turn_id":"turn-a","cwd":"/repo","model":"gpt-5"}}',
@@ -114,6 +115,7 @@ describe('Codex parser — parseCodexSession()', () => {
       expect(userMessages.map((message) => message.turnId)).toEqual(['turn-a', 'turn-b']);
       expect(result.messages.map((message) => message.content).join('\n')).not.toContain('AGENTS.md');
       expect(result.messages.map((message) => message.content).join('\n')).not.toContain('<skill>');
+      expect(result.messages.map((message) => message.content).join('\n')).not.toContain('subagent_notification');
     });
 
     it('should deduplicate image-wrapper response_item users against canonical event user messages', async () => {

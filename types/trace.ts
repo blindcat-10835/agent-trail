@@ -33,6 +33,15 @@ export type IngestStatus =
   | 'parser-warning'; // Parsed with warnings
 
 /**
+ * Live gateway connection status.
+ */
+export type GatewayStatus =
+  | 'connected'
+  | 'disconnected'
+  | 'connecting'
+  | 'error';
+
+/**
  * Source metadata
  */
 export interface TraceSourceMetadata {

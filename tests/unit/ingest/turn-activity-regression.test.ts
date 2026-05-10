@@ -16,7 +16,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { writeSessionToDatabase } from '@/ingest/sync/index';
 import type { ParseResult } from '@/ingest/parser/types';
-import type { TraceToolCall, TraceToolResultEvent } from '@/types/trace';
+import type { TraceSubagentLink, TraceToolCall, TraceToolResultEvent } from '@/types/trace';
 
 // ============================================================================
 // Helpers
@@ -244,6 +244,82 @@ describe('turn activity regression — assembleTurns reads tool activities from 
     const toolsSecond = turnsSecond[0]?.activities.filter(a => a.type === 'tool_call') ?? [];
     expect(toolsSecond.length).toBe(1);
     expect((toolsSecond[0] as TraceToolCall).name).toBe('Grep');
+  });
+
+  it('turn.activities contains persisted subagent links after sync', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-subagent-link-activity-001';
+
+    const toolCall: TraceToolCall = {
+      type: 'tool_call',
+      id: 'call_spawn_001',
+      name: 'spawn_agent',
+      category: 'Agent',
+      inputJson: '{"task":"inspect parser"}',
+      resultEvents: [],
+      status: 'success',
+      messageOrdinal: 1,
+    };
+    const subagentLink: TraceSubagentLink = {
+      type: 'subagent_link',
+      subagentSessionId: 'child-thread-001',
+      subagentSource: 'codex',
+      relationship: 'spawned',
+      messageOrdinal: 1,
+    };
+
+    const parseResult: ParseResult = {
+      session: {
+        id: sessionId,
+        source: 'codex',
+        project: 'test-project',
+        name: 'Test',
+        startedAt: '2024-01-01T00:00:00Z',
+        endedAt: '2024-01-01T01:00:00Z',
+        status: 'idle',
+        metrics: {
+          messageCount: 2,
+          userMessageCount: 1,
+          totalTokens: 50,
+          hasToolCalls: true,
+          parserMalformedLines: 0,
+          isTruncated: false,
+        },
+        turns: [],
+      },
+      messages: [
+        {
+          id: `${sessionId}:0`,
+          ordinal: 0,
+          role: 'user',
+          content: 'Spawn a helper',
+          sourceMetadata: { sourceType: 'codex', sourceFile: '/fake/session.jsonl', sourceLine: 1 },
+        },
+        {
+          id: `${sessionId}:1`,
+          ordinal: 1,
+          role: 'assistant',
+          content: '',
+          sourceMetadata: { sourceType: 'codex', sourceFile: '/fake/session.jsonl', sourceLine: 2 },
+        },
+      ],
+      activities: [toolCall, subagentLink],
+      errors: [],
+      warnings: [],
+    };
+
+    const syncResult = writeSessionToDatabase(parseResult, db);
+    expect(syncResult.errors).toEqual([]);
+
+    const turns = await assembleTurns(sessionId, db);
+    const subagentActivities = turns.flatMap((turn) =>
+      turn.activities.filter((activity) => activity.type === 'subagent_link')
+    ) as TraceSubagentLink[];
+
+    expect(subagentActivities).toHaveLength(1);
+    expect(subagentActivities[0].subagentSessionId).toBe('child-thread-001');
+    expect(subagentActivities[0].messageOrdinal).toBe(1);
+    expect(turns[0].activities.map((activity) => activity.type)).toContain('tool_call');
   });
 
   it('tool_result-only messages do not create spurious turns', async () => {

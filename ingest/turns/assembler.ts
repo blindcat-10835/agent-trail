@@ -17,7 +17,6 @@ import {
   TraceTurn,
   TraceMessage,
   TraceToolCall,
-  TraceToolResultEvent,
   TraceSubagentLink,
   TraceSystemEvent,
   TraceSource,
@@ -65,6 +64,7 @@ export async function assembleTurns(
   if (messages.some((msg) => msg.turn_index !== null && msg.turn_index !== undefined)) {
     const turns = assembleTurnsFromStoredBoundaries(messages, sessionId);
     await pairToolCalls(turns, sessionId, database);
+    await attachPersistedSubagentLinks(turns, sessionId, database);
     await linkSubagents(turns, sessionId, database);
     return turns;
   }
@@ -181,6 +181,9 @@ export async function assembleTurns(
   // D-11: Post-processing — pair tool calls with result events
   await pairToolCalls(turns, sessionId, database);
 
+  // D-11: Post-processing — restore parser-emitted subagent links
+  await attachPersistedSubagentLinks(turns, sessionId, database);
+
   // D-11: Post-processing — link subagent sessions
   await linkSubagents(turns, sessionId, database);
 
@@ -290,6 +293,8 @@ async function linkSubagents(
   if (childSessions.length === 0) return;
 
   for (const child of childSessions) {
+    if (hasSubagentLink(turns, child.id)) continue;
+
     const anchor = findSubagentAnchor(turns, child);
     if (!anchor) continue;
 
@@ -299,6 +304,42 @@ async function linkSubagents(
       subagentSource: child.source as TraceSource,
       relationship: 'spawned',
       messageOrdinal: anchor.messageOrdinal,
+    } as TraceSubagentLink);
+  }
+}
+
+async function attachPersistedSubagentLinks(
+  turns: TraceTurn[],
+  sessionId: string,
+  db: Database.Database
+): Promise<void> {
+  const links = db
+    .prepare(
+      `
+    SELECT subagent_session_id, subagent_source, relationship, message_ordinal
+    FROM subagent_links
+    WHERE session_id = ?
+    ORDER BY id ASC
+  `
+    )
+    .all(sessionId) as SubagentLinkRow[];
+
+  for (const link of links) {
+    if (hasSubagentLink(turns, link.subagent_session_id)) continue;
+
+    const anchor =
+      findTurnForMessageOrdinal(turns, link.message_ordinal) ||
+      (turns[0] ? { turn: turns[0], messageOrdinal: undefined } : null);
+    if (!anchor) continue;
+
+    anchor.turn.activities.push({
+      type: 'subagent_link',
+      subagentSessionId: link.subagent_session_id,
+      subagentSource: link.subagent_source as TraceSource,
+      relationship: link.relationship as 'spawned' | 'attached',
+      ...(typeof link.message_ordinal === 'number'
+        ? { messageOrdinal: link.message_ordinal }
+        : {}),
     } as TraceSubagentLink);
   }
 }
@@ -346,6 +387,13 @@ interface ChildSessionRow {
   source: string;
   source_session_id: string | null;
   started_at: string | null;
+}
+
+interface SubagentLinkRow {
+  subagent_session_id: string;
+  subagent_source: string;
+  relationship: string;
+  message_ordinal: number | null;
 }
 
 // ============================================================================
@@ -453,6 +501,40 @@ function findSubagentAnchor(
   }
 
   return firstAgentToolAnchor || (turns[0] ? { turn: turns[0] } : null);
+}
+
+function findTurnForMessageOrdinal(
+  turns: TraceTurn[],
+  messageOrdinal: number | null
+): { turn: TraceTurn; messageOrdinal: number } | null {
+  if (typeof messageOrdinal !== 'number') return null;
+
+  for (const turn of turns) {
+    const messageOwnsOrdinal = turn.assistantMessages.some(
+      (message) => message.ordinal === messageOrdinal
+    );
+    const activityOwnsOrdinal = turn.activities.some(
+      (activity) =>
+        activity.type === 'tool_call' &&
+        activity.messageOrdinal === messageOrdinal
+    );
+
+    if (messageOwnsOrdinal || activityOwnsOrdinal) {
+      return { turn, messageOrdinal };
+    }
+  }
+
+  return null;
+}
+
+function hasSubagentLink(turns: TraceTurn[], subagentSessionId: string): boolean {
+  return turns.some((turn) =>
+    turn.activities.some(
+      (activity) =>
+        activity.type === 'subagent_link' &&
+        activity.subagentSessionId === subagentSessionId
+    )
+  );
 }
 
 function toolCallReferencesChild(toolCall: TraceToolCall, child: ChildSessionRow): boolean {

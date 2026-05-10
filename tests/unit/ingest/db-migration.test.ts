@@ -84,6 +84,9 @@ describe('ingest database migrations', () => {
     const db = new Database(dbPath, { readonly: true });
     const columns = db.prepare('PRAGMA table_info(messages)').all() as { name: string }[];
     const indexes = db.prepare('PRAGMA index_list(messages)').all() as { name: string }[];
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as { name: string }[];
     const version = db.pragma('user_version', { simple: true });
     db.close();
 
@@ -91,6 +94,7 @@ describe('ingest database migrations', () => {
       expect.arrayContaining(['turn_id', 'turn_index', 'is_real_user_input'])
     );
     expect(indexes.map((index) => index.name)).toContain('idx_messages_session_turn_index');
-    expect(version).toBe(6);
+    expect(tables.map((table) => table.name)).toContain('subagent_links');
+    expect(version).toBe(9);
   });
 });

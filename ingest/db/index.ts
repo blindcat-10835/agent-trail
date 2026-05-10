@@ -108,7 +108,16 @@ export function initSchema(): void {
     )
     .all() as { name: string }[];
 
-  const expectedTables = ['sessions', 'messages', 'tool_calls', 'tool_result_events', 'turns', 'sync_status', 'session_stars'];
+  const expectedTables = [
+    'sessions',
+    'messages',
+    'tool_calls',
+    'tool_result_events',
+    'subagent_links',
+    'turns',
+    'sync_status',
+    'session_stars',
+  ];
   const missingTables = expectedTables.filter(
     (t) => !tables.find((table) => table.name === t)
   );
@@ -133,7 +142,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 8;
+  const targetVersion = 9;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -229,6 +238,32 @@ export function runMigrations(): void {
           PRIMARY KEY (session_id)
         )
       `,
+    },
+    {
+      desc: 'Create subagent_links table',
+      sql: `
+        CREATE TABLE IF NOT EXISTS subagent_links (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          subagent_session_id TEXT NOT NULL,
+          subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex')),
+          relationship TEXT NOT NULL CHECK(relationship IN ('spawned', 'attached')),
+          message_ordinal INTEGER,
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+      `,
+    },
+    {
+      desc: 'Add subagent link session index',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_subagent_links_session_id ON subagent_links(session_id)',
+    },
+    {
+      desc: 'Add subagent link message ordinal index',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_subagent_links_message_ordinal ON subagent_links(message_ordinal)',
+    },
+    {
+      desc: 'Invalidate Codex parser cache to persist subagent link anchors',
+      sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'codex'",
     },
   ];
 
