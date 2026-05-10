@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, Fragment, isValidElement, cloneElement } from 'react'
+import { type ReactNode, Fragment } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
@@ -15,7 +15,6 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** Split a text string on query matches, wrap matches in <mark> */
 function highlightTextNode(text: string, query: string): ReactNode[] {
   const parts = text.split(new RegExp(`(${escapeRegExp(query)})`, 'gi'))
   return parts.map((part, i) =>
@@ -25,40 +24,57 @@ function highlightTextNode(text: string, query: string): ReactNode[] {
   )
 }
 
-/** Recursively walk a ReactNode tree and highlight matching text in string nodes */
-function highlightNodes(nodes: ReactNode, query: string): ReactNode {
-  if (!query) return nodes
+function highlightChildren(children: ReactNode, query: string): ReactNode {
+  if (!query) return children
 
-  if (typeof nodes === 'string') {
-    return <>{highlightTextNode(nodes, query)}</>
+  if (typeof children === 'string') {
+    return <>{highlightTextNode(children, query)}</>
   }
 
-  if (typeof nodes === 'number') return nodes
+  if (typeof children === 'number') return children
 
-  if (Array.isArray(nodes)) {
-    return nodes.map((child, i) => (
-      <Fragment key={i}>{highlightNodes(child, query)}</Fragment>
+  if (Array.isArray(children)) {
+    return children.map((child, i) => (
+      <Fragment key={i}>{highlightChildren(child, query)}</Fragment>
     ))
   }
 
-  if (isValidElement<Record<string, unknown>>(nodes)) {
-    const children = (nodes.props as Record<string, unknown>).children as ReactNode | undefined
-    if (children === undefined) return nodes
-    return cloneElement(nodes, { children: highlightNodes(children, query) } as Partial<unknown>)
-  }
+  return children
+}
 
-  return nodes
+function makeComponents(searchQuery: string | undefined) {
+  if (!searchQuery) return undefined
+
+  const highlight = (children: ReactNode) => highlightChildren(children, searchQuery)
+
+  return {
+    p({ children, ...props }: React.ComponentPropsWithoutRef<'p'> & { children?: ReactNode }) {
+      return <p {...props}>{highlight(children)}</p>
+    },
+    li({ children, ...props }: React.ComponentPropsWithoutRef<'li'> & { children?: ReactNode }) {
+      return <li {...props}>{highlight(children)}</li>
+    },
+    strong({ children, ...props }: React.ComponentPropsWithoutRef<'strong'> & { children?: ReactNode }) {
+      return <strong {...props}>{highlight(children)}</strong>
+    },
+    em({ children, ...props }: React.ComponentPropsWithoutRef<'em'> & { children?: ReactNode }) {
+      return <em {...props}>{highlight(children)}</em>
+    },
+    a({ children, ...props }: React.ComponentPropsWithoutRef<'a'> & { children?: ReactNode }) {
+      return <a {...props}>{highlight(children)}</a>
+    },
+  }
 }
 
 export function MarkdownContent({ content, searchQuery, className }: MarkdownContentProps) {
   return (
     <div className={cn('md-content', className)}>
-      {searchQuery
-        ? highlightNodes(
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>,
-            searchQuery,
-          )
-        : <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={makeComponents(searchQuery)}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   )
 }
