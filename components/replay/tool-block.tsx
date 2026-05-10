@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Wrench, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react'
 import type { TraceToolCall } from '@/types/trace'
 import { cn } from '@/lib/utils'
+import { formatToolDisplay } from './tool-formatters'
 
 interface ToolBlockProps {
   tool: TraceToolCall
@@ -14,7 +15,8 @@ export function ToolBlock({ tool }: ToolBlockProps) {
   const [copied, setCopied] = useState(false)
   const [inputCollapsed, setInputCollapsed] = useState(true)
 
-  const lineCount = tool.inputJson ? tool.inputJson.split('\n').length : 0
+  const display = useMemo(() => formatToolDisplay(tool), [tool])
+  const lineCount = display.content.split('\n').length
   const isLongInput = lineCount > 10
   const statusColor =
     tool.status === 'success' ? 'bg-[oklch(0.76_0.17_145)]' :
@@ -23,14 +25,10 @@ export function ToolBlock({ tool }: ToolBlockProps) {
 
   const handleCopy = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation()
-    let text = `Tool: ${tool.name} (${tool.category})\n---\nInput:\n${tool.inputJson}`
-    if (tool.resultEvents.length > 0) {
-      text += `\n---\nResult:\n${tool.resultEvents.map((r) => r.content).join('\n')}`
-    }
-    await navigator.clipboard.writeText(text)
+    await navigator.clipboard.writeText(display.copyText)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [tool])
+  }, [display])
 
   return (
     <div className="border-t border-border/50 bg-secondary/20">
@@ -44,6 +42,11 @@ export function ToolBlock({ tool }: ToolBlockProps) {
       >
         <Wrench className="w-3 h-3 text-muted-foreground flex-shrink-0" />
         <span className="text-[11px] font-semibold text-foreground">{tool.name}</span>
+        {'filePath' in display && display.filePath && (
+          <span className="text-[10px] text-muted-foreground truncate max-w-[200px]" title={display.filePath}>
+            {display.filePath}
+          </span>
+        )}
         <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground px-1.5 py-0.5 bg-secondary border border-border rounded">
           {tool.category}
         </span>
@@ -67,7 +70,7 @@ export function ToolBlock({ tool }: ToolBlockProps) {
       {/* Expanded content */}
       {expanded && (
         <div className="px-4 pb-3 space-y-2">
-          {/* Input JSON */}
+          {/* Formatted input */}
           {tool.inputJson && (
             <div>
               <button
@@ -81,7 +84,7 @@ export function ToolBlock({ tool }: ToolBlockProps) {
                 'text-[11px] font-mono text-muted-foreground bg-background/50 p-2 border border-border overflow-x-auto whitespace-pre-wrap break-all',
                 isLongInput && inputCollapsed && 'max-h-[200px] overflow-hidden'
               )}>
-                {formatJson(tool.inputJson)}
+                {display.content}
               </pre>
             </div>
           )}
@@ -115,9 +118,4 @@ export function ToolBlock({ tool }: ToolBlockProps) {
       )}
     </div>
   )
-}
-
-function formatJson(json: string): string {
-  try { return JSON.stringify(JSON.parse(json), null, 2) }
-  catch { return json }
 }
