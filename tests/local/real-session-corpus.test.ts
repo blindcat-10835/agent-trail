@@ -23,6 +23,11 @@
  * - `codex-function-output`  — assert tool_calls and tool_result_events > 0 after sync
  * - `codex-custom-tool`      — assert tool_calls and tool_result_events > 0 after sync
  * - `claude-subagent`        — assert at least one subagent_link activity (alias for has-subagent with Claude specificity)
+ *
+ * ## Phase 9 Tag Support
+ *
+ * - `codex-relationship-parent` — assert collab_agent_spawn_end child detection for known parent
+ * - `codex-relationship-child`  — assert subagent row has relationship_type='subagent' after full-style sync
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -32,7 +37,7 @@ import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { parseClaudeSession } from '@/ingest/parser/claude';
 import { parseCodexSession } from '@/ingest/parser/codex';
-import { writeSessionToDatabase } from '@/ingest/sync/index';
+import { writeSessionToDatabase, backfillCodexRelationships, collectCodexRelationships } from '@/ingest/sync/index';
 
 // ============================================================================
 // DB helper for Phase 8 tag-conditional assertions
@@ -338,6 +343,52 @@ if (!ENABLED) {
             const result = await parseClaudeSession(sessionPath, id);
             const subagentLinks = result.activities.filter(a => a.type === 'subagent_link');
             expect(subagentLinks.length).toBeGreaterThanOrEqual(1);
+          });
+        }
+
+        // -----------------------------------------------------------------------
+        // Phase 9 Codex relationship tags
+        // -----------------------------------------------------------------------
+
+        if (tags.includes('codex-relationship-parent')) {
+          it('detects at least one collab_agent_spawn_end child id (tagged: codex-relationship-parent)', async () => {
+            if (source !== 'codex') return;
+
+            const dir = path.dirname(sessionPath);
+            const relationships = await collectCodexRelationships([{
+              path: dir,
+              sessionCount: 1,
+            }]);
+
+            const childIds = Array.from(relationships.keys());
+            expect(childIds.length).toBeGreaterThanOrEqual(1);
+          });
+        }
+
+        if (tags.includes('codex-relationship-child')) {
+          it('child session has relationship_type=subagent after backfill (tagged: codex-relationship-child)', async () => {
+            if (source !== 'codex') return;
+
+            const parseResult = await parseCodexSession(sessionPath, id);
+            const db = createCorpusTestDb();
+            writeSessionToDatabase(parseResult, db, undefined, { force: true });
+
+            const parentId = parseResult.session.parentSessionId || id;
+            const relationships = new Map([
+              [id, { parentSessionId: parentId, rootSessionId: parentId }],
+            ]);
+
+            backfillCodexRelationships(db, relationships);
+
+            const row = db.prepare(
+              'SELECT relationship_type, parent_session_id FROM sessions WHERE id = ?'
+            ).get(id) as { relationship_type: string; parent_session_id: string | null } | undefined;
+
+            expect(row).toBeDefined();
+            expect(row!.relationship_type).toBe('subagent');
+            expect(row!.parent_session_id).toBe(parentId);
+
+            db.close();
           });
         }
       });

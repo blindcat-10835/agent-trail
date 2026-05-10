@@ -925,7 +925,7 @@ export function backfillCodexRelationships(
   return totalUpdated;
 }
 
-async function collectCodexRelationships(
+export async function collectCodexRelationships(
   sources: Array<{ path: string; error?: string; sessionCount: number }>
 ): Promise<Map<string, { parentSessionId: string; rootSessionId?: string }>> {
   const relationships = new Map<string, { parentSessionId: string; rootSessionId?: string }>();
