@@ -79,15 +79,13 @@ types/                  # 共享类型 (trace.ts 等)
 
 工具目录解析逻辑：环境变量 > `~/.agents-tracing/config.json` > 内置默认值。详见 `ingest/config/tool-dirs.ts`。
 
-## Gotchas
+## Rules (Important)
 
-- **Next.js 16 breaking changes** — 见 AGENTS.md。写代码前读 `node_modules/next/dist/docs/`，不要凭记忆。
-- **Tailwind v4 没有 `tailwind.config.js`** — 改主题/添加 token 全部在 `app/globals.css` 的 `@theme inline { ... }` 块里。
+- **历史错误教训** → 见 [`ERRORS_LEARNED.md`](ERRORS_LEARNED.md)，写新组件前查阅避免重复踩坑。
 - **`(tool-shell)` 是路由组**，`[tool]` 是动态段 —— URL 是 `/claude-code/dashboard`，不是 `/(tool-shell)/claude-code/dashboard`。
 - **shadcn 添加组件**：`pnpm dlx shadcn@latest add <name>`，组件落在 `components/ui/`。preset 是 `radix-nova`，不要换成默认。
 - **BFF 代理**：前端不直连 ingest，所有请求走 `app/api/agent-tools/[tool]/...`（D-07）。
 - **GSD 工作流**：项目用 `.planning/` 跟踪 milestone/phase/plan。开新工作前看 `.planning/STATE.md` 了解当前 phase。不要手编 `.planning/` 里的 STATE/ROADMAP —— 用 `/gsd-*` 命令。
-- **历史错误教训** → 见 [`ERRORS_LEARNED.md`](ERRORS_LEARNED.md)，写新组件前查阅避免重复踩坑。
 
 ## Documentation
 
