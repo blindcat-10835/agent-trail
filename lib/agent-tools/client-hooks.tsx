@@ -474,6 +474,16 @@ export interface AggregateSourceStatus {
   error?: string
 }
 
+interface AggregateToolResult {
+  toolId: SourceToolId
+  sessions: TraceSession[]
+  _groupCounts: {
+    agent?: Array<{ label: string; count: number }>
+    project?: Array<{ label: string; count: number }>
+  } | undefined
+  status: AggregateSourceStatus
+}
+
 export function useAggregateSessions(query?: Record<string, string>) {
   const [sessions, setSessions] = useState<TraceSession[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -504,7 +514,7 @@ export function useAggregateSessions(query?: Record<string, string>) {
           '/sessions',
           { limit: '100', ...parsedQuery, groupBy: 'agent,project' },
         )
-          .then((d) => ({
+          .then((d): AggregateToolResult => ({
             toolId,
             sessions: d.sessions,
             _groupCounts: d.groupCounts,
@@ -515,9 +525,10 @@ export function useAggregateSessions(query?: Record<string, string>) {
               total: d.pagination.total,
             },
           }))
-          .catch((err) => ({
+          .catch((err): AggregateToolResult => ({
             toolId,
             sessions: [],
+            _groupCounts: undefined,
             status: {
               toolId,
               status: 'error' as const,
@@ -542,7 +553,7 @@ export function useAggregateSessions(query?: Record<string, string>) {
         const mergedProject = new Map<string, number>()
 
         for (const result of results) {
-          const gc = (result as any)._groupCounts
+          const gc = result._groupCounts
           if (gc?.agent) {
             for (const item of gc.agent) {
               mergedAgent.set(item.label, (mergedAgent.get(item.label) || 0) + item.count)
