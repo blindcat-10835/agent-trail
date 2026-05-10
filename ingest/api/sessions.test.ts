@@ -110,6 +110,38 @@ describe('Session ID path traversal protection', () => {
 // Error response sanitization (onError handler behavior)
 // ============================================================================
 
+// ============================================================================
+// GET /api/v1/sessions — groupBy parameter validation
+// ============================================================================
+
+describe('GET /api/v1/sessions — groupBy parameter validation', () => {
+  it('should return 400 for invalid groupBy value', async () => {
+    const app = createApp();
+    const res = await app.request('/api/v1/sessions?source=openclaw&groupBy=invalid');
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('groupBy');
+  });
+
+  it('should accept groupBy=agent', async () => {
+    const app = createApp();
+    const res = await app.request('/api/v1/sessions?source=openclaw&groupBy=agent');
+    expect(res.status).not.toBe(400);
+  });
+
+  it('should accept groupBy=agent,project', async () => {
+    const app = createApp();
+    const res = await app.request('/api/v1/sessions?source=openclaw&groupBy=agent,project');
+    expect(res.status).not.toBe(400);
+  });
+
+  it('should accept groupBy with single valid value and no comma', async () => {
+    const app = createApp();
+    const res = await app.request('/api/v1/sessions?source=openclaw&groupBy=agent');
+    expect(res.status).not.toBe(400);
+  });
+});
+
 describe('Error response sanitization', () => {
   afterEach(() => {
     delete process.env.INGEST_DEBUG;

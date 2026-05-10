@@ -78,8 +78,6 @@ sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
 // ============================================================================
 
 sessionsRoutes.get('/api/v1/sessions', (c) => {
-  const db = getDatabase();
-
   // Parse query parameters
   const source = c.req.query('source') as TraceSource | null;
   const project = c.req.query('project') || null;
@@ -111,6 +109,20 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   if (order !== 'asc' && order !== 'desc') {
     return c.json({ error: 'Invalid order parameter. Must be "asc" or "desc"' }, 400);
   }
+
+  // Parse and validate groupBy (allow agent, project, or both)
+  const groupByRaw = c.req.query('groupBy');
+  const validGroupByValues = ['agent', 'project'];
+  let groupByDimensions: string[] = [];
+  if (groupByRaw) {
+    const requested = groupByRaw.split(',').map(d => d.trim()).filter(Boolean);
+    if (requested.length === 0 || requested.some(d => !validGroupByValues.includes(d))) {
+      return c.json({ error: 'Invalid groupBy parameter. Must be "agent", "project", or comma-separated combination' }, 400);
+    }
+    groupByDimensions = [...new Set(requested)];
+  }
+
+  const db = getDatabase();
 
   // Build query conditions
   const conditions: string[] = [];
@@ -168,7 +180,35 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
     LIMIT ? OFFSET ?
   `).all(...params, cappedLimit, offset) as SessionRow[];
 
-  return c.json({
+  const groupCounts: { agent?: Array<{ label: string; count: number }>; project?: Array<{ label: string; count: number }> } = {};
+
+  if (groupByDimensions.includes('agent')) {
+    const agentRows = db.prepare(`
+      SELECT COALESCE(agent_name, source) as label, COUNT(*) as count
+      FROM sessions
+      ${whereClause}
+      GROUP BY label
+      ORDER BY count DESC
+    `).all(...params) as Array<{ label: string; count: number }>;
+    groupCounts.agent = agentRows;
+  }
+
+  if (groupByDimensions.includes('project')) {
+    const projectRows = db.prepare(`
+      SELECT COALESCE(NULLIF(project, 'default'), '-') as label, COUNT(*) as count
+      FROM sessions
+      ${whereClause}
+      GROUP BY label
+      ORDER BY count DESC
+    `).all(...params) as Array<{ label: string; count: number }>;
+    groupCounts.project = projectRows;
+  }
+
+  const responseBody: {
+    sessions: ReturnType<typeof parseSessionRow>[];
+    pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+    groupCounts?: { agent?: Array<{ label: string; count: number }>; project?: Array<{ label: string; count: number }> };
+  } = {
     sessions: sessions.map(row => parseSessionRow(row)),
     pagination: {
       total: countResult.total,
@@ -176,7 +216,13 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
       offset,
       hasMore: offset + cappedLimit < countResult.total
     }
-  });
+  };
+
+  if (Object.keys(groupCounts).length > 0) {
+    responseBody.groupCounts = groupCounts;
+  }
+
+  return c.json(responseBody);
 });
 
 // ============================================================================
