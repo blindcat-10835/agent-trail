@@ -426,3 +426,79 @@ describe('Codex parser — 08-02 repair: messageOrdinal on tool calls', () => {
     expect(assistantContents).toContain('Done.');
   });
 });
+
+describe('Codex parser — 09-04 repair: patch tool category and subagent links', () => {
+  it('should classify apply_patch custom tool calls as Edit and pair outputs', async () => {
+    const jsonl = [
+      '{"type":"session_meta","session_meta":{"session_id":"codex-0904-001","model":"gpt-5"}}',
+      '{"type":"response_item","response_item":{"type":"custom_tool_call","call_id":"call-patch-01","name":"apply_patch","arguments":"*** Begin Patch\\n*** Update File: app.ts\\n@@\\n-old\\n+new\\n*** End Patch","token_count":12}}',
+      '{"type":"event_msg","event_msg":{"type":"custom_tool_call_output","call_id":"call-patch-01","output":"Success. Updated the following files:\\nM app.ts","status":"completed"},"timestamp":"2026-05-10T00:00:01Z"}',
+    ].join('\n');
+
+    const filePath = writeFixture('apply-patch-category.jsonl', jsonl);
+    const result = await parseCodexSession(filePath, 'test-project');
+    const toolCalls = result.activities.filter(a => a.type === 'tool_call') as TraceToolCall[];
+
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].id).toBe('call-patch-01');
+    expect(toolCalls[0].name).toBe('apply_patch');
+    expect(toolCalls[0].category).toBe('Edit');
+    expect(toolCalls[0].status).toBe('success');
+    expect(toolCalls[0].resultEvents).toHaveLength(1);
+    expect(toolCalls[0].resultEvents[0].content).toContain('Success');
+  });
+
+  it('should classify patch and file_edit style custom tools as Edit', async () => {
+    const jsonl = [
+      '{"type":"session_meta","session_meta":{"session_id":"codex-0904-002","model":"gpt-5"}}',
+      '{"type":"response_item","response_item":{"type":"custom_tool_call","call_id":"call-patch-02","name":"patch","arguments":"{}","token_count":5}}',
+      '{"type":"response_item","response_item":{"type":"custom_tool_call","call_id":"call-file-edit-01","name":"file_edit","arguments":"{}","token_count":6}}',
+    ].join('\n');
+
+    const filePath = writeFixture('patch-file-edit-category.jsonl', jsonl);
+    const result = await parseCodexSession(filePath, 'test-project');
+    const toolCalls = result.activities.filter(a => a.type === 'tool_call') as TraceToolCall[];
+
+    expect(toolCalls.map((tool) => [tool.name, tool.category])).toEqual([
+      ['patch', 'Edit'],
+      ['file_edit', 'Edit'],
+    ]);
+  });
+
+  it('should anchor collab_agent_spawn_end links to the spawning call ordinal', async () => {
+    const jsonl = [
+      '{"type":"session_meta","session_meta":{"session_id":"codex-0904-003","model":"gpt-5"}}',
+      '{"type":"response_item","response_item":{"type":"function_call","call_id":"call-spawn-01","name":"spawn_agent","arguments":"{\\"task\\":\\"inspect parser\\"}","token_count":8}}',
+      '{"type":"event_msg","event_msg":{"type":"collab_agent_spawn_end","call_id":"call-spawn-01","sender_thread_id":"codex-0904-003","new_thread_id":"child-thread-001","new_agent_nickname":"Parser helper","status":"completed"},"timestamp":"2026-05-10T00:00:02Z"}',
+    ].join('\n');
+
+    const filePath = writeFixture('collab-spawn-link-ordinal.jsonl', jsonl);
+    const result = await parseCodexSession(filePath, 'test-project');
+    const toolCall = result.activities.find(
+      (activity): activity is TraceToolCall => activity.type === 'tool_call' && activity.id === 'call-spawn-01',
+    );
+    const subagentLink = result.activities.find((activity) => activity.type === 'subagent_link');
+
+    expect(toolCall).toBeDefined();
+    expect(subagentLink).toBeDefined();
+    if (subagentLink && subagentLink.type === 'subagent_link') {
+      expect(subagentLink.subagentSessionId).toBe('child-thread-001');
+      expect(subagentLink.subagentSource).toBe('codex');
+      expect(subagentLink.relationship).toBe('spawned');
+      expect(subagentLink.messageOrdinal).toBe(toolCall?.messageOrdinal);
+    }
+  });
+
+  it('should ignore collab_agent_spawn_end events without a child thread id', async () => {
+    const jsonl = [
+      '{"type":"session_meta","session_meta":{"session_id":"codex-0904-004","model":"gpt-5"}}',
+      '{"type":"response_item","response_item":{"type":"function_call","call_id":"call-spawn-null","name":"spawn_agent","arguments":"{}","token_count":8}}',
+      '{"type":"event_msg","event_msg":{"type":"collab_agent_spawn_end","call_id":"call-spawn-null","sender_thread_id":"codex-0904-004","new_thread_id":null,"new_agent_nickname":"Missing child","status":"failed"},"timestamp":"2026-05-10T00:00:03Z"}',
+    ].join('\n');
+
+    const filePath = writeFixture('collab-spawn-null-child.jsonl', jsonl);
+    const result = await parseCodexSession(filePath, 'test-project');
+
+    expect(result.activities.some((activity) => activity.type === 'subagent_link')).toBe(false);
+  });
+});
