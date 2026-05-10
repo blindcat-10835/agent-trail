@@ -433,7 +433,7 @@ Plans:
 **Goal:** Stabilize the batch-2 user-reported session and replay defects by fixing persisted starred sessions, all-source pagination, Markdown search highlighting, edit/diff tool rendering, and Codex subagent relationship backfill so session lists and replay blocks reflect real local data accurately.
 **Requirements**: DATA-04, DATA-05, SRC-03, SRC-04, TURN-03, TURN-04, TURN-05, REPLAY-01, REPLAY-02, REPLAY-03, REPLAY-04, REPLAY-06
 **Depends on:** Phase 8
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 **Success Criteria** (what must be TRUE):
 
@@ -445,7 +445,11 @@ Plans:
 6. Regression coverage includes the reported route collision, Markdown search crash, aggregate pagination behavior, edit/diff rendering formatter, and Codex parent/child relationship backfill.
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 9 to break down)
+- [ ] 09-01-PLAN.md — Starred session route collision repair
+- [ ] 09-02-PLAN.md — All-source aggregate pagination
+- [ ] 09-03-PLAN.md — Replay Markdown safety and edit tool display
+- [ ] 09-04-PLAN.md — Codex patch category and subagent event anchoring
+- [ ] 09-05-PLAN.md — Codex subagent relationship backfill and phase regression gate
 
 ---
 

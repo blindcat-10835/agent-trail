@@ -470,17 +470,17 @@ Claim: The project already uses `better-sqlite3` synchronous database operations
 |---|-------|---------|---------------|
 | A1 | Research validity through 2026-06-09 is an estimate. [ASSUMED] | Metadata | Low; planner can re-run version/documentation checks before dependency upgrades. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should Codex relationship backfill run after limited sync, full sync, or both?** [VERIFIED: ingest/sync/index.ts:823-849]  
+1. **[RESOLVED] Should Codex relationship backfill run after limited sync, full sync, or both?** [VERIFIED: ingest/sync/index.ts:823-849]  
    - What we know: Limited sync currently skips `collectCodexRelationships`, while full sync currently collects relationships before parsing candidates. [VERIFIED: ingest/sync/index.ts:823-849]  
    - What's unclear: Whether bounded startup should scan all Codex parent files for relationships or defer DB repair until the background full sync finishes. [VERIFIED: ingest/index.ts startup/background sync flow]  
-   - Recommendation: Run DB backfill after any full relationship collection and make full/background sync repair already-indexed children; optionally collect relationships from the limited candidate set for faster startup correctness. [VERIFIED: 09-CONTEXT.md]
+   - Resolution: Phase 09 plans require full/background sync to run an idempotent DB backfill after relationship collection so already-indexed children are repaired; limited startup sync may collect relationships from its bounded candidate set for faster correctness, but it must not be treated as the only repair path. [VERIFIED: 09-CONTEXT.md; 09-05-PLAN.md]
 
-2. **Should subagent link metadata include nickname/status in canonical types now?** [VERIFIED: bug research]  
+2. **[RESOLVED] Should subagent link metadata include nickname/status in canonical types now?** [VERIFIED: bug research]  
    - What we know: Real `collab_agent_spawn_end` events include `call_id`, `sender_thread_id`, `new_thread_id`, nickname, and status fields. [VERIFIED: local Codex session probe on 019df211-e301-7561-bfa5-9aeba110c584]  
    - What's unclear: The locked success criteria only requires session relationship backfill and default list hiding. [VERIFIED: 09-CONTEXT.md]  
-   - Recommendation: Keep metadata enhancement as a parser/test bonus only if it is needed to anchor `SubagentBlock`; do not expand database schema for this phase. [VERIFIED: types/trace.ts; 09-CONTEXT.md]
+   - Resolution: Do not expand the database schema or canonical relationship model for nickname/status in this phase. Parser work may use existing `TraceSubagentLink` fields such as `subagentSessionId` and `messageOrdinal` to anchor replay blocks, while nickname/status stays out of Phase 09 unless already supported by existing types. [VERIFIED: types/trace.ts; 09-CONTEXT.md; 09-04-PLAN.md]
 
 ## Environment Availability
 
