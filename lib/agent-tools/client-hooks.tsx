@@ -292,6 +292,7 @@ export function useToolSessions(
   const queryKey = JSON.stringify(query ?? {})
 
   const fetchSessions = useCallback(async () => {
+    setIsLoadingMore(false)
     try {
       const parsedQuery = JSON.parse(queryKey) as Record<string, string>
       const data = await fetchToolApi<{
@@ -317,7 +318,7 @@ export function useToolSessions(
   const loadMore = useCallback(async () => {
     if (isLoadingMore) return
     const parsedQuery = JSON.parse(queryKey) as Record<string, string>
-    const nextOffset = currentOffset + (pagination?.limit ?? 100)
+    const nextOffset = currentOffset
     setIsLoadingMore(true)
     try {
       const data = await fetchToolApi<{
@@ -331,7 +332,7 @@ export function useToolSessions(
       setSessions(prev => [...prev, ...data.sessions])
       setPagination(data.pagination)
       if (data.groupCounts) setGroupCounts(data.groupCounts)
-      setCurrentOffset(nextOffset)
+      setCurrentOffset(nextOffset + data.pagination.limit)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load more sessions')
     } finally {
