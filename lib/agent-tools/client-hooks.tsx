@@ -305,7 +305,7 @@ export function useToolSessions(
       setSessions(data.sessions)
       setPagination(data.pagination)
       if (data.groupCounts) setGroupCounts(data.groupCounts)
-      setCurrentOffset(100)
+      setCurrentOffset(data.pagination.offset + data.pagination.limit)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sessions')
@@ -317,7 +317,7 @@ export function useToolSessions(
   const loadMore = useCallback(async () => {
     if (isLoadingMore) return
     const parsedQuery = JSON.parse(queryKey) as Record<string, string>
-    const nextOffset = currentOffset + (parseInt(String((parsedQuery as any).limit || '100'), 10))
+    const nextOffset = currentOffset + (pagination?.limit ?? 100)
     setIsLoadingMore(true)
     try {
       const data = await fetchToolApi<{
@@ -327,7 +327,7 @@ export function useToolSessions(
           agent?: Array<{ label: string; count: number }>
           project?: Array<{ label: string; count: number }>
         }
-      }>(toolId, '/sessions', { ...parsedQuery, offset: String(nextOffset), limit: '100', groupBy: 'agent,project' })
+      }>(toolId, '/sessions', { ...parsedQuery, offset: String(nextOffset), limit: String(pagination?.limit ?? 100), groupBy: 'agent,project' })
       setSessions(prev => [...prev, ...data.sessions])
       setPagination(data.pagination)
       if (data.groupCounts) setGroupCounts(data.groupCounts)
@@ -337,7 +337,7 @@ export function useToolSessions(
     } finally {
       setIsLoadingMore(false)
     }
-  }, [toolId, queryKey, currentOffset, isLoadingMore])
+  }, [toolId, queryKey, currentOffset, isLoadingMore, pagination])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- effect intentionally starts an async BFF fetch
