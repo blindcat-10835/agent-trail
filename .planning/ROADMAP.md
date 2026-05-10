@@ -428,6 +428,25 @@ Plans:
 - [x] 08-04-PLAN.md — Wire sync-first refresh through ingest API, BFF, and right rail
 - [x] 08-05-PLAN.md — Target-session verification and regression closure
 
+### Phase 9: Batch 2 session replay and Codex subagent relationship fixes
+
+**Goal:** Stabilize the batch-2 user-reported session and replay defects by fixing persisted starred sessions, all-source pagination, Markdown search highlighting, edit/diff tool rendering, and Codex subagent relationship backfill so session lists and replay blocks reflect real local data accurately.
+**Requirements**: DATA-04, DATA-05, SRC-03, SRC-04, TURN-03, TURN-04, TURN-05, REPLAY-01, REPLAY-02, REPLAY-03, REPLAY-04, REPLAY-06
+**Depends on:** Phase 8
+**Plans:** 0 plans
+
+**Success Criteria** (what must be TRUE):
+
+1. `GET /api/v1/sessions/starred` and `/api/agent-tools/all/sessions/starred` return persisted star ids instead of being captured by the session detail wildcard route.
+2. The all-source sessions right rail supports incremental pagination across OpenClaw, Claude Code, and Codex while preserving correct indexed totals independent of loaded page count.
+3. Replay search highlighting no longer passes non-string children to `ReactMarkdown`; searching turns with Markdown content does not throw runtime assertions.
+4. Edit-like tool calls render human-readable file/path and diff or patch content for Claude `Edit`/`MultiEdit`/`Write` and Codex `apply_patch`, and Codex patch tools are categorized as `Edit`.
+5. Codex subagent sessions spawned via `collab_agent_spawn_end` are backfilled as `relationship_type = 'subagent'` regardless of sync order or startup limit, and default session lists hide them like Claude Code subagents.
+6. Regression coverage includes the reported route collision, Markdown search crash, aggregate pagination behavior, edit/diff rendering formatter, and Codex parent/child relationship backfill.
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 9 to break down)
+
 ---
 
 **EOF**

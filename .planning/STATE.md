@@ -82,6 +82,10 @@ Research artifacts are in `.planning/research/`:
 
 ## Accumulated Context
 
+### Roadmap Evolution
+
+- Phase 9 added: Batch 2 session replay and Codex subagent relationship fixes
+
 ### Key Decisions
 
 | Decision | Rationale | Outcome |
