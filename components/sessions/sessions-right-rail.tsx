@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { RefreshCw, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import {
@@ -59,7 +59,7 @@ function AggregateSessionsRightRail({
   const { definition, href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const aggregateSessions = useAggregateSessions({ limit: '500' })
+  const { sessions, totalCount, groupCounts, sources, loading, error } = useAggregateSessions({ limit: '100' })
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
 
@@ -85,16 +85,19 @@ function AggregateSessionsRightRail({
   return (
     <SessionsRailContent
       definitionLabel={definition.shortLabel}
-      sessions={aggregateSessions.sessions}
-      loading={aggregateSessions.loading || syncing}
-      error={syncError ?? aggregateSessions.error}
-      total={aggregateSessions.totalCount}
+      sessions={sessions}
+      loading={loading || syncing}
+      error={syncError ?? error}
+      total={totalCount}
       selectedSessionId={selectedSessionId}
       onClearSelection={onClearSelection}
       onRefresh={handleRefresh}
       onSelect={handleSelect}
       currentToolId="all"
       syncing={syncing}
+      groupCounts={groupCounts}
+      hasMore={false}
+      isLoadingMore={false}
     />
   )
 }
@@ -107,9 +110,9 @@ function SourceSessionsRightRail({
   const { definition, href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const sourceSessions = useToolSessions(
+  const { sessions, pagination, groupCounts, loading, error, isLoadingMore, loadMore, refetch } = useToolSessions(
     sourceToolId,
-    { limit: '500', sort: 'updated_at', order: 'desc' },
+    { limit: '100', sort: 'updated_at', order: 'desc' },
   )
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
@@ -124,7 +127,7 @@ function SourceSessionsRightRail({
       setSyncError(err instanceof Error ? err.message : 'Sync failed')
     } finally {
       setSyncing(false)
-      sourceSessions.refetch()
+      refetch()
     }
   }
 
@@ -136,16 +139,20 @@ function SourceSessionsRightRail({
   return (
     <SessionsRailContent
       definitionLabel={definition.shortLabel}
-      sessions={sourceSessions.sessions}
-      loading={sourceSessions.loading || syncing}
-      error={syncError ?? sourceSessions.error}
-      total={sourceSessions.pagination?.total}
+      sessions={sessions}
+      loading={loading || syncing}
+      error={syncError ?? error}
+      total={pagination?.total}
       selectedSessionId={selectedSessionId}
       onClearSelection={onClearSelection}
       onRefresh={handleRefresh}
       onSelect={handleSelect}
       currentToolId={sourceToolId}
       syncing={syncing}
+      groupCounts={groupCounts}
+      hasMore={pagination?.hasMore ?? false}
+      isLoadingMore={isLoadingMore}
+      loadMore={loadMore}
     />
   )
 }
@@ -167,6 +174,10 @@ function SessionsRailContent({
   onSelect,
   currentToolId,
   syncing,
+  groupCounts,
+  hasMore,
+  isLoadingMore,
+  loadMore,
 }: {
   definitionLabel: string
   sessions: TraceSession[]
@@ -179,6 +190,13 @@ function SessionsRailContent({
   onSelect: (session: TraceSession) => void
   currentToolId: AgentToolId
   syncing?: boolean
+  groupCounts?: {
+    agent?: Array<{ label: string; count: number }>
+    project?: Array<{ label: string; count: number }>
+  } | null
+  hasMore?: boolean
+  isLoadingMore?: boolean
+  loadMore?: () => void
 }) {
   // -- Filter state with localStorage restore for groupMode --
   const [filter, setFilter] = useState<SessionFilterState>(() => {
@@ -231,7 +249,7 @@ function SessionsRailContent({
     for (const s of filteredSessions) {
       const key =
         filter.groupMode === 'agent'
-          ? (s.agentName || s.source)
+          ? s.source
           : (s.project || 'default')
       const list = map.get(key) || []
       list.push(s)
@@ -271,6 +289,25 @@ function SessionsRailContent({
       return next
     })
   }
+
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!loadMore || !hasMore || isLoadingMore) return
+    const el = sentinelRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          loadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [loadMore, hasMore, isLoadingMore])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -345,37 +382,46 @@ function SessionsRailContent({
           </div>
         ) : groupedSessions ? (
           <div className="divide-y divide-border">
-            {groupedSessions.map((group) => (
-              <div key={group.label}>
-                <button
-                  type="button"
-                  onClick={() => toggleGroupCollapse(group.label)}
-                  className="flex w-full items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1.5 text-left transition-colors hover:bg-muted/50"
-                >
-                  <span className="text-[9px] text-muted-foreground/60 transition-transform" style={{ transform: collapsedGroups.has(group.label) ? 'rotate(-90deg)' : undefined }}>
-                    &#9662;
-                  </span>
-                  <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    {group.label}
-                  </span>
-                  <span className="text-[9px] font-mono tabular-nums text-muted-foreground/60">
-                    ({group.sessions.length})
-                  </span>
-                </button>
-                {!collapsedGroups.has(group.label) &&
-                  group.sessions.map((session, index) => (
-                    <SessionRailRow
-                      key={session.id || `${session.source}-${index}`}
-                      session={session}
-                      active={selectedSessionId === session.id}
-                      currentToolId={currentToolId}
-                      onSelect={() => onSelect(session)}
-                      isStarred={starredIsStarred(session.id)}
-                      onToggleStar={() => starredToggle(session.id)}
-                    />
-                  ))}
-              </div>
-            ))}
+            {groupedSessions.map((group) => {
+              let groupCount: number | undefined
+              if (groupCounts && filter.groupMode === 'agent') {
+                groupCount = groupCounts.agent?.find(g => g.label === group.label)?.count
+              } else if (groupCounts && filter.groupMode === 'project') {
+                groupCount = groupCounts.project?.find(g => g.label === group.label)?.count
+              }
+
+              return (
+                <div key={group.label}>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroupCollapse(group.label)}
+                    className="flex w-full items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1.5 text-left transition-colors hover:bg-muted/50"
+                  >
+                    <span className="text-[9px] text-muted-foreground/60 transition-transform" style={{ transform: collapsedGroups.has(group.label) ? 'rotate(-90deg)' : undefined }}>
+                      &#9662;
+                    </span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {group.label}
+                    </span>
+                    <span className="text-[9px] font-mono tabular-nums text-muted-foreground/60">
+                      ({groupCount ?? group.sessions.length})
+                    </span>
+                  </button>
+                  {!collapsedGroups.has(group.label) &&
+                    group.sessions.map((session, index) => (
+                      <SessionRailRow
+                        key={session.id || `${session.source}-${index}`}
+                        session={session}
+                        active={selectedSessionId === session.id}
+                        currentToolId={currentToolId}
+                        onSelect={() => onSelect(session)}
+                        isStarred={starredIsStarred(session.id)}
+                        onToggleStar={() => starredToggle(session.id)}
+                      />
+                    ))}
+                </div>
+              )
+            })}
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -392,6 +438,17 @@ function SessionsRailContent({
             ))}
           </div>
         )}
+        {isLoadingMore && (
+          <div className="flex items-center justify-center py-2">
+            <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-accent" />
+          </div>
+        )}
+        {hasMore && !isLoadingMore && (
+          <div className="flex items-center justify-center py-2">
+            <span className="text-[9px] text-muted-foreground/40">Scroll for more</span>
+          </div>
+        )}
+        <div ref={sentinelRef} className="h-px" />
       </div>
     </div>
   )
