@@ -263,6 +263,10 @@ export interface SessionListResult {
     offset: number
     hasMore: boolean
   }
+  groupCounts?: {
+    agent?: Array<{ label: string; count: number }>
+    project?: Array<{ label: string; count: number }>
+  }
 }
 
 export interface TurnsQueryParams {
