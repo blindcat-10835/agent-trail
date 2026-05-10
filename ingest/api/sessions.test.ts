@@ -135,9 +135,9 @@ describe('GET /api/v1/sessions — groupBy parameter validation', () => {
     expect(res.status).not.toBe(400);
   });
 
-  it('should accept groupBy with single valid value and no comma', async () => {
+  it('should handle requests without groupBy param (backward compatibility)', async () => {
     const app = createApp();
-    const res = await app.request('/api/v1/sessions?source=openclaw&groupBy=agent');
+    const res = await app.request('/api/v1/sessions?source=openclaw');
     expect(res.status).not.toBe(400);
   });
 });
