@@ -5,21 +5,24 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, render, waitFor } from '@testing-library/react'
 
 import {
   SESSION_REFRESH_EVENT,
   notifySessionsRefresh,
   syncAllSessions,
   syncToolSessions,
+  useAggregateSessions,
   useIngestStatus,
   useSSE,
   useToolSessions,
 } from '@/lib/agent-tools/client-hooks'
+import type { TraceSession } from '@/types/trace'
 
 const fetchMock = vi.fn()
 
 beforeEach(() => {
+  fetchMock.mockReset()
   fetchMock.mockResolvedValue({
     ok: true,
     json: async () => ({
@@ -79,6 +82,257 @@ describe('session refresh event', () => {
 
     expect(listener).toHaveBeenCalledTimes(1)
     window.removeEventListener(SESSION_REFRESH_EVENT, listener)
+  })
+})
+
+// ============================================================================
+// useAggregateSessions
+// ============================================================================
+
+function sessionFixture(
+  id: string,
+  source: TraceSession['source'],
+  timestamps: {
+    startedAt: string
+    endedAt?: string | null
+    updatedAt?: string | null
+  },
+): TraceSession {
+  return {
+    id,
+    source,
+    project: 'project',
+    name: id,
+    startedAt: timestamps.startedAt,
+    endedAt: timestamps.endedAt ?? null,
+    updatedAt: timestamps.updatedAt ?? undefined,
+    status: 'idle',
+    metrics: {
+      messageCount: 1,
+      userMessageCount: 1,
+      hasToolCalls: false,
+      parserMalformedLines: 0,
+      isTruncated: false,
+    },
+    turns: [],
+  }
+}
+
+type AggregateHookResult = ReturnType<typeof useAggregateSessions>
+
+describe('useAggregateSessions', () => {
+  it('fetches initial aggregate sessions through the three BFF source URLs', async () => {
+    let latest: AggregateHookResult | undefined
+
+    function Consumer() {
+      latest = useAggregateSessions({ limit: '100' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.loading).toBe(false))
+
+    const urls = fetchMock.mock.calls.map(([url]) => String(url))
+    expect(urls).toHaveLength(3)
+    expect(urls).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^\/api\/agent-tools\/openclaw\/sessions\?/),
+        expect.stringMatching(/^\/api\/agent-tools\/claude-code\/sessions\?/),
+        expect.stringMatching(/^\/api\/agent-tools\/codex\/sessions\?/),
+      ]),
+    )
+    expect(urls.join('\n')).not.toMatch(/localhost:8078|127\.0\.0\.1|\/api\/v1/)
+  })
+
+  it('uses source pagination totals for aggregate totalCount', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [sessionFixture('openclaw-1', 'openclaw', { startedAt: '2026-05-10T00:00:00.000Z' })],
+          pagination: { total: 10, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [sessionFixture('claude-1', 'claude-code', { startedAt: '2026-05-10T00:01:00.000Z' })],
+          pagination: { total: 20, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [sessionFixture('codex-1', 'codex', { startedAt: '2026-05-10T00:02:00.000Z' })],
+          pagination: { total: 30, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+
+    let latest: AggregateHookResult | undefined
+
+    function Consumer() {
+      latest = useAggregateSessions({ limit: '100' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.loading).toBe(false))
+
+    expect(latest?.sessions).toHaveLength(3)
+    expect(latest?.totalCount).toBe(60)
+  })
+
+  it('reports hasMore when any source has another page', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [],
+          pagination: { total: 101, limit: 100, offset: 0, hasMore: true },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [],
+          pagination: { total: 1, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [],
+          pagination: { total: 0, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+
+    let latest: AggregateHookResult | undefined
+
+    function Consumer() {
+      latest = useAggregateSessions({ limit: '100' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.loading).toBe(false))
+
+    expect(latest?.hasMore).toBe(true)
+    expect(latest?.paginationBySource.openclaw?.hasMore).toBe(true)
+  })
+
+  it('loads only sources with more pages, dedupes by session id, and sorts by freshness', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [
+            sessionFixture('shared', 'openclaw', { startedAt: '2026-05-10T00:00:00.000Z' }),
+            sessionFixture('old-openclaw', 'openclaw', { startedAt: '2026-05-10T00:01:00.000Z' }),
+          ],
+          pagination: { total: 4, limit: 2, offset: 0, hasMore: true },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [
+            sessionFixture('claude-only', 'claude-code', {
+              startedAt: '2026-05-10T00:02:00.000Z',
+              endedAt: '2026-05-10T00:03:00.000Z',
+            }),
+          ],
+          pagination: { total: 1, limit: 2, offset: 0, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [
+            sessionFixture('codex-old', 'codex', { startedAt: '2026-05-10T00:04:00.000Z' }),
+          ],
+          pagination: { total: 3, limit: 1, offset: 0, hasMore: true },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [
+            sessionFixture('openclaw-new', 'openclaw', {
+              startedAt: '2026-05-10T00:05:00.000Z',
+              updatedAt: '2026-05-10T00:20:00.000Z',
+            }),
+            sessionFixture('shared', 'openclaw', {
+              startedAt: '2026-05-10T00:06:00.000Z',
+              updatedAt: '2026-05-10T00:30:00.000Z',
+            }),
+          ],
+          pagination: { total: 4, limit: 2, offset: 2, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [
+            sessionFixture('codex-new', 'codex', {
+              startedAt: '2026-05-10T00:07:00.000Z',
+              endedAt: '2026-05-10T00:25:00.000Z',
+            }),
+          ],
+          pagination: { total: 3, limit: 1, offset: 1, hasMore: true },
+        }),
+      })
+
+    let latest: AggregateHookResult | undefined
+
+    function Consumer() {
+      latest = useAggregateSessions({ limit: '100' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.loading).toBe(false))
+
+    await act(async () => {
+      await latest?.loadMore()
+    })
+
+    await waitFor(() => expect(latest?.isLoadingMore).toBe(false))
+
+    const urls = fetchMock.mock.calls.map(([url]) => String(url))
+    const nextPageUrls = urls.slice(3)
+    expect(nextPageUrls).toHaveLength(2)
+    expect(nextPageUrls).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('/api/agent-tools/openclaw/sessions?'),
+        expect.stringContaining('/api/agent-tools/codex/sessions?'),
+      ]),
+    )
+    expect(nextPageUrls).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('/api/agent-tools/claude-code/sessions?'),
+      ]),
+    )
+    expect(nextPageUrls).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('offset=2'),
+        expect.stringContaining('offset=1'),
+      ]),
+    )
+
+    expect(latest?.totalCount).toBe(8)
+    expect(latest?.hasMore).toBe(true)
+    expect(latest?.sessions.map((session) => session.id)).toEqual([
+      'shared',
+      'codex-new',
+      'openclaw-new',
+      'codex-old',
+      'claude-only',
+      'old-openclaw',
+    ])
   })
 })
 
