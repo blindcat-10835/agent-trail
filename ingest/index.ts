@@ -31,7 +31,7 @@ import type { SyncSourceType } from './sync/index.js';
 // Module State
 // ============================================================================
 
-const app = new Hono();
+export const app = new Hono();
 let context: ServiceContext | null = null;
 
 /**
@@ -77,11 +77,11 @@ app.get('/version', (c) => {
 // Mount sources API routes
 app.route('/', sourcesRoutes);
 
-// Mount sessions and turns API routes
+// Mount stars before sessions to avoid /sessions/starred hitting /sessions/:id
+app.route('/', starsRoutes);
 app.route('/', sessionsRoutes);
 app.route('/', turnsRoutes);
 app.route('/', agentsRoutes);
-app.route('/', starsRoutes);
 
 // Mount SSE event routes (global + per-session streams)
 app.route('/', eventsRoutes);
