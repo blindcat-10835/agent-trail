@@ -1,19 +1,21 @@
 'use client'
 
 import { useEffect, useCallback, useState } from 'react'
-import { ChevronUp, ChevronDown } from 'lucide-react'
+import { ChevronUp, ChevronDown, Copy, Check } from 'lucide-react'
 import { useReplayStore } from '@/stores/replay-store'
 import type { TraceTurn } from '@/types/trace'
 
 interface TurnNavigatorProps {
   turns: TraceTurn[]
+  sessionId?: string
 }
 
-export function TurnNavigator({ turns }: TurnNavigatorProps) {
+export function TurnNavigator({ turns, sessionId }: TurnNavigatorProps) {
   const currentTurnIndex = useReplayStore((s) => s.currentTurnIndex)
   const setCurrentTurnIndex = useReplayStore((s) => s.setCurrentTurnIndex)
   const collapseAll = useReplayStore((s) => s.collapseAll)
   const [jumpValue, setJumpValue] = useState('')
+  const [hashCopied, setHashCopied] = useState(false)
 
   const total = turns.length
 
@@ -92,8 +94,28 @@ export function TurnNavigator({ turns }: TurnNavigatorProps) {
         Turn {currentTurnIndex + 1} of {total}
       </span>
 
+      {/* Session hash */}
+      {sessionId && (
+        <button
+          onClick={async () => {
+            await navigator.clipboard.writeText(sessionId)
+            setHashCopied(true)
+            setTimeout(() => setHashCopied(false), 2000)
+          }}
+          className="flex items-center gap-1.5 ml-auto px-2 py-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors group"
+          title={`Copy session ID: ${sessionId}`}
+        >
+          <span>{sessionId.slice(0, 8)}</span>
+          {hashCopied ? (
+            <Check className="w-3 h-3 text-[oklch(0.76_0.17_145)]" />
+          ) : (
+            <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+          )}
+        </button>
+      )}
+
       {/* Jump to turn */}
-      <div className="flex items-center gap-1 ml-auto">
+      <div className="flex items-center gap-1">
         <input
           type="number"
           min={1}

@@ -129,7 +129,7 @@ export default function SessionReplayPage({
 
       {/* Turn navigator */}
       {turns.length > 0 && (
-        <TurnNavigator turns={turns} />
+        <TurnNavigator turns={turns} sessionId={sessionId} />
       )}
 
       {/* Main content area: turn timeline + right rail toggle */}
