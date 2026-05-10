@@ -445,11 +445,11 @@ Plans:
 6. Regression coverage includes the reported route collision, Markdown search crash, aggregate pagination behavior, edit/diff rendering formatter, and Codex parent/child relationship backfill.
 
 Plans:
-- [ ] 09-01-PLAN.md — Starred session route collision repair
-- [ ] 09-02-PLAN.md — All-source aggregate pagination
-- [ ] 09-03-PLAN.md — Replay Markdown safety and edit tool display
-- [ ] 09-04-PLAN.md — Codex patch category and subagent event anchoring
-- [ ] 09-05-PLAN.md — Codex subagent relationship backfill and phase regression gate
+- [x] 09-01-PLAN.md — Starred session route collision repair
+- [x] 09-02-PLAN.md — All-source aggregate pagination
+- [x] 09-03-PLAN.md — Replay Markdown safety and edit tool display
+- [x] 09-04-PLAN.md — Codex patch category and subagent event anchoring
+- [x] 09-05-PLAN.md — Codex subagent relationship backfill and phase regression gate
 
 ---
 
