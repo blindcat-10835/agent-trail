@@ -420,9 +420,11 @@ function SessionRailRow({
   )
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() } }}
       className={cn(
         'grid w-full gap-1 px-3 py-2.5 text-left transition-colors hover:bg-accent/5',
         active && 'bg-accent/10 text-accent',
@@ -453,7 +455,7 @@ function SessionRailRow({
           {isStarred ? '★' : '☆'}
         </button>
       </div>
-    </button>
+    </div>
   )
 }
 

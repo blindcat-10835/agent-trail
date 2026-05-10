@@ -98,9 +98,12 @@ export function SessionFilterDropdown({
   onClearAll,
 }: SessionFilterDropdownProps) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const starredCount = useStarredStore((s) => s.ids.size)
   const filtersActive = hasActiveFilters(filter)
+
+  useEffect(() => { setMounted(true) }, [])
 
   // Close on outside click
   useEffect(() => {
@@ -131,7 +134,7 @@ export function SessionFilterDropdown({
         title="Filter sessions"
       >
         <SlidersHorizontal className="h-3.5 w-3.5" />
-        {filtersActive && (
+        {mounted && filtersActive && (
           <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-green-500" />
         )}
       </button>
