@@ -16,6 +16,7 @@ import { getDatabase } from '../db';
 import {
   TraceTurn,
   TraceMessage,
+  TraceActivity,
   TraceToolCall,
   TraceSubagentLink,
   TraceSystemEvent,
@@ -221,6 +222,7 @@ async function pairToolCalls(
       SELECT id, message_ordinal, tool_id, name, category, input_json, status, error, duration_ms
       FROM tool_calls
       WHERE session_id = ? AND message_ordinal IN (${placeholders})
+      ORDER BY message_ordinal ASC, id ASC
     `
       )
       .all(sessionId, ...ordinals) as ToolCallRow[];
@@ -256,7 +258,7 @@ async function pairToolCalls(
         messageOrdinal: tc.message_ordinal,
       };
 
-      turn.activities.push(activity);
+      addActivityAnchored(turn, activity);
     }
   }
 }
@@ -298,7 +300,7 @@ async function linkSubagents(
     const anchor = findSubagentAnchor(turns, child);
     if (!anchor) continue;
 
-    anchor.turn.activities.push({
+    addActivityAnchored(anchor.turn, {
       type: 'subagent_link',
       subagentSessionId: child.id,
       subagentSource: child.source as TraceSource,
@@ -332,7 +334,7 @@ async function attachPersistedSubagentLinks(
       (turns[0] ? { turn: turns[0], messageOrdinal: undefined } : null);
     if (!anchor) continue;
 
-    anchor.turn.activities.push({
+    addActivityAnchored(anchor.turn, {
       type: 'subagent_link',
       subagentSessionId: link.subagent_session_id,
       subagentSource: link.subagent_source as TraceSource,
@@ -535,6 +537,34 @@ function hasSubagentLink(turns: TraceTurn[], subagentSessionId: string): boolean
         activity.subagentSessionId === subagentSessionId
     )
   );
+}
+
+function addActivityAnchored(turn: TraceTurn, activity: TraceActivity): void {
+  const ordinal = getActivityMessageOrdinal(activity);
+  if (typeof ordinal !== 'number') {
+    turn.activities.push(activity);
+    return;
+  }
+
+  const insertAt = turn.activities.findIndex((existing) => {
+    const existingOrdinal = getActivityMessageOrdinal(existing);
+    return typeof existingOrdinal === 'number' && existingOrdinal > ordinal;
+  });
+
+  if (insertAt === -1) {
+    turn.activities.push(activity);
+  } else {
+    turn.activities.splice(insertAt, 0, activity);
+  }
+}
+
+function getActivityMessageOrdinal(activity: TraceActivity): number | undefined {
+  if (activity.type !== 'tool_call' && activity.type !== 'subagent_link') {
+    return undefined;
+  }
+  return typeof activity.messageOrdinal === 'number'
+    ? activity.messageOrdinal
+    : undefined;
 }
 
 function toolCallReferencesChild(toolCall: TraceToolCall, child: ChildSessionRow): boolean {

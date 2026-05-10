@@ -204,6 +204,18 @@ function buildParserCacheHash(source: string, fileHash: string): string {
   return `${PARSER_CACHE_VERSION}:${source}:${fileHash}`;
 }
 
+function coerceSqlText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  if (Buffer.isBuffer(value)) return value.toString('utf8');
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 /**
  * Write a parsed session to the database
  *
@@ -480,7 +492,7 @@ export function writeSessionToDatabase(
           tc.id,
           tc.name,
           tc.category || 'Other',
-          tc.inputJson,
+          coerceSqlText(tc.inputJson),
           tc.status,
           tc.error || null,
           tc.durationMs || null
@@ -494,7 +506,7 @@ export function writeSessionToDatabase(
           insertResultEvent.run(
             toolCallDbId,
             re.timestamp || null,
-            re.content,
+            coerceSqlText(re.content),
             re.isPartial ? 1 : 0
           );
           toolResultEventsInserted++;

@@ -318,6 +318,50 @@ describe('tool persistence — writeSessionToDatabase', () => {
       expect(events[1].is_partial).toBe(0);
     });
 
+    it('serializes structured result event content before writing', () => {
+      const structuredContent = [
+        {
+          type: 'input_image',
+          image_url: 'data:image/png;base64,abc123',
+          detail: 'original',
+        },
+      ];
+      const parseResult = makeParseResult({
+        sessionId: 'sess-structured-result',
+        toolCalls: [{
+          type: 'tool_call',
+          id: 'toolu_structured',
+          name: 'view_image',
+          category: 'Other',
+          inputJson: { path: '/tmp/reference.webp' } as any,
+          resultEvents: [
+            {
+              type: 'result_event',
+              content: structuredContent as any,
+              isPartial: false,
+              timestamp: '2024-01-01T00:00:01Z',
+            },
+          ] as TraceToolResultEvent[],
+          status: 'success',
+          messageOrdinal: 1,
+        }],
+      });
+
+      const result = writeSessionToDatabase(parseResult, db);
+
+      expect(result.errors).toEqual([]);
+
+      const toolCall = db.prepare(
+        'SELECT id, input_json FROM tool_calls WHERE session_id = ?'
+      ).get(parseResult.session.id) as { id: number; input_json: string };
+      const event = db.prepare(
+        'SELECT content FROM tool_result_events WHERE tool_call_id = ?'
+      ).get(toolCall.id) as { content: string };
+
+      expect(JSON.parse(toolCall.input_json)).toEqual({ path: '/tmp/reference.webp' });
+      expect(JSON.parse(event.content)).toEqual(structuredContent);
+    });
+
     it('returns toolResultEventsInserted count', () => {
       const parseResult = makeParseResult({
         toolCalls: [{

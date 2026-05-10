@@ -322,6 +322,62 @@ describe('turn activity regression — assembleTurns reads tool activities from 
     expect(turns[0].activities.map((activity) => activity.type)).toContain('tool_call');
   });
 
+  it('places persisted subagent links next to their owning tool call ordinal', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-subagent-link-order-001';
+
+    const parseResult: ParseResult = {
+      session: {
+        id: sessionId,
+        source: 'codex',
+        project: 'test-project',
+        name: 'Test',
+        startedAt: '2024-01-01T00:00:00Z',
+        endedAt: '2024-01-01T01:00:00Z',
+        status: 'idle',
+        metrics: {
+          messageCount: 4,
+          userMessageCount: 1,
+          totalTokens: 50,
+          hasToolCalls: true,
+          parserMalformedLines: 0,
+          isTruncated: false,
+        },
+        turns: [],
+      },
+      messages: [
+        { id: `${sessionId}:0`, ordinal: 0, role: 'user', content: 'Spawn helper', sourceMetadata: { sourceType: 'codex', sourceFile: '/fake/session.jsonl', sourceLine: 1 } },
+        { id: `${sessionId}:1`, ordinal: 1, role: 'assistant', content: '', sourceMetadata: { sourceType: 'codex', sourceFile: '/fake/session.jsonl', sourceLine: 2 } },
+        { id: `${sessionId}:2`, ordinal: 2, role: 'assistant', content: 'Still working', sourceMetadata: { sourceType: 'codex', sourceFile: '/fake/session.jsonl', sourceLine: 3 } },
+        { id: `${sessionId}:3`, ordinal: 3, role: 'assistant', content: '', sourceMetadata: { sourceType: 'codex', sourceFile: '/fake/session.jsonl', sourceLine: 4 } },
+      ],
+      activities: [
+        { type: 'tool_call', id: 'call_spawn', name: 'spawn_agent', category: 'Agent', inputJson: '{}', resultEvents: [], status: 'success', messageOrdinal: 1 } as TraceToolCall,
+        { type: 'tool_call', id: 'call_read', name: 'read_file', category: 'Read', inputJson: '{}', resultEvents: [], status: 'success', messageOrdinal: 3 } as TraceToolCall,
+        { type: 'subagent_link', subagentSessionId: 'child-thread-ordered', subagentSource: 'codex', relationship: 'spawned', messageOrdinal: 1 } as TraceSubagentLink,
+      ],
+      errors: [],
+      warnings: [],
+    };
+
+    const syncResult = writeSessionToDatabase(parseResult, db);
+    expect(syncResult.errors).toEqual([]);
+
+    const turns = await assembleTurns(sessionId, db);
+    const keyedActivities = turns[0].activities
+      .filter((activity) => activity.type === 'tool_call' || activity.type === 'subagent_link')
+      .map((activity) => {
+        if (activity.type === 'tool_call') return `tool:${activity.id}`;
+        return `subagent:${activity.subagentSessionId}`;
+      });
+
+    expect(keyedActivities).toEqual([
+      'tool:call_spawn',
+      'subagent:child-thread-ordered',
+      'tool:call_read',
+    ]);
+  });
+
   it('tool_result-only messages do not create spurious turns', async () => {
     const { assembleTurns } = await import('@/ingest/turns/assembler');
     const sessionId = 'sess-tool-result-role';
