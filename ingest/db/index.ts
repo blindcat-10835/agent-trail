@@ -142,7 +142,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 9;
+  const targetVersion = 10;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -264,6 +264,44 @@ export function runMigrations(): void {
     {
       desc: 'Invalidate Codex parser cache to persist subagent link anchors',
       sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'codex'",
+    },
+    {
+      desc: 'Add total_input_tokens column to sessions',
+      sql: 'ALTER TABLE sessions ADD COLUMN total_input_tokens INTEGER NOT NULL DEFAULT 0',
+    },
+    {
+      desc: 'Create FTS5 virtual table for message content search',
+      sql: `CREATE VIRTUAL TABLE IF NOT EXISTS fts_messages_content
+            USING fts5(content, content='messages', content_rowid=rowid)`,
+    },
+    {
+      desc: 'Create FTS sync trigger for INSERT',
+      sql: `CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
+              INSERT INTO fts_messages_content(rowid, content) VALUES (new.rowid, new.content);
+            END`,
+    },
+    {
+      desc: 'Create FTS sync trigger for DELETE',
+      sql: `CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
+              INSERT INTO fts_messages_content(fts_messages_content, rowid, content)
+              VALUES ('delete', old.rowid, old.content);
+            END`,
+    },
+    {
+      desc: 'Create FTS sync trigger for UPDATE',
+      sql: `CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE ON messages BEGIN
+              INSERT INTO fts_messages_content(fts_messages_content, rowid, content)
+              VALUES ('delete', old.rowid, old.content);
+              INSERT INTO fts_messages_content(rowid, content) VALUES (new.rowid, new.content);
+            END`,
+    },
+    {
+      desc: 'Rebuild FTS5 index from existing messages',
+      sql: `INSERT INTO fts_messages_content(fts_messages_content) VALUES('rebuild')`,
+    },
+    {
+      desc: 'Invalidate skip cache to backfill total_input_tokens',
+      sql: `UPDATE sessions SET file_hash = NULL WHERE total_input_tokens IS NULL OR total_input_tokens = 0`,
     },
   ];
 

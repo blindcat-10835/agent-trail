@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   message_count INTEGER NOT NULL DEFAULT 0,
   user_message_count INTEGER NOT NULL DEFAULT 0,
   total_output_tokens INTEGER,
+  total_input_tokens INTEGER NOT NULL DEFAULT 0,
 
   -- Tool/activity indicators
   has_tool_calls INTEGER NOT NULL DEFAULT 0 CHECK(has_tool_calls IN (0, 1)),
@@ -254,3 +255,28 @@ CREATE TABLE IF NOT EXISTS sync_status (
   files_watched INTEGER NOT NULL DEFAULT 0,
   last_error TEXT
 );
+
+-- ============================================================================
+-- Full-Text Search — FTS5 Virtual Table (Migration v9 → v10)
+-- ============================================================================
+
+-- FTS5 virtual table indexing message content for in-session search.
+-- Uses external content mode (content='messages') to avoid data duplication.
+CREATE VIRTUAL TABLE IF NOT EXISTS fts_messages_content
+USING fts5(content, content='messages', content_rowid=rowid);
+
+-- Sync triggers keep FTS5 index aligned with messages table.
+CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
+  INSERT INTO fts_messages_content(rowid, content) VALUES (new.rowid, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
+  INSERT INTO fts_messages_content(fts_messages_content, rowid, content)
+  VALUES ('delete', old.rowid, old.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE ON messages BEGIN
+  INSERT INTO fts_messages_content(fts_messages_content, rowid, content)
+  VALUES ('delete', old.rowid, old.content);
+  INSERT INTO fts_messages_content(rowid, content) VALUES (new.rowid, new.content);
+END;

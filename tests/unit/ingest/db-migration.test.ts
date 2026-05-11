@@ -95,6 +95,6 @@ describe('ingest database migrations', () => {
     );
     expect(indexes.map((index) => index.name)).toContain('idx_messages_session_turn_index');
     expect(tables.map((table) => table.name)).toContain('subagent_links');
-    expect(version).toBe(9);
+    expect(version).toBe(10);
   });
 });
