@@ -7,7 +7,7 @@ Terminal × HUD 的混合风格：主体是现代 dashboard，局部使用 termi
 
 ### 现在的设计
 整体的布局需要保留，但是细节你可以自由设计。
-顶部 Header：横向三栏。左侧是品牌 logo 和 "AGENTS TRACING" 标题；中间是 Source Switcher，用来在 Claude / OpenClaw / Codex 等数据源之间切换（可以有一些下拉或者延伸的方法获取更多source，也可以更改默认显示哪4个source）；右侧是几个操作按钮：手动 Sync、Light/Dark 主题切换、Right Rail 开关。
+顶部 Header：横向三栏。左侧是品牌 logo 和 "AGENTS TRACING" 标题；中间是 Source Switcher，用来在 Claude / OpenClaw / Codex 等数据源之间切换（计划加入更多tools，因此可以有一些下拉或者延伸的方法获取更多source，也可以更改默认显示哪4个source）；右侧是几个操作按钮：手动 Sync、Light/Dark 主题切换、Right Rail 开关。
 中间主区域（剩余高度）：横向布局。最左侧是Sidebar，放导航图标（Dashboard / Sessions / Activity 等页面入口）。右边是主内容区，渲染当前路由的页面。如果全局 Right Rail 开启，主内容区右侧还会出现一个可拖拽调宽的面板，用于显示选中 session 的摘要信息。
 的拖拽分隔条。
 底部 Status Bar（很窄）：显示 ingest 服务连接状态等系统级信息。

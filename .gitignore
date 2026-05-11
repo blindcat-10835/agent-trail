@@ -55,3 +55,8 @@ ingest/dist/
 .local/real-session-corpus.json
 
 .superpowers
+
+.planning/designs/*
+!.planning/designs/draft-design/
+!.planning/designs/draft-design/**
+!.planning/designs/design-notes.md
