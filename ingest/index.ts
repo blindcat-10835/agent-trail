@@ -15,6 +15,7 @@ import { turnsRoutes } from './api/turns.js';
 import { agentsRoutes } from './api/agents.js';
 import { starsRoutes } from './api/stars.js';
 import { overviewRoutes } from './api/overview.js';
+import { searchRoutes } from './api/search.js';
 import { eventsRoutes } from './api/routes/events.js';
 import { rateLimiter } from './api/middleware/rate-limit.js';
 import { createWatcher } from './src/watcher.js';
@@ -80,6 +81,8 @@ app.route('/', sourcesRoutes);
 
 // Mount stars before sessions to avoid /sessions/starred hitting /sessions/:id
 app.route('/', starsRoutes);
+// Mount search before sessions so /sessions/:id/search matches before /sessions/:id
+app.route('/', searchRoutes);
 app.route('/', sessionsRoutes);
 app.route('/', turnsRoutes);
 app.route('/', agentsRoutes);

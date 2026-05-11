@@ -24,6 +24,7 @@ import {
   MessageRole,
   ToolCategory,
   TokenUsage,
+  TurnEnrichment,
 } from '@/types/trace';
 
 // ============================================================================
@@ -67,7 +68,7 @@ export async function assembleTurns(
     await pairToolCalls(turns, sessionId, database);
     await attachPersistedSubagentLinks(turns, sessionId, database);
     await linkSubagents(turns, sessionId, database);
-    return turns;
+    return turns.map(enrichTurn);
   }
 
   const turns: TraceTurn[] = [];
@@ -188,7 +189,7 @@ export async function assembleTurns(
   // D-11: Post-processing — link subagent sessions
   await linkSubagents(turns, sessionId, database);
 
-  return turns;
+  return turns.map(enrichTurn);
 }
 
 // ============================================================================
@@ -597,6 +598,38 @@ function finalizeTurn(
     durationMs: partial.durationMs ?? null,
     tokenUsage: partial.tokenUsage,
     isTruncated: partial.isTruncated || undefined,
+  };
+}
+
+/**
+ * Enrich a turn with computed metadata for Phase 10 HUD display.
+ * Computes activity counts, failure status, warning flags at query time.
+ */
+function enrichTurn(turn: TraceTurn): TraceTurn {
+  const activityCounts: TurnEnrichment['activityCounts'] = {
+    toolCalls: turn.activities.filter(a => a.type === 'tool_call').length,
+    skills: turn.activities.filter(a => a.type === 'skill_use').length,
+    subagents: turn.activities.filter(a => a.type === 'subagent_link').length,
+    thinking: turn.activities.filter(a => a.type === 'thinking').length,
+    system: turn.activities.filter(a => a.type === 'system').length,
+  };
+
+  const hasError = turn.activities.some(a =>
+    a.type === 'tool_call' && a.status === 'error'
+  );
+
+  const hasWarning = turn.activities.some(a =>
+    a.type === 'system' && a.subtype === 'system_message'
+  );
+
+  return {
+    ...turn,
+    enrichment: {
+      activityCounts,
+      failureStatus: hasError ? 'error' as const : 'success' as const,
+      truncated: turn.isTruncated || false,
+      warningStatus: hasWarning,
+    },
   };
 }
 
