@@ -68,7 +68,7 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 11-01-PLAN.md — Design tokens + status bar real data (Wave 1)
+- [x] 11-01-PLAN.md — Design tokens + status bar real data (Wave 1)
 - [ ] 11-02-PLAN.md — Right rail scope tabs + source-color spines (Wave 1)
 
 **Success criteria:**

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: executing
-last_updated: "2026-05-12T03:26:00.000Z"
+last_updated: "2026-05-12T18:48:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 5
+  completed_plans: 5
 ---
 
 # agent-tracing-dashboard Project State
@@ -25,7 +25,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Core value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
-**Current focus:** v1.1 Data-Rich HUD Redesign — Phase 10 COMPLETE
+**Current focus:** v1.1 Data-Rich HUD Redesign — Phase 11 in progress
 
 ---
 
@@ -33,16 +33,16 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Milestone:** v1.1 Data-Rich HUD Redesign — ACTIVE
 
-**Phase:** 10 (Rich Ingest Metrics & Data Contracts) — complete
+**Phase:** 11 (HUD Shell & Design System Foundation) — in progress
 
-**Plan:** 04 complete (4/4)
+**Plan:** 01 complete (1/2)
 
-**Status:** Phase 10 complete — all 4 plans delivered, ready for Phase 11
+**Status:** Phase 11 Plan 01 complete — design tokens verified, status bar wired to real data
 
 **Progress Bar:**
 
 ```text
-v1.1:                [▓▓░░░░░░░░] 20% (4/4 plans in Phase 10, 1/5 phases complete)
+v1.1:                [▓▓░░░░░░░░] 25% (5/5 plans in Phase 10-11, 1/5 phases complete)
 ```
 
 **Phase Progress:**
@@ -52,10 +52,9 @@ v1.1:                [▓▓░░░░░░░░] 20% (4/4 plans in Phase 10
   - 10-02: Overview aggregate endpoints + tests — ✓ Complete
   - 10-03: Session/turn enrichment + FTS5 search — ✓ Complete
   - 10-04: BFF proxy routes for overview & search — ✓ Complete
-- Phase 11: HUD Shell & Design System Foundation — Planned
-- Phase 12: Overview v2 Real Data — Planned
-- Phase 13: Sessions Table & Trace Detail v2 — Planned
-- Phase 14: Visual QA & Integration Hardening — Planned
+- Phase 11: HUD Shell & Design System Foundation — In Progress (1/2 plans)
+  - 11-01: Design tokens + status bar real data — ✓ Complete
+  - 11-02: Right rail scope tabs + source-color spines — Planned
 
 ---
 
@@ -103,6 +102,10 @@ v1.1 has two explicit workstreams:
 | Source capabilities as static config map | No database lookup needed; pure TypeScript constant exported from ingest/config | — Pending |
 | Skip cache invalidation on migration forces re-parse | Existing sessions get re-parsed to backfill total_input_tokens column | — Pending |
 
+| Status palette uses plain CSS custom properties (not Tailwind @theme tokens) | Design-notes specifies "used inline in components" | — Pending |
+| Dark theme status colors use higher lightness (0.82 vs 0.76) | Better visibility on dark backgrounds | — Pending |
+| Error status continues using --destructive directly | No separate --status-error token per design-notes | — Pending |
+
 ---
 
 ## Accumulated Context
@@ -148,25 +151,23 @@ None currently known.
 
 ## Session Continuity
 
-**Last Session**: 2026-05-12 — Executing Phase 10, Plan 04 complete (Phase 10 DONE)
+**Last Session**: 2026-05-12 — Executing Phase 11, Plan 01 complete
 
 **What Was Done:**
 
-- Executed Plan 10-04: BFF proxy routes for overview & search
-- Created 8 BFF overview route files under `app/api/agent-tools/[tool]/overview/`
-- Created 1 BFF search route under `app/api/agent-tools/[tool]/sessions/[sessionId]/search`
-- Source-scoped routes handle 'all' by omitting source param
-- Agents route uses assertSourceToolId (rejects 'all')
-- Capabilities and status routes are global
-- Build passes, all 530 tests pass
-- Phase 10 now fully complete
+- Executed Plan 11-01: Design tokens + status bar real data
+- Added status palette CSS variables to both light/dark themes in globals.css
+- Wired useIngestStatus hook into ShellStatusBar for real connection state
+- Removed hardcoded fake metrics (MEM 42.1MB, FPS 60)
+- Applied tabular-nums to dynamic values
+- Verified all existing OKLCH tokens match design-notes exactly
 
 **What's Next:**
 
-- Phase 11: HUD Shell & Design System Foundation
+- Phase 11, Plan 02: Right rail scope tabs + source-color spines
 
 ---
 
 *State created: 2026-05-06*
 *Last updated: 2026-05-12*
-*Last activity: 2026-05-12 - Completed Plan 10-04, Phase 10 DONE*
+*Last activity: 2026-05-12 - Completed Plan 11-01, Phase 11 in progress*
