@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: executing
-last_updated: "2026-05-12T03:18:00.000Z"
+last_updated: "2026-05-12T03:26:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # agent-tracing-dashboard Project State
@@ -25,7 +25,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Core value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
-**Current focus:** v1.1 Data-Rich HUD Redesign — Phase 10 nearly complete
+**Current focus:** v1.1 Data-Rich HUD Redesign — Phase 10 COMPLETE
 
 ---
 
@@ -33,24 +33,25 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Milestone:** v1.1 Data-Rich HUD Redesign — ACTIVE
 
-**Phase:** 10 (Rich Ingest Metrics & Data Contracts) — executing
+**Phase:** 10 (Rich Ingest Metrics & Data Contracts) — complete
 
-**Plan:** 03 complete (3/4)
+**Plan:** 04 complete (4/4)
 
-**Status:** Executing Phase 10 — Plan 03 complete, continuing to Plan 04
+**Status:** Phase 10 complete — all 4 plans delivered, ready for Phase 11
 
 **Progress Bar:**
 
 ```text
-v1.1:                [▓▓░░░░░░░░] 15% (3/4 plans in Phase 10, 0/5 phases complete)
+v1.1:                [▓▓░░░░░░░░] 20% (4/4 plans in Phase 10, 1/5 phases complete)
 ```
 
 **Phase Progress:**
 
-- Phase 10: Rich Ingest Metrics & Data Contracts — Executing (3/4 plans)
+- Phase 10: Rich Ingest Metrics & Data Contracts — ✓ Complete (4/4 plans)
   - 10-01: Schema migration v9→v10 + source capabilities — ✓ Complete
   - 10-02: Overview aggregate endpoints + tests — ✓ Complete
   - 10-03: Session/turn enrichment + FTS5 search — ✓ Complete
+  - 10-04: BFF proxy routes for overview & search — ✓ Complete
 - Phase 11: HUD Shell & Design System Foundation — Planned
 - Phase 12: Overview v2 Real Data — Planned
 - Phase 13: Sessions Table & Trace Detail v2 — Planned
@@ -147,23 +148,25 @@ None currently known.
 
 ## Session Continuity
 
-**Last Session**: 2026-05-12 — Executing Phase 10, Plan 03 complete
+**Last Session**: 2026-05-12 — Executing Phase 10, Plan 04 complete (Phase 10 DONE)
 
 **What Was Done:**
 
-- Executed Plan 10-03: Session/turn enrichment + FTS5 search
-- Extended TraceActivity types with displayName, durationMs, error enrichment fields
-- Added TurnEnrichment interface and enriched session fields (displayTitle, tokens, duration, cost)
-- Added enrichTurn() function computing activity counts, failure/warning status at query time
-- Created FTS5 in-session search endpoint with snippet highlighting and LIKE fallback
-- 12 new search tests, all 42 tests passing
+- Executed Plan 10-04: BFF proxy routes for overview & search
+- Created 8 BFF overview route files under `app/api/agent-tools/[tool]/overview/`
+- Created 1 BFF search route under `app/api/agent-tools/[tool]/sessions/[sessionId]/search`
+- Source-scoped routes handle 'all' by omitting source param
+- Agents route uses assertSourceToolId (rejects 'all')
+- Capabilities and status routes are global
+- Build passes, all 530 tests pass
+- Phase 10 now fully complete
 
 **What's Next:**
 
-- Execute Plan 10-04: BFF proxy routes
+- Phase 11: HUD Shell & Design System Foundation
 
 ---
 
 *State created: 2026-05-06*
 *Last updated: 2026-05-12*
-*Last activity: 2026-05-12 - Completed Plan 10-03*
+*Last activity: 2026-05-12 - Completed Plan 10-04, Phase 10 DONE*
