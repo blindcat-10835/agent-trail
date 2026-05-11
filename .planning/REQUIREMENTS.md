@@ -8,11 +8,11 @@
 
 ### Ingest Overview Data
 
-- [ ] **DATA-101**: User can fetch overview aggregates scoped to `all`, `openclaw`, `claude-code`, or `codex`, including session count, turn count, project count, token totals, and cost totals for today, 7 days, and 30 days.
-- [ ] **DATA-102**: User can fetch top model rankings scoped by source and time window, sortable by token usage or estimated cost, with token total and share percentage per model.
-- [ ] **DATA-103**: User can fetch top project rankings scoped by source and time window, including session count, turn count, token totals, estimated cost, and relative rank weight.
-- [ ] **DATA-104**: User can fetch recent starred sessions scoped by source or `all`, including title, project, model, status, recency, and starred timestamp.
-- [ ] **DATA-105**: User can fetch a mixed activity timeline scoped by source or `all`, covering session start/resume/finish/failure, parser or sync errors, and automation events where local source data exists.
+- [x] **DATA-101**: User can fetch overview aggregates scoped to `all`, `openclaw`, `claude-code`, or `codex`, including session count, turn count, project count, token totals, and cost totals for today, 7 days, and 30 days.
+- [x] **DATA-102**: User can fetch top model rankings scoped by source and time window, sortable by token usage or estimated cost, with token total and share percentage per model.
+- [x] **DATA-103**: User can fetch top project rankings scoped by source and time window, including session count, turn count, token totals, estimated cost, and relative rank weight.
+- [x] **DATA-104**: User can fetch recent starred sessions scoped by source or `all`, including title, project, model, status, recency, and starred timestamp.
+- [x] **DATA-105**: User can fetch a mixed activity timeline scoped by source or `all`, covering session start/resume/finish/failure, parser or sync errors, and automation events where local source data exists.
 - [x] **DATA-106**: User can fetch source capability metadata that tells the frontend which overview modules are available for each tool, including agents, automations, costs, activity, sessions, and replay.
 
 ### Session And Turn Enrichment
@@ -25,9 +25,9 @@
 
 ### OpenClaw And Automation Signals
 
-- [ ] **OPEN-101**: User can view OpenClaw agent summaries with name, avatar or initials, live/idle/error status, session count, tool count, and latest activity time.
-- [ ] **OPEN-102**: User can view automation summaries for tools that expose local automation data, including job name, schedule expression, last run status, last run duration, and next or recent run marker.
-- [ ] **OPEN-103**: User can distinguish ingest status, file watcher status, and OpenClaw Gateway live status in shell/status-bar surfaces without conflating historical indexing with live control-plane connectivity.
+- [x] **OPEN-101**: User can view OpenClaw agent summaries with name, avatar or initials, live/idle/error status, session count, tool count, and latest activity time.
+- [x] **OPEN-102**: User can view automation summaries for tools that expose local automation data, including job name, schedule expression, last run status, last run duration, and next or recent run marker.
+- [x] **OPEN-103**: User can distinguish ingest status, file watcher status, and OpenClaw Gateway live status in shell/status-bar surfaces without conflating historical indexing with live control-plane connectivity.
 
 ### Frontend Shell And Design System
 
@@ -55,7 +55,7 @@
 
 ### Verification And Migration
 
-- [ ] **TEST-101**: Developer can run ingest regression tests covering overview aggregate queries, time-window math, source filters, cost/token fallbacks, top rankings, starred sessions, and timeline events.
+- [x] **TEST-101**: Developer can run ingest regression tests covering overview aggregate queries, time-window math, source filters, cost/token fallbacks, top rankings, starred sessions, and timeline events.
 - [ ] **TEST-102**: Developer can run frontend tests or Playwright checks for shell chrome, overview, sessions table, and session detail in both light and dark themes.
 - [ ] **TEST-103**: Developer can run the existing v1.0 parser, API, BFF, replay, sync, and security tests without regressions.
 - [x] **TEST-104**: Developer can migrate an existing local SQLite index through additive schema/index changes and cache invalidation without manually deleting the database.
@@ -91,20 +91,20 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-101 | Phase 10 | Pending |
-| DATA-102 | Phase 10 | Pending |
-| DATA-103 | Phase 10 | Pending |
-| DATA-104 | Phase 10 | Pending |
-| DATA-105 | Phase 10 | Pending |
+| DATA-101 | Phase 10 | Done (10-02) |
+| DATA-102 | Phase 10 | Done (10-02) |
+| DATA-103 | Phase 10 | Done (10-02) |
+| DATA-104 | Phase 10 | Done (10-02) |
+| DATA-105 | Phase 10 | Done (10-02) |
 | DATA-106 | Phase 10 | Done (10-01) |
 | TURN-101 | Phase 10 | Pending |
 | TURN-102 | Phase 10 | Pending |
 | TURN-103 | Phase 10 | Pending |
 | TURN-104 | Phase 10 | Pending |
 | TURN-105 | Phase 10 | Pending |
-| OPEN-101 | Phase 10 | Pending |
-| OPEN-102 | Phase 10 | Pending |
-| OPEN-103 | Phase 10 | Pending |
+| OPEN-101 | Phase 10 | Done (10-02) |
+| OPEN-102 | Phase 10 | Done (10-02) |
+| OPEN-103 | Phase 10 | Done (10-02) |
 | UI-101 | Phase 11 | Pending |
 | UI-102 | Phase 11 | Pending |
 | UI-103 | Phase 11 | Pending |
@@ -120,7 +120,7 @@
 | SES-104 | Phase 13 | Pending |
 | SES-105 | Phase 13 | Pending |
 | SES-106 | Phase 14 | Pending |
-| TEST-101 | Phase 10 | Pending |
+| TEST-101 | Phase 10 | Done (10-02) |
 | TEST-102 | Phase 14 | Pending |
 | TEST-103 | Phase 14 | Pending |
 | TEST-104 | Phase 10 | Done (10-01) |

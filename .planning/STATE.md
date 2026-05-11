@@ -3,13 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: executing
-last_updated: "2026-05-12T02:55:32.000Z"
+last_updated: "2026-05-12T03:06:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
-  percent: 5
+  completed_plans: 2
 ---
 
 # agent-tracing-dashboard Project State
@@ -36,20 +35,21 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Phase:** 10 (Rich Ingest Metrics & Data Contracts) — executing
 
-**Plan:** 01 complete (1/4)
+**Plan:** 02 complete (2/4)
 
-**Status:** Executing Phase 10 — Plan 01 complete, continuing to Plan 02
+**Status:** Executing Phase 10 — Plan 02 complete, continuing to Plan 03
 
 **Progress Bar:**
 
 ```text
-v1.1:                [▓░░░░░░░░░] 5% (1/4 plans in Phase 10, 0/5 phases complete)
+v1.1:                [▓░░░░░░░░░] 10% (2/4 plans in Phase 10, 0/5 phases complete)
 ```
 
 **Phase Progress:**
 
-- Phase 10: Rich Ingest Metrics & Data Contracts — Executing (1/4 plans)
+- Phase 10: Rich Ingest Metrics & Data Contracts — Executing (2/4 plans)
   - 10-01: Schema migration v9→v10 + source capabilities — ✓ Complete
+  - 10-02: Overview aggregate endpoints + tests — ✓ Complete
 - Phase 11: HUD Shell & Design System Foundation — Planned
 - Phase 12: Overview v2 Real Data — Planned
 - Phase 13: Sessions Table & Trace Detail v2 — Planned
@@ -146,19 +146,17 @@ None currently known.
 
 ## Session Continuity
 
-**Last Session**: 2026-05-12 — Executing Phase 10, Plan 01 complete
+**Last Session**: 2026-05-12 — Executing Phase 10, Plan 02 complete
 
 **What Was Done:**
 
-- Executed Plan 10-01: Schema migration v9→v10 + source capabilities
-- Added total_input_tokens column to sessions table
-- Created FTS5 virtual table fts_messages_content with sync triggers
-- Created source capability config map (ingest/config/capabilities.ts)
-- Updated STATE.md, ROADMAP.md, REQUIREMENTS.md
+- Executed Plan 10-02: Overview aggregate ingest endpoints + tests
+- Created 8 overview REST endpoints (aggregates, top-models, top-projects, starred, timeline, capabilities, agents, status)
+- 38 golden-fixture tests all passing
+- Resolved circular dependency with dynamic import pattern
 
 **What's Next:**
 
-- Execute Plan 10-02: Overview aggregate ingest endpoints + tests
 - Execute Plan 10-03: Session/turn enrichment + FTS5 search
 - Execute Plan 10-04: BFF proxy routes
 
