@@ -49,7 +49,7 @@
 Plans:
 - [x] 10-01-PLAN.md — Schema migration v9→v10 + source capabilities (Wave 1)
 - [x] 10-02-PLAN.md — Overview aggregate ingest endpoints + tests (Wave 2)
-- [ ] 10-03-PLAN.md — Session/turn enrichment + FTS5 search (Wave 2)
+- [x] 10-03-PLAN.md — Session/turn enrichment + FTS5 search (Wave 2)
 - [ ] 10-04-PLAN.md — BFF proxy routes for all overview + search (Wave 3)
 
 **Success criteria:**
@@ -123,7 +123,7 @@ Plans:
 | 7. Bug Fixes | v1.0 | 1/1 | Complete | 2026-05-09 |
 | 8. Real-data Repair | v1.0 | 5/5 | Complete | 2026-05-10 |
 | 9. Batch 2 Fixes | v1.0 | 5/5 | Complete | 2026-05-10 |
-| 10. Rich Ingest Metrics | v1.1 | 2/4 | Executing | — |
+| 10. Rich Ingest Metrics | v1.1 | 3/4 | Executing | — |
 | 11. HUD Shell Foundation | v1.1 | 0/TBD | Planned | — |
 | 12. Overview v2 | v1.1 | 0/TBD | Planned | — |
 | 13. Sessions & Trace Detail v2 | v1.1 | 0/TBD | Planned | — |

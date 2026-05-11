@@ -17,11 +17,11 @@
 
 ### Session And Turn Enrichment
 
-- [ ] **TURN-101**: User can open a session whose detail payload includes display title, source, project, model, branch, cwd, status, started time, updated time, duration, total turns, input tokens, output tokens, and estimated cost.
-- [ ] **TURN-102**: User can inspect each turn with stable turn index, started time, duration, input/output token usage, failure status, truncated status, parser warning status, and activity counts.
-- [ ] **TURN-103**: User can inspect activity rows normalized across tools, skills, subagents, thinking, and system events with kind label, display name, path or target, status, duration, error body, and expandable details.
-- [ ] **TURN-104**: User can search within a session across user messages, assistant messages, and activity content while preserving stable turn indices for next/previous navigation and the turn spine.
-- [ ] **TURN-105**: User can browse long sessions through the existing pagination or virtualization contract without losing the data needed for the HUD header, turn spine, activity glyph counts, and inspector.
+- [x] **TURN-101**: User can open a session whose detail payload includes display title, source, project, model, branch, cwd, status, started time, updated time, duration, total turns, input tokens, output tokens, and estimated cost.
+- [x] **TURN-102**: User can inspect each turn with stable turn index, started time, duration, input/output token usage, failure status, truncated status, parser warning status, and activity counts.
+- [x] **TURN-103**: User can inspect activity rows normalized across tools, skills, subagents, thinking, and system events with kind label, display name, path or target, status, duration, error body, and expandable details.
+- [x] **TURN-104**: User can search within a session across user messages, assistant messages, and activity content while preserving stable turn indices for next/previous navigation and the turn spine.
+- [x] **TURN-105**: User can browse long sessions through the existing pagination or virtualization contract without losing the data needed for the HUD header, turn spine, activity glyph counts, and inspector.
 
 ### OpenClaw And Automation Signals
 
@@ -97,11 +97,11 @@
 | DATA-104 | Phase 10 | Done (10-02) |
 | DATA-105 | Phase 10 | Done (10-02) |
 | DATA-106 | Phase 10 | Done (10-01) |
-| TURN-101 | Phase 10 | Pending |
-| TURN-102 | Phase 10 | Pending |
-| TURN-103 | Phase 10 | Pending |
-| TURN-104 | Phase 10 | Pending |
-| TURN-105 | Phase 10 | Pending |
+| TURN-101 | Phase 10 | ✓ Complete (10-03) |
+| TURN-102 | Phase 10 | ✓ Complete (10-03) |
+| TURN-103 | Phase 10 | ✓ Complete (10-03) |
+| TURN-104 | Phase 10 | ✓ Complete (10-03) |
+| TURN-105 | Phase 10 | ✓ Complete (10-03) |
 | OPEN-101 | Phase 10 | Done (10-02) |
 | OPEN-102 | Phase 10 | Done (10-02) |
 | OPEN-103 | Phase 10 | Done (10-02) |
