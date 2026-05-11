@@ -12,7 +12,6 @@
 import { Hono } from 'hono';
 import { getDatabase } from '../db/index.js';
 import { SOURCE_CAPABILITIES } from '../config/capabilities.js';
-import { getServiceContext } from '../index.js';
 
 export const overviewRoutes = new Hono();
 
@@ -524,8 +523,15 @@ overviewRoutes.get('/api/v1/overview/agents', (c) => {
 // 8. GET /api/v1/overview/status (OPEN-103)
 // ============================================================================
 
-overviewRoutes.get('/api/v1/overview/status', (c) => {
-  const ctx = getServiceContext();
+overviewRoutes.get('/api/v1/overview/status', async (c) => {
+  // Dynamic import to avoid circular dependency with index.ts at module load time
+  let ctx: any = null;
+  try {
+    const mod = await import('../index.js');
+    ctx = mod.getServiceContext();
+  } catch {
+    // Service context not available (e.g. in test environment without full service)
+  }
 
   // Ingest status
   const ingest = {
