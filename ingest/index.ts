@@ -14,6 +14,7 @@ import { sessionsRoutes } from './api/sessions.js';
 import { turnsRoutes } from './api/turns.js';
 import { agentsRoutes } from './api/agents.js';
 import { starsRoutes } from './api/stars.js';
+import { overviewRoutes } from './api/overview.js';
 import { eventsRoutes } from './api/routes/events.js';
 import { rateLimiter } from './api/middleware/rate-limit.js';
 import { createWatcher } from './src/watcher.js';
@@ -82,6 +83,7 @@ app.route('/', starsRoutes);
 app.route('/', sessionsRoutes);
 app.route('/', turnsRoutes);
 app.route('/', agentsRoutes);
+app.route('/', overviewRoutes);
 
 // Mount SSE event routes (global + per-session streams)
 app.route('/', eventsRoutes);
