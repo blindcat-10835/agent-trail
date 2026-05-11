@@ -23,12 +23,16 @@ import type { AgentToolId, SourceToolId } from '@/lib/agent-tools/types'
 import type { TraceSession, TraceSource } from '@/types/trace'
 import { TOOL_IDS } from '@/lib/agent-tools/registry'
 
+export type RailScope = 'recent' | 'starred' | 'live'
+
 interface SessionsRightRailProps {
+  railScope: RailScope
   selectedSessionId: string | null
   onClearSelection: () => void
 }
 
 export function SessionsRightRail({
+  railScope,
   selectedSessionId,
   onClearSelection,
 }: SessionsRightRailProps) {
@@ -37,6 +41,7 @@ export function SessionsRightRail({
   if (toolId === 'all') {
     return (
       <AggregateSessionsRightRail
+        railScope={railScope}
         selectedSessionId={selectedSessionId}
         onClearSelection={onClearSelection}
       />
@@ -45,6 +50,7 @@ export function SessionsRightRail({
 
   return (
     <SourceSessionsRightRail
+      railScope={railScope}
       selectedSessionId={selectedSessionId}
       onClearSelection={onClearSelection}
       sourceToolId={toolId}
@@ -53,6 +59,7 @@ export function SessionsRightRail({
 }
 
 function AggregateSessionsRightRail({
+  railScope,
   selectedSessionId,
   onClearSelection,
 }: SessionsRightRailProps) {
@@ -85,6 +92,7 @@ function AggregateSessionsRightRail({
   return (
     <SessionsRailContent
       definitionLabel={definition.shortLabel}
+      railScope={railScope}
       sessions={sessions}
       loading={loading || syncing}
       error={syncError ?? error}
@@ -104,6 +112,7 @@ function AggregateSessionsRightRail({
 }
 
 function SourceSessionsRightRail({
+  railScope,
   selectedSessionId,
   onClearSelection,
   sourceToolId,
@@ -140,6 +149,7 @@ function SourceSessionsRightRail({
   return (
     <SessionsRailContent
       definitionLabel={definition.shortLabel}
+      railScope={railScope}
       sessions={sessions}
       loading={loading || syncing}
       error={syncError ?? error}
@@ -165,6 +175,7 @@ interface GroupSection {
 
 function SessionsRailContent({
   definitionLabel,
+  railScope,
   sessions,
   loading,
   error,
@@ -181,6 +192,7 @@ function SessionsRailContent({
   loadMore,
 }: {
   definitionLabel: string
+  railScope: RailScope
   sessions: TraceSession[]
   loading: boolean
   error: string | null
