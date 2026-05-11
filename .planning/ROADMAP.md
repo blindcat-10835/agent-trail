@@ -33,7 +33,7 @@
 | # | Phase | Goal | Requirements |
 |---|-------|------|--------------|
 | 10 | Rich Ingest Metrics & Data Contracts | 扩展 schema、聚合查询、BFF contract 和 migration，为 Overview/Session Detail 提供真实数据。 | DATA-101..106, TURN-101..105, OPEN-101..103, TEST-101, TEST-104 |
-| 11 | HUD Shell & Design System Foundation | 将 Terminal × HUD 设计系统落到共享 shell、source switcher、sidebar、status bar、right rail。 | UI-101..104 |
+| 11 | 2/2 | Complete   | 2026-05-11 |
 | 12 | Overview v2 Real Data | 用真实 BFF-backed data 实现新版 Overview：KPI、usage/cost、ranking、timeline、stars、agents、automations。 | OVR-101..105 |
 | 13 | Sessions Table & Trace Detail v2 | 改造 Sessions indexed table 和 Session Detail trace thread，同时保留 v1.0 replay 能力。 | SES-101..105 |
 | 14 | Visual QA & Integration Hardening | 完成 light/dark、source switching、a11y、长 session、回归测试和视觉验证。 | SES-106, TEST-102, TEST-103 |
@@ -65,11 +65,11 @@ Plans:
 
 **Requirements:** UI-101, UI-102, UI-103, UI-104
 
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 11-01-PLAN.md — Design tokens + status bar real data (Wave 1)
-- [ ] 11-02-PLAN.md — Right rail scope tabs + source-color spines (Wave 1)
+- [x] 11-02-PLAN.md — Right rail scope tabs + source-color spines (Wave 1)
 
 **Success criteria:**
 1. Global tokens, typography, grid/scanline backdrop, HUD clip utilities, and status palettes match the design notes.

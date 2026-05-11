@@ -34,7 +34,7 @@
 - [x] **UI-101**: User sees the production app using the Terminal × HUD visual system from `.planning/designs/design-notes.md`: OKLCH semantic tokens, chartreuse accent, grid and scanline backdrop, clipped HUD corners, mono data typography, terse technical copy, and no emoji.
 - [x] **UI-102**: User can switch between `all`, `openclaw`, `claude-code`, and `codex` from a shared header while preserving the existing `/(tool-shell)/[tool]` route model.
 - [x] **UI-103**: User sees source-aware sidebar navigation, sync control, theme toggle, right-rail toggle, and always-visible status bar that match the draft shell prototype.
-- [ ] **UI-104**: User can use the right rail to switch between recent, starred, and live session scopes with status counts, source-color spines, and click-through into session detail.
+- [x] **UI-104**: User can use the right rail to switch between recent, starred, and live session scopes with status counts, source-color spines, and click-through into session detail.
 
 ### Overview Redesign
 
@@ -108,7 +108,7 @@
 | UI-101 | Phase 11 | Pending |
 | UI-102 | Phase 11 | Pending |
 | UI-103 | Phase 11 | Pending |
-| UI-104 | Phase 11 | Pending |
+| UI-104 | Phase 11 | Complete |
 | OVR-101 | Phase 12 | Pending |
 | OVR-102 | Phase 12 | Pending |
 | OVR-103 | Phase 12 | Pending |

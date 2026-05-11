@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
-status: executing
-last_updated: "2026-05-12T18:48:00.000Z"
+status: verifying
+last_updated: "2026-05-11T18:56:13.846Z"
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # agent-tracing-dashboard Project State
@@ -35,9 +35,9 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Phase:** 11 (HUD Shell & Design System Foundation) — in progress
 
-**Plan:** 01 complete (1/2)
+**Plan:** 02 complete (2/2)
 
-**Status:** Phase 11 Plan 01 complete — design tokens verified, status bar wired to real data
+**Status:** Phase 11 Plan 02 complete — right rail scope tabs + source-color spines
 
 **Progress Bar:**
 
@@ -52,9 +52,9 @@ v1.1:                [▓▓░░░░░░░░] 25% (5/5 plans in Phase 10
   - 10-02: Overview aggregate endpoints + tests — ✓ Complete
   - 10-03: Session/turn enrichment + FTS5 search — ✓ Complete
   - 10-04: BFF proxy routes for overview & search — ✓ Complete
-- Phase 11: HUD Shell & Design System Foundation — In Progress (1/2 plans)
+- Phase 11: HUD Shell & Design System Foundation — Complete (2/2 plans)
   - 11-01: Design tokens + status bar real data — ✓ Complete
-  - 11-02: Right rail scope tabs + source-color spines — Planned
+  - 11-02: Right rail scope tabs + source-color spines — ✓ Complete
 
 ---
 
@@ -151,20 +151,21 @@ None currently known.
 
 ## Session Continuity
 
-**Last Session**: 2026-05-12 — Executing Phase 11, Plan 01 complete
+**Last Session**: 2026-05-12 — Executing Phase 11, Plan 02 complete
 
 **What Was Done:**
 
 - Executed Plan 11-01: Design tokens + status bar real data
-- Added status palette CSS variables to both light/dark themes in globals.css
-- Wired useIngestStatus hook into ShellStatusBar for real connection state
-- Removed hardcoded fake metrics (MEM 42.1MB, FPS 60)
-- Applied tabular-nums to dynamic values
-- Verified all existing OKLCH tokens match design-notes exactly
+- Executed Plan 11-02: Right rail scope tabs + source-color spines
+- Added RailScope type and state to ui-store (recent/starred/live)
+- Built scope tab bar with accent-active highlight
+- Implemented scope-based session filtering (STARRED=starredIds, LIVE=status=active, RECENT=all)
+- Added source-color spines on session entries (green/chartreuse/cyan)
 
 **What's Next:**
 
-- Phase 11, Plan 02: Right rail scope tabs + source-color spines
+- Phase 11 is complete (2/2 plans done)
+- Awaiting next phase planning
 
 ---
 
