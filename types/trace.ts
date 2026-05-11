@@ -117,6 +117,14 @@ export interface TraceSession {
   agentName?: string;
   metrics: SessionMetrics;
   turns: TraceTurn[];
+
+  // Phase 10 enrichment fields (computed at query time)
+  displayTitle?: string;
+  durationMs?: number | null;
+  totalTurns?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  estimatedCost?: number | null;
 }
 
 // ============================================================================
@@ -141,6 +149,26 @@ export interface TraceTurn {
   tokenUsage?: TokenUsage;
   /** True if turn was truncated by a compact boundary (D-10) */
   isTruncated?: boolean;
+  /** Phase 10 enrichment: per-turn computed metadata */
+  enrichment?: TurnEnrichment;
+}
+
+/**
+ * Per-turn enrichment computed at query time (Phase 10).
+ * Contains activity counts, failure status, and warning flags
+ * for the compact turn header and inspector.
+ */
+export interface TurnEnrichment {
+  activityCounts: {
+    toolCalls: number;
+    skills: number;
+    subagents: number;
+    thinking: number;
+    system: number;
+  };
+  failureStatus: 'success' | 'error' | 'partial';
+  truncated: boolean;
+  warningStatus: boolean;
 }
 
 // ============================================================================
@@ -218,6 +246,8 @@ export interface TraceToolCall {
   messageOrdinal?: number;
   /** Source line number for diagnostics */
   sourceLine?: number;
+  /** Human-readable tool label for UI display (Phase 10 enrichment) */
+  displayName?: string;
 }
 
 /**
@@ -243,6 +273,12 @@ export interface TraceSkillUse {
   inputSummary: string;
   result?: string;
   status: 'success' | 'error';
+  /** Human-readable skill label for UI display (Phase 10 enrichment) */
+  displayName?: string;
+  /** Duration of skill execution in milliseconds (Phase 10 enrichment) */
+  durationMs?: number;
+  /** Error message if skill execution failed (Phase 10 enrichment) */
+  error?: string;
 }
 
 // ============================================================================
@@ -259,6 +295,8 @@ export interface TraceSubagentLink {
   relationship: 'spawned' | 'attached';
   /** Ordinal of the message that spawned or attached the subagent, when known. */
   messageOrdinal?: number;
+  /** Duration of subagent session in milliseconds (Phase 10 enrichment) */
+  durationMs?: number;
 }
 
 // ============================================================================

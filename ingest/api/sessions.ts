@@ -53,9 +53,9 @@ sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
     SELECT
       id, source, project, name, started_at, ended_at, status,
       root_session_id, parent_session_id, relationship_type, source_session_id,
-      message_count, user_message_count, total_output_tokens, has_tool_calls,
-      parser_malformed_lines, is_truncated, termination_status,
-      last_sync_at, file_mtime,
+      message_count, user_message_count, total_output_tokens, total_input_tokens,
+      has_tool_calls, parser_malformed_lines, is_truncated, termination_status,
+      last_sync_at, file_mtime, cwd, git_branch, agent_name,
       ${UPDATED_AT_EXPR} as updated_at
     FROM sessions
     WHERE source = ? AND (id = ? OR source_session_id = ?)
@@ -170,9 +170,9 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
     SELECT
       id, source, project, name, started_at, ended_at, status,
       root_session_id, parent_session_id, relationship_type, source_session_id,
-      message_count, user_message_count, total_output_tokens, has_tool_calls,
-      parser_malformed_lines, is_truncated, termination_status,
-      last_sync_at, file_mtime,
+      message_count, user_message_count, total_output_tokens, total_input_tokens,
+      has_tool_calls, parser_malformed_lines, is_truncated, termination_status,
+      last_sync_at, file_mtime, cwd, git_branch, agent_name,
       ${UPDATED_AT_EXPR} as updated_at
     FROM sessions
     ${whereClause}
@@ -243,9 +243,9 @@ sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
     SELECT
       id, source, project, name, started_at, ended_at, status,
       root_session_id, parent_session_id, relationship_type, source_session_id,
-      message_count, user_message_count, total_output_tokens, has_tool_calls,
-      parser_malformed_lines, is_truncated, termination_status,
-      last_sync_at, file_mtime,
+      message_count, user_message_count, total_output_tokens, total_input_tokens,
+      has_tool_calls, parser_malformed_lines, is_truncated, termination_status,
+      last_sync_at, file_mtime, cwd, git_branch, agent_name,
       ${UPDATED_AT_EXPR} as updated_at
     FROM sessions
     WHERE id = ?
@@ -280,6 +280,7 @@ interface SessionRow {
   message_count: number;
   user_message_count: number;
   total_output_tokens: number;
+  total_input_tokens: number;
   has_tool_calls: number;
   parser_malformed_lines: number;
   is_truncated: number;
@@ -287,6 +288,9 @@ interface SessionRow {
   last_sync_at: string | null;
   file_mtime: string | null;
   updated_at: string | null;
+  cwd: string | null;
+  git_branch: string | null;
+  agent_name: string | null;
 }
 
 // ============================================================================
@@ -294,6 +298,9 @@ interface SessionRow {
 // ============================================================================
 
 function parseSessionRow(row: SessionRow): TraceSession {
+  const inputTokens = row.total_input_tokens || 0;
+  const outputTokens = row.total_output_tokens || 0;
+
   return {
     id: row.id,
     source: row.source as TraceSource,
@@ -308,15 +315,27 @@ function parseSessionRow(row: SessionRow): TraceSession {
     parentSessionId: row.parent_session_id || undefined,
     relationshipType: (row.relationship_type as TraceSession['relationshipType']) || undefined,
     sourceSessionId: row.source_session_id || undefined,
+    cwd: row.cwd || undefined,
+    gitBranch: row.git_branch || undefined,
+    agentName: row.agent_name || undefined,
     metrics: {
       messageCount: row.message_count,
       userMessageCount: row.user_message_count,
-      totalTokens: row.total_output_tokens,
+      totalTokens: inputTokens + outputTokens,
       hasToolCalls: row.has_tool_calls === 1,
       terminationStatus: row.termination_status || undefined,
       parserMalformedLines: row.parser_malformed_lines,
       isTruncated: row.is_truncated === 1
     },
-    turns: [] // Turns loaded separately via /sessions/:id/turns
+    turns: [], // Turns loaded separately via /sessions/:id/turns
+    // Phase 10 enrichment fields
+    displayTitle: row.name || `${row.project} — ${row.started_at?.split('T')[0] || 'unknown'}`,
+    durationMs: row.started_at && row.ended_at
+      ? new Date(row.ended_at).getTime() - new Date(row.started_at).getTime()
+      : null,
+    totalTurns: row.user_message_count,
+    inputTokens,
+    outputTokens,
+    estimatedCost: null, // Placeholder per CONTEXT.md decision
   };
 }
