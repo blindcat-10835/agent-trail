@@ -91,6 +91,11 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.88 0.005 90);
   --border-strong: oklch(0.78 0.006 90);
+  /* Status palette — used inline in components, not as Tailwind semantic tokens */
+  --status-success: oklch(0.76 0.17 145);
+  --status-warning: oklch(0.76 0.17 75);
+  --status-parser-warning: oklch(0.76 0.17 55);
+  /* Error uses --destructive directly, no separate token */
   --input: oklch(0.88 0.005 90);
   --ring: oklch(0.62 0.17 65);
   --chart-1: oklch(0.87 0 0);
@@ -131,6 +136,11 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(0.3 0.008 160);
   --border-strong: oklch(0.4 0.01 160);
+  /* Status palette — used inline in components, not as Tailwind semantic tokens */
+  --status-success: oklch(0.82 0.17 145);
+  --status-warning: oklch(0.82 0.17 75);
+  --status-parser-warning: oklch(0.82 0.17 55);
+  /* Error uses --destructive directly, no separate token */
   --input: oklch(0.3 0.008 160);
   --ring: oklch(0.8 0.17 75);
   --chart-1: oklch(0.87 0 0);
