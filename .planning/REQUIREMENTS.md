@@ -13,7 +13,7 @@
 - [ ] **DATA-103**: User can fetch top project rankings scoped by source and time window, including session count, turn count, token totals, estimated cost, and relative rank weight.
 - [ ] **DATA-104**: User can fetch recent starred sessions scoped by source or `all`, including title, project, model, status, recency, and starred timestamp.
 - [ ] **DATA-105**: User can fetch a mixed activity timeline scoped by source or `all`, covering session start/resume/finish/failure, parser or sync errors, and automation events where local source data exists.
-- [ ] **DATA-106**: User can fetch source capability metadata that tells the frontend which overview modules are available for each tool, including agents, automations, costs, activity, sessions, and replay.
+- [x] **DATA-106**: User can fetch source capability metadata that tells the frontend which overview modules are available for each tool, including agents, automations, costs, activity, sessions, and replay.
 
 ### Session And Turn Enrichment
 
@@ -58,7 +58,7 @@
 - [ ] **TEST-101**: Developer can run ingest regression tests covering overview aggregate queries, time-window math, source filters, cost/token fallbacks, top rankings, starred sessions, and timeline events.
 - [ ] **TEST-102**: Developer can run frontend tests or Playwright checks for shell chrome, overview, sessions table, and session detail in both light and dark themes.
 - [ ] **TEST-103**: Developer can run the existing v1.0 parser, API, BFF, replay, sync, and security tests without regressions.
-- [ ] **TEST-104**: Developer can migrate an existing local SQLite index through additive schema/index changes and cache invalidation without manually deleting the database.
+- [x] **TEST-104**: Developer can migrate an existing local SQLite index through additive schema/index changes and cache invalidation without manually deleting the database.
 
 ## Future Requirements
 
@@ -96,7 +96,7 @@
 | DATA-103 | Phase 10 | Pending |
 | DATA-104 | Phase 10 | Pending |
 | DATA-105 | Phase 10 | Pending |
-| DATA-106 | Phase 10 | Pending |
+| DATA-106 | Phase 10 | Done (10-01) |
 | TURN-101 | Phase 10 | Pending |
 | TURN-102 | Phase 10 | Pending |
 | TURN-103 | Phase 10 | Pending |
@@ -123,7 +123,7 @@
 | TEST-101 | Phase 10 | Pending |
 | TEST-102 | Phase 14 | Pending |
 | TEST-103 | Phase 14 | Pending |
-| TEST-104 | Phase 10 | Pending |
+| TEST-104 | Phase 10 | Done (10-01) |
 
 **Coverage:**
 - v1.1 requirements: 33 total
