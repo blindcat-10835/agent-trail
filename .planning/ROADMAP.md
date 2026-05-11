@@ -65,6 +65,12 @@ Plans:
 
 **Requirements:** UI-101, UI-102, UI-103, UI-104
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Design tokens + status bar real data (Wave 1)
+- [ ] 11-02-PLAN.md — Right rail scope tabs + source-color spines (Wave 1)
+
 **Success criteria:**
 1. Global tokens, typography, grid/scanline backdrop, HUD clip utilities, and status palettes match the design notes.
 2. Header, source switcher, sidebar, status bar, sync/theme/right-rail controls, and right rail match the draft shell behavior.
@@ -124,7 +130,7 @@ Plans:
 | 8. Real-data Repair | v1.0 | 5/5 | Complete | 2026-05-10 |
 | 9. Batch 2 Fixes | v1.0 | 5/5 | Complete | 2026-05-10 |
 | 10. Rich Ingest Metrics | v1.1 | 4/4 | Complete | 2026-05-12 |
-| 11. HUD Shell Foundation | v1.1 | 0/TBD | Planned | — |
+| 11. HUD Shell Foundation | v1.1 | 0/2 | Planned | — |
 | 12. Overview v2 | v1.1 | 0/TBD | Planned | — |
 | 13. Sessions & Trace Detail v2 | v1.1 | 0/TBD | Planned | — |
 | 14. Visual QA & Hardening | v1.1 | 0/TBD | Planned | — |
