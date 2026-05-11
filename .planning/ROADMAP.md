@@ -1,455 +1,59 @@
 # agent-tracing-dashboard Roadmap
 
 **Project**: agent-tracing-dashboard
-**Version**: 1.0
-**Last Updated**: 2026-05-06
-**Status**: Planned
-**Granularity**: Standard
-
-## Vision
-
-Build agent-tracing-dashboard as a local multi-source AI agent session tracing dashboard. v1 focuses on OpenClaw, Claude Code, and Codex: users can switch between sources from the header, browse local sessions, and replay each turn with user input, agent response, tool/skill/subagent activity, and failure reasons.
-
-## Project Scope
-
-**In Scope**:
-
-- OpenClaw / Claude Code / Codex 三个 source dashboard
-- OpenClaw live overview 保真增强
-- 独立 Node/TypeScript ingest service + SQLite WAL/FTS5 + REST/SSE
-- OpenClaw / Claude Code / Codex parser 和 canonical trace model
-- Turn-first session replay API 和 UI
-- Shared frontend architecture：`[tool]` routes、AgentToolProvider、shared Session Explorer、shared Replay blocks
-- 本地同步、source health、parse errors、隐私和路径安全
-
-**Out of Scope**:
-
-- SaaS observability 平台、multi-user auth、public share links
-- Tool rerun、prompt playground、model execution replay
-- v1 支持全部 agentsview agent 类型
-- OTLP/OpenTelemetry ingestion server
-- AI evals / LLM-as-judge insights
-- 移动端专项和 3D/WebGL 可视化
+**Last Updated**: 2026-05-12
 
 ## Milestones
 
-### M1: Trace Foundation (Phases 1-3)
-
-**Goal**: 先把本地 trace 数据面做对，固定合同、parser、索引和 turn read model。
-
-**Deliverables**:
-
-- Trace Contract 和 fixture corpus
-- Node/TypeScript ingest service skeleton
-- SQLite schema 和 REST API 基础
-- OpenClaw / Claude Code / Codex parser
-- Turn assembler 和 canonical replay DTO
-
-**Success Criteria**:
-
-- [ ] 三个 source 的 fixture 都能解析为同一个 canonical model
-- [ ] API 可列出 sessions 并返回 turn replay 数据
-- [ ] tool/result/subagent 关系不依赖前端字符串猜测
-
----
-
-### M2: Multi-source UI (Phases 4-5)
-
-**Goal**: Migrate the frontend from single-source OVAO dashboard to multi-source tracing dashboard and provide a usable turn replay experience.
-
-**Deliverables**:
-
-- `/openclaw/*`、`/claude-code/*`、`/codex/*` 路由和 header source switcher
-- AgentToolProvider / UI profile / capability gates
-- Shared Session Explorer
-- Virtualized Turn Replay UI
-- Tool/skill/subagent/activity blocks
-
-**Success Criteria**:
-
-- [ ] 用户能在三个 source 间切换并看到各自 session surface
-- [ ] OpenClaw overview 信息不退化
-- [ ] 任意已解析 session 能按 turn 回放
-
----
-
-### M3: Realtime & Hardening (Phase 6)
-
-**Goal**: 把本地同步、SSE、OpenClaw drilldown、性能和隐私边界补齐到可长期使用。
-
-**Deliverables**:
-
-- chokidar/Node watcher + periodic resync + source health UI
-- Global/session SSE invalidation
-- OpenClaw overview 到 replay 的 drilldown
-- Fixture regression、长 session 性能、path safety 和隐私默认值
-
-**Success Criteria**:
-
-- [ ] 活跃 session 更新能在 UI 中刷新
-- [ ] 长 session 不明显卡顿
-- [ ] API 不允许任意路径读取
-
----
-
-## Coverage
-
-**v1 Requirements Mapped**: 43/43 (100%)
-**Requirements Complete**: 4/43 (9%)
-
-| Requirement | Phase   | Status  |
-| ----------- | ------- | ------- |
-| FOUND-01    | Phase 1 | Pending |
-| FOUND-02    | Phase 1 | Pending |
-| FOUND-03    | Phase 1 | Pending |
-| FOUND-04    | Phase 1 | Pending |
-| FOUND-05    | Phase 1 | Pending |
-| DATA-01     | Phase 2 | Complete |
-| DATA-02     | Phase 2 | Complete |
-| DATA-03     | Phase 2 | In Progress (OpenClaw only) |
-| DATA-04     | Phase 6 | Pending |
-| DATA-05     | Phase 2 | Pending |
-| DATA-06     | Phase 6 | Pending |
-| DATA-07     | Phase 6 | Pending |
-| SRC-01      | Phase 2 | Complete |
-| SRC-02      | Phase 3 | Pending |
-| SRC-03      | Phase 3 | Pending |
-| SRC-04      | Phase 3 | Pending |
-| SRC-05      | Phase 3 | Pending |
-| TURN-01     | Phase 3 | Pending |
-| TURN-02     | Phase 3 | Pending |
-| TURN-03     | Phase 3 | Pending |
-| TURN-04     | Phase 5 | Pending |
-| TURN-05     | Phase 5 | Pending |
-| TURN-06     | Phase 5 | Pending |
-| UI-01       | Phase 4 | Pending |
-| UI-02       | Phase 4 | Pending |
-| UI-03       | Phase 4 | Pending |
-| UI-04       | Phase 4 | Pending |
-| UI-05       | Phase 4 | Pending |
-| OPEN-01     | Phase 4 | Pending |
-| OPEN-02     | Phase 6 | Pending |
-| OPEN-03     | Phase 6 | Pending |
-| REPLAY-01   | Phase 5 | Pending |
-| REPLAY-02   | Phase 5 | Pending |
-| REPLAY-03   | Phase 5 | Pending |
-| REPLAY-04   | Phase 5 | Pending |
-| REPLAY-05   | Phase 5 | Pending |
-| REPLAY-06   | Phase 5 | Pending |
-| REPLAY-07   | Phase 5 | Pending |
-| HARD-01     | Phase 6 | Pending |
-| HARD-02     | Phase 6 | Pending |
-| HARD-03     | Phase 6 | Pending |
-| HARD-04     | Phase 6 | Pending |
-| HARD-05     | Phase 6 | Pending |
-
-**Orphaned Requirements**: 0
-**Unmapped Requirements**: 0
-
----
-
-## Dependencies
-
-```text
-Phase 1: Trace Contract & Brownfield Reset
-    ↓
-Phase 2: Local Ingest Core + OpenClaw Parser
-    ↓
-Phase 3: Claude/Codex Parsers + Turn Assembly
-    ↓
-Phase 4: Multi-source Frontend Shell + Session Explorer
-    ↓
-Phase 5: Turn Replay UI
-    ↓
-Phase 6: Sync, OpenClaw Drilldown & Hardening
-```
-
-**Parallel Execution**:
-
-- Phase 4 UI architecture can start once Phase 1 contracts are stable, but should not finalize data hooks until Phase 2/3 API shapes exist.
-- Phase 5 replay UI depends on Phase 3 turn DTOs and Phase 4 route/provider structure.
-- Phase 6 hardening depends on all prior phases.
-
----
-
-## Phase Details
-
-### Phase 1: Trace Contract & Brownfield Reset
-
-**Goal**: Reframe the project from OVAO into agent-tracing-dashboard, lock the canonical trace/turn contract, and create parser fixtures before implementing data or UI against unstable shapes.
-
-**Status**: Planned
-
-**Requirements**: FOUND-01, FOUND-02, FOUND-03, FOUND-04, FOUND-05
-
-**Success Criteria** (what must be TRUE):
-
-1. Project docs, visible product labels, and default entry points refer to agent-tracing-dashboard while keeping OpenClaw as one source.
-2. TypeScript trace contract is documented with Source, Session, Turn, Message, ToolCall, SkillUse, Subagent, Activity, TokenUsage, Timing metadata, and remains portable enough to compare with agentsview fixtures.
-3. Fixture corpus exists for OpenClaw, Claude Code, and Codex with golden expected canonical output.
-4. Existing OpenClaw overview capabilities are listed as preserved contracts, not accidental legacy behavior.
-5. Source status taxonomy covers installed/configured/empty/indexing/error/parser-warning states.
-
-**Plans**: 4 plans
-
-- [X] 01-01-PLAN.md — Define canonical trace contract and set up test infrastructure
-- [ ] 01-02-PLAN.md — Create fixture corpus and parser validation infrastructure
-- [ ] 01-03-PLAN.md — Document preserved OpenClaw overview capabilities
-- [ ] 01-04-PLAN.md — Update project documentation and visible labels to agent-tracing-dashboard
-
-**UI hint**: yes
-
----
-
----
-
-### Phase 2: Local Ingest Core + OpenClaw Parser
-
-**Goal**: Build the local ingest service foundation and migrate OpenClaw history parsing from request-time JSONL scanning to indexed, queryable session/turn data.
-
-**Status**: In Progress (2/5 plans complete)
-
-**Depends on**: Phase 1
-
-**Requirements**: DATA-01, DATA-02, DATA-03, DATA-05, SRC-01
-
-**Success Criteria** (what must be TRUE):
-
-1. `ingest/` Node/TypeScript service starts locally and exposes health/version/sources/events endpoints.
-2. SQLite schema stores sessions, messages, tool calls, tool result events, turns, source metadata, and sync state.
-3. OpenClaw source discovery supports default path plus env/config override.
-4. OpenClaw parser handles session headers, messages, toolResult role, usage normalization, agent-scoped session ids, and archive suffixes.
-5. REST API can list OpenClaw sessions and return turn-first replay DTOs from SQLite.
-
-**Plans**: 5 plans
-
-- [X] 02-01-PLAN.md — Ingest service skeleton + SQLite schema + health/version endpoints
-- [X] 02-02-PLAN.md — OpenClaw source discovery + parser (database storage deferred to 02-03)
-- [x] 02-02b-PLAN.md — Turn assembler (group messages into turns, pair tool calls with results)
-- [x] 02-03-PLAN.md — REST API (sessions, turns, messages) + database integration
-- [x] 02-04-PLAN.md — Local file discovery + watcher + auto-ingest
-
-**UI hint**: no
-
----
-
-### Phase 3: Claude/Codex Parsers + Turn Assembly
-
-**Goal**: Add Claude Code and Codex parser parity and produce reliable turn-level replay data across all three sources.
-
-**Status**: Pending
-
-**Depends on**: Phase 2
-
-**Requirements**: SRC-02, SRC-03, SRC-04, SRC-05, TURN-01, TURN-02, TURN-03
-
-**Success Criteria** (what must be TRUE):
-
-1. Claude Code parser handles DAG/fork/continuation, queued command, compact/system boundary, streaming duplicate collapse, subagent mapping, truncation and malformed lines.
-2. Codex parser handles session_meta, turn_context, response_item, event_msg, function calls, function outputs, spawn_agent/wait/subagent notification, token_count dedupe and termination status.
-3. All three parsers output canonical Message, ToolCall, ToolResultEvent, SubagentLink, source metadata and parser warning fields.
-4. Turn assembler groups user message, assistant responses, tool calls, result events and subagent references without UI-side guessing.
-5. Parser fixture tests pass for OpenClaw, Claude Code and Codex golden outputs.
-
-**Plans**: 5 plans
-
-Plans:
-- [x] 03-01-PLAN.md — Parser types extension + source discovery functions
-- [x] 03-02-PLAN.md — Claude Code JSONL parser (DAG, dedup, compact, subagent)
-- [x] 03-03-PLAN.md — Codex JSONL parser (turn_context, function_call, spawn_agent)
-- [x] 03-04-PLAN.md — Enhanced turn assembler + sync pipeline wiring
-- [x] 03-05-PLAN.md — Parser fixture tests (Claude + Codex golden outputs)
-
-**UI hint**: no
-
----
-
-### Phase 4: Multi-source Frontend Shell + Session Explorer
-
-**Goal**: Reshape the Next.js frontend into a reusable multi-source dashboard shell and connect session browsing to the ingest API.
-
-**Status**: Planned
-
-**Depends on**: Phase 1, Phase 2
-
-**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, OPEN-01
-
-**Success Criteria** (what must be TRUE):
-
-1. Header source switcher supports OpenClaw, Claude Code and Codex, with source-specific labels and status.
-2. Source-first routes exist for `/openclaw/*`, `/claude-code/*`, `/codex/*`, with legacy redirects from old routes.
-3. AgentToolProvider/registry/capabilities/UI profiles drive nav items, empty states, columns and source-specific slots.
-4. Shared Session Explorer lists and filters sessions from ingest API by source, project/workspace, model, status, time, search and failure/tool/subagent facets.
-5. OpenClaw overview remains available and retains existing Agent/KPI/Sessions/Cron/Skills/Activity information.
-
-**Plans**: 5 plans
-
-Plans:
-- [ ] 04-01-PLAN.md — Define AgentTool types, registry, and per-tool definitions
-- [ ] 04-02-PLAN.md — BFF API proxy routes and legacy redirects
-- [ ] 04-03-PLAN.md — Shell migration, source switcher, and profile-driven navigation
-- [ ] 04-04-PLAN.md — Shared Session Explorer with BFF-backed data hooks
-- [ ] 04-05-PLAN.md — Aggregate landing page and per-tool dashboard pages
-
-**UI hint**: yes
-
----
-
-### Phase 5: Turn Replay UI
-
-**Goal**: Implement the main user-facing replay experience: a virtualized turn timeline that shows each user-agent exchange with tools, skills, subagents and activity in context.
-
-**Status**: Pending
-
-**Depends on**: Phase 3, Phase 4
-
-**Requirements**: TURN-04, TURN-05, TURN-06, REPLAY-01, REPLAY-02, REPLAY-03, REPLAY-04, REPLAY-05, REPLAY-06, REPLAY-07
-
-**Success Criteria** (what must be TRUE):
-
-1. Session replay page renders turn cards with user input, assistant response and structured activity blocks.
-2. Tool blocks show category/name, input, output/result events, status/error/duration and copy action.
-3. Skill blocks show skill name, input summary and result/status.
-4. Subagent blocks lazy-load child session replay and allow opening the child as a full session, with bounded nesting.
-5. Long sessions use virtualization or range pagination without scroll/cache corruption when filters or sessions change.
-6. In-session search, block filters, next/previous turn navigation and copy turn/message/tool are usable.
-7. Running/awaiting-user/aborted/error/truncated/parser-warning states are visible in replay.
-
-**Plans**: 4 plans
-
-Plans:
-- [x] 05-01-PLAN.md — Data Foundation (BFF pagination, useSessionTurns hook, useReplayStore, dependencies)
-- [x] 05-02-PLAN.md — Page Shell + Header + Status + Right Rail (route, ReplayHeader, ReplayRightRail, navigation wiring)
-- [x] 05-03-PLAN.md — Turn Cards + Activity Blocks (TurnCard, TurnTimeline, ToolBlock, SkillBlock, SubagentBlock, ThinkingBlock, SystemEventBlock)
-- [x] 05-04-PLAN.md — Virtualization + Search + Filters + Navigation (@tanstack/react-virtual, ReplaySearchBar, ReplayFilterBar, TurnNavigator)
-
-**UI hint**: yes
-
----
-
-### Phase 6: Sync, OpenClaw Drilldown & Hardening
-
-**Goal**: Make the dashboard reliable as a local daily-use tool by adding incremental sync, SSE refresh, OpenClaw live-to-history drilldown, security boundaries and regression/performance checks.
-
-**Status**: Planned
-
-**Depends on**: Phase 5
-
-**Requirements**: DATA-04, DATA-06, DATA-07, OPEN-02, OPEN-03, HARD-01, HARD-02, HARD-03, HARD-04, HARD-05
-
-**Success Criteria** (what must be TRUE):
-
-1. ingest service uses chokidar/Node watcher + debounce + periodic resync fallback and exposes last sync/watch/parser error status.
-2. Frontend subscribes to global/session SSE and refreshes active session data without full-page reload.
-3. OpenClaw live sessions and activity can drill down to indexed session replay where a matching session exists.
-4. API reads only indexed sessions under configured roots and returns safe errors for unknown ids or unavailable sources.
-5. Fixture regression covers parser edge cases; performance checks cover long sessions; privacy defaults are documented in UI and docs.
-6. Development startup flow can run/connect Next.js and ingest service, and UI clearly reports ingest disconnected/starting states.
-
-**Plans**: 5 plans
-
-Plans:
-- [x] 06-01-PLAN.md — Chokidar file watcher + incremental sync + skip cache + source status API
-- [x] 06-02-PLAN.md — SSE infrastructure (ingest endpoints + event stream manager)
-- [x] 06-03-PLAN.md — API safety + rate limiting + session lookup endpoint
-- [x] 06-04-PLAN.md — Frontend SSE hooks + ingest status indicator + OpenClaw Gateway drilldown
-- [x] 06-05-PLAN.md — Parser regression tests + performance smoke tests + privacy docs + dev UX
-
-**UI hint**: yes
-
----
+- ✅ **v1.0 MVP** — Phases 1-9 (shipped 2026-05-12)
+- 📋 **v1.1** — TBD (planned)
+
+## Phases
+
+<details>
+<summary>✅ v1.0 MVP (Phases 1-9) — SHIPPED 2026-05-12</summary>
+
+- [x] Phase 1: Trace Contract & Brownfield Reset (4/4 plans) — completed 2026-05-06
+- [x] Phase 1b: Scaffolding & Toolchain (1/1 plan) — completed 2026-05-05
+- [x] Phase 2: Local Ingest Core + OpenClaw Parser (6/6 plans) — completed 2026-05-06
+- [x] Phase 3: Claude/Codex Parsers + Turn Assembly (5/5 plans) — completed 2026-05-07
+- [x] Phase 4: Multi-source Frontend Shell + Session Explorer (5/5 plans) — completed 2026-05-07
+- [x] Phase 5: Turn Replay UI (4/4 plans) — completed 2026-05-08
+- [x] Phase 6: Sync, OpenClaw Drilldown & Hardening (5/5 plans) — completed 2026-05-08
+- [x] Phase 7: M1 Residual Dashboard Bug Fixes (1/1 plan) — completed 2026-05-09
+- [x] Phase 8: Real-data Parser, Tool Persistence & Sync Refresh (5/5 plans) — completed 2026-05-10
+- [x] Phase 9: Batch 2 Session Replay & Codex Subagent Fixes (5/5 plans) — completed 2026-05-10
+
+</details>
+
+### 📋 v1.1 (Planned)
+
+_To be defined via `/gsd-new-milestone`_
+
+## Progress
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Trace Contract | v1.0 | 4/4 | Complete | 2026-05-06 |
+| 1b. Scaffolding | v1.0 | 1/1 | Complete | 2026-05-05 |
+| 2. Ingest Core | v1.0 | 6/6 | Complete | 2026-05-06 |
+| 3. Claude/Codex Parsers | v1.0 | 5/5 | Complete | 2026-05-07 |
+| 4. Multi-source Frontend | v1.0 | 5/5 | Complete | 2026-05-07 |
+| 5. Turn Replay UI | v1.0 | 4/4 | Complete | 2026-05-08 |
+| 6. Sync & Hardening | v1.0 | 5/5 | Complete | 2026-05-08 |
+| 7. Bug Fixes | v1.0 | 1/1 | Complete | 2026-05-09 |
+| 8. Real-data Repair | v1.0 | 5/5 | Complete | 2026-05-10 |
+| 9. Batch 2 Fixes | v1.0 | 5/5 | Complete | 2026-05-10 |
 
 ## Future Enhancements
 
-- Add more agents from agentsview registry.
-- Import Claude.ai / ChatGPT exports.
-- Session comparison and diff views.
-- Richer health/outcome/failure signal scoring.
-- Markdown/JSON/CSV export with redaction profiles.
-- Single-command launcher or desktop shell.
-- Optional OpenTelemetry/OpenInference exporter.
-
----
-
-## Glossary
-
-- **Source**: OpenClaw, Claude Code, Codex 等本地 agent 数据来源。
-- **Session**: 一次 agent 会话，可能来自本地 JSONL 文件或 OpenClaw active session。
-- **Turn**: 一次用户输入到 agent 产出之间的完整交换，是 replay 的核心单位。
-- **ToolCall**: agent 在 turn 中调用的工具，包含输入、状态、结果事件和错误。
-- **SkillUse**: 以 skill 形式触发的专门能力，作为独立 block 展示。
-- **Subagent**: 由父 session/turn 生成的子 agent session，可 inline 展开或作为完整 session 打开。
-- **Ingest service**: 本地独立 Node/TypeScript 服务，负责发现、解析、索引和服务 session trace 数据。
-- **Gateway**: OpenClaw WebSocket/RPC 实时状态通道。
-
-### Phase 7: M1 residual dashboard bug fixes
-
-**Goal:** Stabilize the post-M1/M2 dashboard experience by fixing the user-reported residual bugs in source switching, persistent session browsing, replay rendering, Codex session freshness, manual sync refresh, and compact session-list metadata.
-
-**Requirements**: UI-01, UI-02, UI-04, UI-05, REPLAY-01, REPLAY-02, DATA-03, DATA-04, DATA-05
-**Depends on:** Phase 6
-
-**Success Criteria** (what must be TRUE):
-
-1. Switching source from a session detail page never carries an incompatible session id into another source URL.
-2. Sessions are browsed from the persistent right rail; selecting one renders the session replay/detail in the main children area; no selection leaves the overview visible.
-3. Session replay no longer emits duplicate React key warnings, including sessions with missing/legacy message ids.
-4. Codex sessions persist parser/file/sync freshness and list by the freshest available timestamp, so recent Codex sessions are discoverable.
-5. Header sync/refresh triggers ingest sync and refreshes the currently visible session list without requiring a manual page reload.
-6. The compact session list shows session name, project directory, updated time, and tool/source.
-
-**Plans:** 1 plan
-
-Plans:
-- [x] 07-01-PLAN.md — Fix session rail/navigation, replay keys, Codex freshness, and refresh behavior
-
-### Phase 8: Real-data parser, tool persistence, and sync refresh repair
-
-**Goal:** Repair real-data replay correctness by aligning Claude/Codex parsers and fixtures with actual local JSONL formats, persisting tool calls/result events/message ids into SQLite, and making manual refresh trigger ingest sync/reindex before UI refetch.
-
-**Requirements**: DATA-02, DATA-04, DATA-05, SRC-02, SRC-03, SRC-04, SRC-05, TURN-01, TURN-03, TURN-06, REPLAY-01, REPLAY-03, HARD-01
-**Depends on:** Phase 7
-
-**Success Criteria** (what must be TRUE):
-
-1. Codex parser handles real `response_item.payload.function_call_output`, `custom_tool_call`, and `custom_tool_call_output`; reasoning/web-search entries are either modeled or ignored without noisy parser warnings.
-2. Claude parser handles real `tool_result`, `thinking`, and compact/system-boundary records from actual `~/.claude` JSONL, without relying on synthetic `session` or `type:"compact"` fixture-only shapes.
-3. Sync writes stable `messages.id`, `tool_calls`, and `tool_result_events` rows transactionally; re-sync replaces stale per-session derived rows so turn assembly reads structured activities from SQLite.
-4. Manual refresh calls an ingest sync/resync endpoint before refetching visible sessions/turns, and a safe force-reparse path exists for parser/cache-version changes.
-5. Real-data regression fixtures cover the known Claude/Codex formats from the 2026-05-08 investigation, with synthetic-only fixtures either corrected or explicitly labeled.
-6. Reported sessions verify cleanly: no `key=null` warnings for `606dac00-4f36-40e2-89c8-da91416b6b39`, the `effac644-0eb7-4fc8-9e60-6c8127d51eae` Claude session is discoverable, and tool/result rows are populated after reindex.
-
-**Plans:** 5 plans
-
-Plans:
-- [x] 08-01-PLAN.md — Real-shape fixture corpus and opt-in local session harness
-- [x] 08-02-PLAN.md — Repair Claude and Codex parsers for real JSONL formats
-- [x] 08-03-PLAN.md — Persist message ids, tool calls, result events, and force reparse
-- [x] 08-04-PLAN.md — Wire sync-first refresh through ingest API, BFF, and right rail
-- [x] 08-05-PLAN.md — Target-session verification and regression closure
-
-### Phase 9: Batch 2 session replay and Codex subagent relationship fixes
-
-**Goal:** Stabilize the batch-2 user-reported session and replay defects by fixing persisted starred sessions, all-source pagination, Markdown search highlighting, edit/diff tool rendering, and Codex subagent relationship backfill so session lists and replay blocks reflect real local data accurately.
-**Requirements**: DATA-04, DATA-05, SRC-03, SRC-04, TURN-03, TURN-04, TURN-05, REPLAY-01, REPLAY-02, REPLAY-03, REPLAY-04, REPLAY-06
-**Depends on:** Phase 8
-**Plans:** 5 plans
-
-**Success Criteria** (what must be TRUE):
-
-1. `GET /api/v1/sessions/starred` and `/api/agent-tools/all/sessions/starred` return persisted star ids instead of being captured by the session detail wildcard route.
-2. The all-source sessions right rail supports incremental pagination across OpenClaw, Claude Code, and Codex while preserving correct indexed totals independent of loaded page count.
-3. Replay search highlighting no longer passes non-string children to `ReactMarkdown`; searching turns with Markdown content does not throw runtime assertions.
-4. Edit-like tool calls render human-readable file/path and diff or patch content for Claude `Edit`/`MultiEdit`/`Write` and Codex `apply_patch`, and Codex patch tools are categorized as `Edit`.
-5. Codex subagent sessions spawned via `collab_agent_spawn_end` are backfilled as `relationship_type = 'subagent'` regardless of sync order or startup limit, and default session lists hide them like Claude Code subagents.
-6. Regression coverage includes the reported route collision, Markdown search crash, aggregate pagination behavior, edit/diff rendering formatter, and Codex parent/child relationship backfill.
-
-Plans:
-- [x] 09-01-PLAN.md — Starred session route collision repair
-- [x] 09-02-PLAN.md — All-source aggregate pagination
-- [x] 09-03-PLAN.md — Replay Markdown safety and edit tool display
-- [x] 09-04-PLAN.md — Codex patch category and subagent event anchoring
-- [x] 09-05-PLAN.md — Codex subagent relationship backfill and phase regression gate
+- Add more agents from agentsview registry (Gemini, OpenCode, Cursor, Copilot)
+- Import Claude.ai / ChatGPT exports
+- Session comparison and diff views
+- Richer health/outcome/failure signal scoring
+- Markdown/JSON/CSV export with redaction profiles
+- Single-command launcher or desktop shell
+- Optional OpenTelemetry/OpenInference exporter
 
 ---
 
