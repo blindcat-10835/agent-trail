@@ -44,6 +44,14 @@
 
 **Requirements:** DATA-101, DATA-102, DATA-103, DATA-104, DATA-105, DATA-106, TURN-101, TURN-102, TURN-103, TURN-104, TURN-105, OPEN-101, OPEN-102, OPEN-103, TEST-101, TEST-104
 
+**Plans:** 4 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — Schema migration v9→v10 + source capabilities (Wave 1)
+- [ ] 10-02-PLAN.md — Overview aggregate ingest endpoints + tests (Wave 2)
+- [ ] 10-03-PLAN.md — Session/turn enrichment + FTS5 search (Wave 2)
+- [ ] 10-04-PLAN.md — BFF proxy routes for all overview + search (Wave 3)
+
 **Success criteria:**
 1. Overview aggregate endpoints return source-scoped and `all` data for today, 7 days, and 30 days.
 2. Top models, top projects, starred sessions, mixed timeline, agent summaries, and automation summaries are available through BFF routes.
@@ -115,7 +123,7 @@
 | 7. Bug Fixes | v1.0 | 1/1 | Complete | 2026-05-09 |
 | 8. Real-data Repair | v1.0 | 5/5 | Complete | 2026-05-10 |
 | 9. Batch 2 Fixes | v1.0 | 5/5 | Complete | 2026-05-10 |
-| 10. Rich Ingest Metrics | v1.1 | 0/TBD | Planned | — |
+| 10. Rich Ingest Metrics | v1.1 | 0/4 | Planned | — |
 | 11. HUD Shell Foundation | v1.1 | 0/TBD | Planned | — |
 | 12. Overview v2 | v1.1 | 0/TBD | Planned | — |
 | 13. Sessions & Trace Detail v2 | v1.1 | 0/TBD | Planned | — |
