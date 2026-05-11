@@ -5,13 +5,13 @@
 
 ## Milestones
 
-- ✅ **v1.0 MVP** — Phases 1-9 (shipped 2026-05-12)
-- 📋 **v1.1** — TBD (planned)
+- **v1.0 MVP** — Phases 1-9, shipped 2026-05-12
+- **v1.1 Data-Rich HUD Redesign** — Phases 10-14, active
 
 ## Phases
 
 <details>
-<summary>✅ v1.0 MVP (Phases 1-9) — SHIPPED 2026-05-12</summary>
+<summary>v1.0 MVP (Phases 1-9) — SHIPPED 2026-05-12</summary>
 
 - [x] Phase 1: Trace Contract & Brownfield Reset (4/4 plans) — completed 2026-05-06
 - [x] Phase 1b: Scaffolding & Toolchain (1/1 plan) — completed 2026-05-05
@@ -26,9 +26,80 @@
 
 </details>
 
-### 📋 v1.1 (Planned)
+### v1.1 Data-Rich HUD Redesign (Active)
 
-_To be defined via `/gsd-new-milestone`_
+**Milestone goal:** 扩展 ingest 取得新版设计需要的数据，并按 `.planning/designs/design-notes.md` 与 `.planning/designs/draft-design/` 改造前端。
+
+| # | Phase | Goal | Requirements |
+|---|-------|------|--------------|
+| 10 | Rich Ingest Metrics & Data Contracts | 扩展 schema、聚合查询、BFF contract 和 migration，为 Overview/Session Detail 提供真实数据。 | DATA-101..106, TURN-101..105, OPEN-101..103, TEST-101, TEST-104 |
+| 11 | HUD Shell & Design System Foundation | 将 Terminal × HUD 设计系统落到共享 shell、source switcher、sidebar、status bar、right rail。 | UI-101..104 |
+| 12 | Overview v2 Real Data | 用真实 BFF-backed data 实现新版 Overview：KPI、usage/cost、ranking、timeline、stars、agents、automations。 | OVR-101..105 |
+| 13 | Sessions Table & Trace Detail v2 | 改造 Sessions indexed table 和 Session Detail trace thread，同时保留 v1.0 replay 能力。 | SES-101..105 |
+| 14 | Visual QA & Integration Hardening | 完成 light/dark、source switching、a11y、长 session、回归测试和视觉验证。 | SES-106, TEST-102, TEST-103 |
+
+#### Phase 10: Rich Ingest Metrics & Data Contracts
+
+**Goal:** Ingest and BFF expose the aggregate and enriched session data required by the v1.1 prototype without bypassing the existing trust boundary.
+
+**Requirements:** DATA-101, DATA-102, DATA-103, DATA-104, DATA-105, DATA-106, TURN-101, TURN-102, TURN-103, TURN-104, TURN-105, OPEN-101, OPEN-102, OPEN-103, TEST-101, TEST-104
+
+**Success criteria:**
+1. Overview aggregate endpoints return source-scoped and `all` data for today, 7 days, and 30 days.
+2. Top models, top projects, starred sessions, mixed timeline, agent summaries, and automation summaries are available through BFF routes.
+3. Session and turn payloads include the enriched fields needed for HUD header, spine, activity rows, and inspector.
+4. SQLite migration is additive and existing local indexes migrate without manual DB deletion.
+5. Ingest regression tests cover aggregate math, source filters, fallback values, and migration behavior.
+
+#### Phase 11: HUD Shell & Design System Foundation
+
+**Goal:** Establish the production visual foundation and shared chrome so every route can be rebuilt against the same source-aware HUD layout.
+
+**Requirements:** UI-101, UI-102, UI-103, UI-104
+
+**Success criteria:**
+1. Global tokens, typography, grid/scanline backdrop, HUD clip utilities, and status palettes match the design notes.
+2. Header, source switcher, sidebar, status bar, sync/theme/right-rail controls, and right rail match the draft shell behavior.
+3. Source capability metadata drives nav and section availability for `all`, OpenClaw, Claude Code, and Codex.
+4. Shell remains routed through `/(tool-shell)/[tool]` and all frontend data access still goes through BFF helpers.
+
+#### Phase 12: Overview v2 Real Data
+
+**Goal:** Replace the current dashboard overview with the prototype-aligned HUD overview powered by live ingest aggregates.
+
+**Requirements:** OVR-101, OVR-102, OVR-103, OVR-104, OVR-105
+
+**Success criteria:**
+1. Overview renders KPI hero, usage/cost rows, top models, starred sessions, activity timeline, top projects, and source-specific modules from BFF data.
+2. Source switching updates every overview panel consistently for `all`, OpenClaw, Claude Code, and Codex.
+3. Token-vs-cost ranking mode works where exposed by the UI.
+4. OpenClaw agents and automation modules appear only when capability metadata supports them.
+5. Loading, empty, error, and partial-data states preserve layout density and HUD copy tone.
+
+#### Phase 13: Sessions Table & Trace Detail v2
+
+**Goal:** Rebuild the sessions browsing and detail experience around the new indexed table and continuous trace-thread prototype.
+
+**Requirements:** SES-101, SES-102, SES-103, SES-104, SES-105
+
+**Success criteria:**
+1. Sessions page provides dense filters, sortable columns, aggregate HUD stats, source/status/star filters, and search.
+2. Session rows expose source, status, id, branch, title, summary, project, model, turn counts, token counts, cost, duration, recency, and activity glyph counts.
+3. Session Detail provides compact HUD header, command row, turn spine, continuous trace thread, inline activity rows, and collapsible inspector.
+4. v1.0 replay behaviors remain available: copy actions, safe markdown, subagent lazy navigation, keyboard navigation, and activity visibility controls.
+5. Long sessions stay usable through pagination or virtualization without layout collapse.
+
+#### Phase 14: Visual QA & Integration Hardening
+
+**Goal:** Verify the full redesigned experience across sources, themes, data states, and regression suites before marking v1.1 complete.
+
+**Requirements:** SES-106, TEST-102, TEST-103
+
+**Success criteria:**
+1. Playwright or equivalent browser checks cover shell, overview, sessions table, and session detail in light and dark themes.
+2. Source switching, right rail, keyboard focus, search, expand/collapse, and long-session scenarios are manually and/or automatically verified.
+3. Existing v1.0 parser, API, BFF, replay, sync, and security tests pass.
+4. Visual review confirms no text overflow, incoherent overlap, mock data leaks, or hardcoded prototype values remain.
 
 ## Progress
 
@@ -44,6 +115,11 @@ _To be defined via `/gsd-new-milestone`_
 | 7. Bug Fixes | v1.0 | 1/1 | Complete | 2026-05-09 |
 | 8. Real-data Repair | v1.0 | 5/5 | Complete | 2026-05-10 |
 | 9. Batch 2 Fixes | v1.0 | 5/5 | Complete | 2026-05-10 |
+| 10. Rich Ingest Metrics | v1.1 | 0/TBD | Planned | — |
+| 11. HUD Shell Foundation | v1.1 | 0/TBD | Planned | — |
+| 12. Overview v2 | v1.1 | 0/TBD | Planned | — |
+| 13. Sessions & Trace Detail v2 | v1.1 | 0/TBD | Planned | — |
+| 14. Visual QA & Hardening | v1.1 | 0/TBD | Planned | — |
 
 ## Future Enhancements
 
@@ -54,6 +130,7 @@ _To be defined via `/gsd-new-milestone`_
 - Markdown/JSON/CSV export with redaction profiles
 - Single-command launcher or desktop shell
 - Optional OpenTelemetry/OpenInference exporter
+- User-configurable overview modules
 
 ---
 

@@ -12,6 +12,17 @@ OpenClaw retains its real-time overview value: Agent status, Gateway status, ses
 
 Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
+## Current Milestone: v1.1 Data-Rich HUD Redesign
+
+**Goal:** 扩展 ingest 数据面并按新版 Terminal × HUD 原型改造前端，让 Overview、Sessions、Session Detail 使用真实聚合数据呈现高密度追踪体验。
+
+**Target features:**
+- Ingest 提供 overview、ranking、timeline、starred、agent、automation、session HUD 所需的聚合数据和 BFF API。
+- 前端 shell 遵守新版设计系统：共享 header/source switcher/sidebar/status bar/right rail，按 source capability 显示差异化内容。
+- Overview v2 使用真实数据展示 KPI、usage/cost、top models、starred sessions、activity timeline、top projects、agents/automations。
+- Sessions 列表与 Session Detail 按原型改造成 dense indexed table、turn spine、continuous trace thread、inline activity rows、inspector。
+- 全链路保持 local-first、read-only、BFF-only、light/dark 双主题和长 session 性能。
+
 ## Requirements
 
 ### Validated
@@ -30,7 +41,12 @@ Developers can quickly find local agent sessions and accurately review each turn
 
 ### Active
 
-_(To be defined for next milestone via `/gsd-new-milestone`)_
+- [ ] 扩展 ingest schema/API/selectors，支持按 source/all 和时间窗口计算 sessions、turns、projects、tokens、cost、top models、top projects。
+- [ ] 提供混合 activity timeline、recent starred sessions、OpenClaw agent summary、可用 automation summary 和 source capability metadata。
+- [ ] 丰富 session/turn/activity 数据，支撑 compact HUD header、turn spine、activity rows、inspector、in-session search 和 glyph counts。
+- [ ] 将 Terminal × HUD 设计系统落到生产前端：OKLCH token、chartreuse accent、grid/scanline、hud-clip、mono data typography、no emoji。
+- [ ] 重构 shell chrome、right rail、Overview、Sessions table、Session Detail，使其遵守 `.planning/designs/design-notes.md` 与 `.planning/designs/draft-design/` 原型。
+- [ ] 为新增聚合 API、UI 状态、source filtering、长 session 和 light/dark 视觉回归补齐测试与验证。
 
 ### Out of Scope
 
@@ -51,6 +67,8 @@ _(To be defined for next milestone via `/gsd-new-milestone`)_
 - **Architecture**: Dual-service (Next.js port 3000 + Hono ingest port 8078) with BFF proxy layer
 - **Testing**: 400+ regression tests, fixture-based parser validation, real-data corpus harness
 - **Known tech debt**: Some `as any` type casts in UI, Phase 5/6/7 missing SUMMARY.md files, REQUIREMENTS.md checkboxes were never updated inline
+- **v1.1 design authority**: `.planning/designs/design-notes.md` and `.planning/designs/draft-design/` define the target Terminal × HUD visual system and prototype surfaces.
+- **v1.1 product split**: work divides into ingest data expansion first, then front-end redesign against real BFF-backed data.
 
 ## Constraints
 
@@ -75,10 +93,12 @@ _(To be defined for next milestone via `/gsd-new-milestone`)_
 | concurrently dual-service dev workflow | Single `pnpm dev` starts both services | ✓ Good — seamless DX |
 | SQLite WAL/FTS5 for local index | Local-first, zero-config, proven by agentsview | ✓ Good — fast queries, simple ops |
 | Decimal phase numbering for inserted phases | Clear insertion semantics | ✓ Good — Phases 7/8/9 inserted naturally |
+| v1.1 design prototype is the implementation contract | User supplied concrete design goals and a high-fidelity draft; planning should not drift into generic observability UI | — Pending |
+| v1.1 starts with ingest data expansion before UI replacement | The prototype depends on real aggregate metrics; building UI on mocks would hide missing data contracts | — Pending |
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
 ---
-*Last updated: 2026-05-12 after v1.0 milestone*
+*Last updated: 2026-05-12 after starting v1.1 milestone*
