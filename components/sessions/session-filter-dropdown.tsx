@@ -37,6 +37,7 @@ const SOURCE_LABELS: Record<TraceSource, string> = {
 interface SessionFilterDropdownProps {
   filter: SessionFilterState
   scope: 'all' | 'source'
+  hideStarredFilter?: boolean
   onGroupModeChange: (mode: GroupMode) => void
   onSourceToggle: (source: TraceSource) => void
   onClearSources: () => void
@@ -96,6 +97,7 @@ function CheckIcon({ className }: { className?: string }) {
 export function SessionFilterDropdown({
   filter,
   scope,
+  hideStarredFilter,
   onGroupModeChange,
   onSourceToggle,
   onClearSources,
@@ -202,6 +204,7 @@ export function SessionFilterDropdown({
           </div>
 
           {/* STARRED section */}
+          {!hideStarredFilter && (
           <div className={cn(isAggregateScope && 'mb-2')}>
             {isAggregateScope && (
               <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 px-0.5">
@@ -238,6 +241,7 @@ export function SessionFilterDropdown({
               )}
             </button>
           </div>
+          )}
 
           {/* SOURCE section */}
           {isAggregateScope && (

@@ -23,6 +23,12 @@ import type { AgentToolId, SourceToolId } from '@/lib/agent-tools/types'
 import type { TraceSession, TraceSource } from '@/types/trace'
 import { TOOL_IDS } from '@/lib/agent-tools/registry'
 
+const SOURCE_SPINE_COLORS: Record<string, string> = {
+  openclaw: 'border-l-[3px] border-l-[oklch(0.76_0.17_145)]',
+  'claude-code': 'border-l-[3px] border-l-[oklch(0.8_0.17_75)]',
+  codex: 'border-l-[3px] border-l-[oklch(0.76_0.17_200)]',
+}
+
 export type RailScope = 'recent' | 'starred' | 'live'
 
 interface SessionsRightRailProps {
@@ -242,7 +248,14 @@ function SessionsRailContent({
 
   // -- Filtered sessions --
   const filteredSessions = useMemo(() => {
+    // Scope pre-filter
     let result = sessions
+    if (railScope === 'starred') {
+      result = result.filter((s) => starredIds.has(s.id))
+    } else if (railScope === 'live') {
+      result = result.filter((s) => s.status === 'active')
+    }
+    // 'recent' = no filter (shows all sessions)
 
     // Search filter
     if (visibleFilter.searchQuery) {
@@ -265,7 +278,7 @@ function SessionsRailContent({
     }
 
     return result
-  }, [sessions, visibleFilter.searchQuery, visibleFilter.sourceFilter, visibleFilter.starredOnly, starredIds])
+  }, [sessions, railScope, visibleFilter.searchQuery, visibleFilter.sourceFilter, visibleFilter.starredOnly, starredIds])
 
   // -- Grouped sessions --
   const groupedSessions = useMemo((): GroupSection[] | null => {
@@ -346,7 +359,11 @@ function SessionsRailContent({
             Sessions
           </div>
           <div className="mt-0.5 text-[11px] font-mono text-foreground">
-            {(total ?? sessions.length).toLocaleString()} indexed
+            {railScope === 'starred'
+              ? `${filteredSessions.length} starred`
+              : railScope === 'live'
+                ? `${filteredSessions.length} active`
+                : `${(total ?? sessions.length).toLocaleString()} indexed`}
           </div>
         </div>
         {selectedSessionId && (
@@ -363,6 +380,7 @@ function SessionsRailContent({
         <SessionFilterDropdown
           filter={visibleFilter}
           scope={currentToolId === 'all' ? 'all' : 'source'}
+          hideStarredFilter={railScope === 'starred'}
           onGroupModeChange={handleGroupModeChange}
           onSourceToggle={handleSourceToggle}
           onClearSources={() => setFilter((prev) => ({ ...prev, sourceFilter: new Set() }))}
@@ -515,6 +533,7 @@ function SessionRailRow({
       className={cn(
         'grid w-full gap-1 px-3 py-2.5 text-left transition-colors hover:bg-accent/5',
         active && 'bg-accent/10 text-accent',
+        SOURCE_SPINE_COLORS[session.source] || 'border-l-[3px] border-l-border',
       )}
     >
       <div className="flex min-w-0 items-center gap-2">
