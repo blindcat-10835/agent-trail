@@ -10,6 +10,7 @@ import type { IngestConfig } from './config/index.js';
 import type { TraceSource } from '../types/trace.js';
 import type { SSEManager } from './src/sse.js';
 import type { WatcherInstance } from './src/watcher.js';
+import type { SyncScheduler, SyncSchedulerStatus } from './src/sync-scheduler.js';
 
 // ============================================================================
 // Service Context
@@ -21,6 +22,7 @@ export interface ServiceContext {
   server: any; // Hono server type (simplified for now)
   sseManager: SSEManager;
   watcher: WatcherInstance | null;
+  syncScheduler: SyncScheduler | null;
   syncState: StartupSyncState;
 }
 
@@ -44,7 +46,7 @@ export interface HealthStatus {
   version: string;
   uptime: number;
   database: 'connected' | 'disconnected';
-  sync: StartupSyncState | null;
+  sync: (StartupSyncState & { scheduler?: SyncSchedulerStatus | null }) | null;
 }
 
 export interface VersionInfo {

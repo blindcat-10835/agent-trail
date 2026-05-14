@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -103,6 +103,17 @@ describe('sync pipeline', () => {
     delete process.env.CODEX_SESSIONS_PATH;
     mockStat.mockResolvedValue({ mtimeMs: 0 });
     db = createTestDb();
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    try { db.close(); } catch { /* ignore */ }
+    try {
+      const { closeDatabase } = await import('@/ingest/db');
+      closeDatabase();
+    } catch {
+      // Global database may not be open in most tests.
+    }
   });
 
   describe('syncSource type support', () => {

@@ -30,9 +30,22 @@ export interface SyncResult {
   toolCallsInserted: number;
   toolResultEventsInserted: number;
   errors: string[];
+  metrics?: SyncMetrics;
+}
+
+export interface SyncMetrics {
+  filesConsidered: number;
+  filesSkippedBeforeParse: number;
+  filesParsed: number;
+  largestFileBytes: number;
 }
 
 export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex';
+
+interface FileSnapshot {
+  size: number;
+  mtimeIso: string;
+}
 
 /**
  * Options for writeSessionToDatabase
@@ -196,12 +209,129 @@ function extractAgentNameFromPath(filePath: string, sourceType: SyncSourceType):
  * @returns Hex-encoded SHA-256 digest
  */
 export function computeFileHash(filePath: string): string {
-  const content = fs.readFileSync(filePath);
-  return crypto.createHash('sha256').update(content).digest('hex');
+  const hash = crypto.createHash('sha256');
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead > 0) {
+        hash.update(buffer.subarray(0, bytesRead));
+      }
+    } while (bytesRead > 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  return hash.digest('hex');
 }
 
 function buildParserCacheHash(source: string, fileHash: string): string {
   return `${PARSER_CACHE_VERSION}:${source}:${fileHash}`;
+}
+
+function hasCurrentParserCacheHash(sourceType: SyncSourceType, fileHash: string | null): boolean {
+  return Boolean(fileHash?.startsWith(`${PARSER_CACHE_VERSION}:${sourceType}:`));
+}
+
+function createSyncResult(): SyncResult {
+  return {
+    sessionsInserted: 0,
+    sessionsUpdated: 0,
+    messagesInserted: 0,
+    toolCallsInserted: 0,
+    toolResultEventsInserted: 0,
+    errors: [],
+    metrics: {
+      filesConsidered: 0,
+      filesSkippedBeforeParse: 0,
+      filesParsed: 0,
+      largestFileBytes: 0,
+    },
+  };
+}
+
+function mergeSyncResult(target: SyncResult, result: SyncResult): void {
+  target.sessionsInserted += result.sessionsInserted;
+  target.sessionsUpdated += result.sessionsUpdated;
+  target.messagesInserted += result.messagesInserted;
+  target.toolCallsInserted += result.toolCallsInserted;
+  target.toolResultEventsInserted += result.toolResultEventsInserted;
+  target.errors.push(...result.errors);
+
+  if (target.metrics && result.metrics) {
+    target.metrics.filesConsidered += result.metrics.filesConsidered;
+    target.metrics.filesSkippedBeforeParse += result.metrics.filesSkippedBeforeParse;
+    target.metrics.filesParsed += result.metrics.filesParsed;
+    target.metrics.largestFileBytes = Math.max(
+      target.metrics.largestFileBytes,
+      result.metrics.largestFileBytes
+    );
+  }
+}
+
+function tryGetFileSnapshot(filePath: string): FileSnapshot | undefined {
+  try {
+    const stats = fs.statSync(filePath);
+    return {
+      size: stats.size,
+      mtimeIso: new Date(stats.mtimeMs).toISOString(),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function recordFileConsidered(result: SyncResult, snapshot?: FileSnapshot): void {
+  if (!result.metrics) return;
+  result.metrics.filesConsidered += 1;
+  if (snapshot) {
+    result.metrics.largestFileBytes = Math.max(result.metrics.largestFileBytes, snapshot.size);
+  }
+}
+
+function recordFileSkippedBeforeParse(result: SyncResult): void {
+  if (!result.metrics) return;
+  result.metrics.filesSkippedBeforeParse += 1;
+}
+
+function recordFileParsed(result: SyncResult): void {
+  if (!result.metrics) return;
+  result.metrics.filesParsed += 1;
+}
+
+function shouldSkipBeforeParse(
+  sourceType: SyncSourceType,
+  filePath: string,
+  snapshot: FileSnapshot,
+  opts: SyncSourceOptions
+): boolean {
+  if (opts.force) return false;
+
+  try {
+    const existing = getDatabase().prepare(`
+      SELECT file_size, file_mtime, file_hash
+      FROM sessions
+      WHERE file_path = ?
+      ORDER BY last_sync_at DESC
+      LIMIT 1
+    `).get(filePath) as {
+      file_size: number | null;
+      file_mtime: string | null;
+      file_hash: string | null;
+    } | undefined;
+
+    return Boolean(
+      existing &&
+      existing.file_size === snapshot.size &&
+      existing.file_mtime === snapshot.mtimeIso &&
+      hasCurrentParserCacheHash(sourceType, existing.file_hash)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function coerceSqlText(value: unknown): string {
@@ -709,6 +839,128 @@ export async function syncSource(
   return result;
 }
 
+function isWithinRoot(candidatePath: string, allowedRoot: string): boolean {
+  const resolved = path.resolve(candidatePath);
+  const root = path.resolve(allowedRoot);
+  return resolved === root || resolved.startsWith(root + path.sep);
+}
+
+async function collectPathFileCandidates(
+  sourceType: SyncSourceType,
+  paths: string[]
+): Promise<SyncFileCandidate[]> {
+  const { getConfig } = await import('../config');
+  const roots = getConfig().toolDirs.get(sourceType) ?? [];
+  const candidates: SyncFileCandidate[] = [];
+
+  for (const rawPath of Array.from(new Set(paths))) {
+    const filePath = path.resolve(rawPath);
+    const fileName = path.basename(filePath);
+
+    if (!isSessionFileName(sourceType, fileName)) continue;
+    if (roots.length > 0 && !roots.some((root) => isWithinRoot(filePath, root))) continue;
+    if (!fs.existsSync(filePath)) continue;
+
+    candidates.push({
+      filePath,
+      project: extractProjectFromPath(filePath, sourceType),
+      mtimeMs: 0,
+    });
+  }
+
+  return candidates.sort((a, b) => a.filePath.localeCompare(b.filePath));
+}
+
+async function parseAndWriteCandidate(
+  sourceType: SyncSourceType,
+  candidate: SyncFileCandidate,
+  opts: SyncSourceOptions,
+  totalResult: SyncResult,
+  relationshipsByChild = new Map<string, { parentSessionId: string; rootSessionId?: string }>()
+): Promise<void> {
+  const filePath = candidate.filePath;
+  const snapshot = tryGetFileSnapshot(filePath);
+  recordFileConsidered(totalResult, snapshot);
+
+  if (snapshot && shouldSkipBeforeParse(sourceType, filePath, snapshot, opts)) {
+    recordFileSkippedBeforeParse(totalResult);
+    return;
+  }
+
+  if (sourceType === 'openclaw') {
+    const { parseOpenClawSession } = await import('../parser/openclaw');
+    const parseResult = await parseOpenClawSession(filePath, candidate.project);
+    recordFileParsed(totalResult);
+    parseResult.session.name = extractSessionName(parseResult);
+    parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
+    parseResult.session.agentName = extractAgentNameFromPath(filePath, 'openclaw');
+    mergeSyncResult(totalResult, writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force }));
+    return;
+  }
+
+  if (sourceType === 'claude-code') {
+    const { parseClaudeSession } = await import('../parser/claude');
+    const parseResult = await parseClaudeSession(filePath, candidate.project);
+    recordFileParsed(totalResult);
+    parseResult.session.name = extractSessionName(parseResult);
+    parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
+    mergeSyncResult(totalResult, writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force }));
+    return;
+  }
+
+  const { parseCodexSession } = await import('../parser/codex');
+  const parseResult = await parseCodexSession(filePath, candidate.project);
+  recordFileParsed(totalResult);
+  const relationship = relationshipsByChild.get(parseResult.session.id);
+  if (relationship) {
+    parseResult.session.parentSessionId = relationship.parentSessionId;
+    parseResult.session.rootSessionId = relationship.rootSessionId || relationship.parentSessionId;
+    parseResult.session.relationshipType = 'subagent';
+    parseResult.session.sourceSessionId = parseResult.session.sourceSessionId || parseResult.session.id;
+  }
+  parseResult.session.name = extractSessionName(parseResult);
+  parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
+  mergeSyncResult(totalResult, writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force }));
+}
+
+/**
+ * Sync only explicitly changed session file paths for a source type.
+ *
+ * This is the watcher hot path: it intentionally avoids source-wide discovery,
+ * Codex relationship collection, and full history parsing for unrelated files.
+ */
+export async function syncPaths(
+  sourceType: SyncSourceType,
+  paths: string[],
+  options?: SyncSourceOptions
+): Promise<SyncResult> {
+  const opts = options ?? {};
+  const totalResult = createSyncResult();
+
+  try {
+    const candidates = await collectPathFileCandidates(sourceType, paths);
+    for (const candidate of candidates) {
+      try {
+        await parseAndWriteCandidate(sourceType, candidate, opts, totalResult);
+      } catch (err) {
+        totalResult.errors.push(`Failed to sync changed ${sourceType} path ${candidate.filePath}: ${err}`);
+      }
+    }
+  } catch (err) {
+    totalResult.errors.push(`Failed to collect changed ${sourceType} paths: ${err}`);
+  }
+
+  upsertSyncStatus(sourceType, totalResult);
+  sseManager.emit('sync_complete', {
+    source: sourceType,
+    sessionsInserted: totalResult.sessionsInserted,
+    sessionsUpdated: totalResult.sessionsUpdated,
+    errors: totalResult.errors.length,
+  });
+
+  return totalResult;
+}
+
 // ============================================================================
 // OpenClaw Sync (preserved from Phase 2)
 // ============================================================================
@@ -727,14 +979,7 @@ async function syncOpenClawSource(opts: SyncSourceOptions): Promise<SyncResult> 
   const toolDirs = getConfig().toolDirs;
   const dirs = opts.basePath ? [opts.basePath] : toolDirs.get('openclaw');
   const sources = await discoverOpenClawSources(dirs);
-  const totalResult: SyncResult = {
-    sessionsInserted: 0,
-    sessionsUpdated: 0,
-    messagesInserted: 0,
-    toolCallsInserted: 0,
-    toolResultEventsInserted: 0,
-    errors: [],
-  };
+  const totalResult = createSyncResult();
 
   try {
     const candidates = await collectSessionFileCandidates(sources, 'openclaw', opts);
@@ -743,17 +988,20 @@ async function syncOpenClawSource(opts: SyncSourceOptions): Promise<SyncResult> 
       const filePath = candidate.filePath;
 
       try {
+        const snapshot = tryGetFileSnapshot(filePath);
+        recordFileConsidered(totalResult, snapshot);
+        if (snapshot && shouldSkipBeforeParse('openclaw', filePath, snapshot, opts)) {
+          recordFileSkippedBeforeParse(totalResult);
+          continue;
+        }
+
         const parseResult = await parseOpenClawSession(filePath, candidate.project);
+        recordFileParsed(totalResult);
         parseResult.session.name = extractSessionName(parseResult);
         parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
         parseResult.session.agentName = extractAgentNameFromPath(filePath, 'openclaw')
         const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
-        totalResult.sessionsInserted += result.sessionsInserted;
-        totalResult.sessionsUpdated += result.sessionsUpdated;
-        totalResult.messagesInserted += result.messagesInserted;
-        totalResult.toolCallsInserted += result.toolCallsInserted;
-        totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
-        totalResult.errors.push(...result.errors);
+        mergeSyncResult(totalResult, result);
       } catch (err) {
         totalResult.errors.push(`Failed to parse ${filePath}: ${err}`);
       }
@@ -789,14 +1037,7 @@ async function syncClaudeCodeSource(opts: SyncSourceOptions): Promise<SyncResult
   const { getConfig } = await import('../config');
   const toolDirs = getConfig().toolDirs;
   const sources = await discoverClaudeSources(toolDirs.get('claude-code'));
-  const totalResult: SyncResult = {
-    sessionsInserted: 0,
-    sessionsUpdated: 0,
-    messagesInserted: 0,
-    toolCallsInserted: 0,
-    toolResultEventsInserted: 0,
-    errors: [],
-  };
+  const totalResult = createSyncResult();
 
   try {
     const candidates = await collectSessionFileCandidates(sources, 'claude-code', opts);
@@ -805,16 +1046,19 @@ async function syncClaudeCodeSource(opts: SyncSourceOptions): Promise<SyncResult
       const filePath = candidate.filePath;
 
       try {
+        const snapshot = tryGetFileSnapshot(filePath);
+        recordFileConsidered(totalResult, snapshot);
+        if (snapshot && shouldSkipBeforeParse('claude-code', filePath, snapshot, opts)) {
+          recordFileSkippedBeforeParse(totalResult);
+          continue;
+        }
+
         const parseResult = await parseClaudeSession(filePath, candidate.project);
+        recordFileParsed(totalResult);
         parseResult.session.name = extractSessionName(parseResult);
         parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
         const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
-        totalResult.sessionsInserted += result.sessionsInserted;
-        totalResult.sessionsUpdated += result.sessionsUpdated;
-        totalResult.messagesInserted += result.messagesInserted;
-        totalResult.toolCallsInserted += result.toolCallsInserted;
-        totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
-        totalResult.errors.push(...result.errors);
+        mergeSyncResult(totalResult, result);
       } catch (err) {
         totalResult.errors.push(
           `Failed to parse Claude session ${filePath}: ${err}`
@@ -855,14 +1099,7 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const relationshipsByChild = typeof opts.limit === 'number'
     ? new Map<string, { parentSessionId: string; rootSessionId?: string }>()
     : await collectCodexRelationships(sources);
-  const totalResult: SyncResult = {
-    sessionsInserted: 0,
-    sessionsUpdated: 0,
-    messagesInserted: 0,
-    toolCallsInserted: 0,
-    toolResultEventsInserted: 0,
-    errors: [],
-  };
+  const totalResult = createSyncResult();
 
   try {
     const candidates = await collectSessionFileCandidates(sources, 'codex', opts);
@@ -871,7 +1108,15 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
       const filePath = candidate.filePath;
 
       try {
+        const snapshot = tryGetFileSnapshot(filePath);
+        recordFileConsidered(totalResult, snapshot);
+        if (snapshot && shouldSkipBeforeParse('codex', filePath, snapshot, opts)) {
+          recordFileSkippedBeforeParse(totalResult);
+          continue;
+        }
+
         const parseResult = await parseCodexSession(filePath, candidate.project);
+        recordFileParsed(totalResult);
         const relationship = relationshipsByChild.get(parseResult.session.id);
         if (relationship) {
           parseResult.session.parentSessionId = relationship.parentSessionId;
@@ -882,12 +1127,7 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
         parseResult.session.name = extractSessionName(parseResult);
         parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
         const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
-        totalResult.sessionsInserted += result.sessionsInserted;
-        totalResult.sessionsUpdated += result.sessionsUpdated;
-        totalResult.messagesInserted += result.messagesInserted;
-        totalResult.toolCallsInserted += result.toolCallsInserted;
-        totalResult.toolResultEventsInserted += result.toolResultEventsInserted;
-        totalResult.errors.push(...result.errors);
+        mergeSyncResult(totalResult, result);
       } catch (err) {
         totalResult.errors.push(
           `Failed to parse Codex session ${filePath}: ${err}`

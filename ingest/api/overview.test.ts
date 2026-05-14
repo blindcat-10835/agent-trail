@@ -570,13 +570,14 @@ describe('overview endpoints', () => {
   // ==========================================================================
 
   describe('GET /api/v1/overview/status', () => {
-    it('returns ingest, watcher, and gateway sections', async () => {
+    it('returns ingest, watcher, sync, and gateway sections', async () => {
       const res = await app.request('/api/v1/overview/status');
       expect(res.status).toBe(200);
       const body = await res.json();
 
       expect(body).toHaveProperty('ingest');
       expect(body).toHaveProperty('watcher');
+      expect(body).toHaveProperty('sync');
       expect(body).toHaveProperty('gateway');
 
       expect(body.ingest).toHaveProperty('status');
@@ -585,6 +586,12 @@ describe('overview endpoints', () => {
 
       expect(body.watcher).toHaveProperty('status');
       expect(body.watcher).toHaveProperty('filesWatched');
+
+      if (body.sync) {
+        expect(body.sync).toHaveProperty('active');
+        expect(body.sync).toHaveProperty('queued');
+        expect(body.sync).toHaveProperty('lastError');
+      }
 
       expect(body.gateway).toHaveProperty('status');
       expect(body.gateway.status).toBe('disconnected');

@@ -26,7 +26,9 @@ export interface WatcherConfig {
   /** File extensions to watch (default ['.jsonl', '.json', '.md']) */
   fileExtensions: string[];
   /** Callback invoked when files change and debounce fires */
-  onSyncTrigger: (sourceType: SyncSourceType) => void | Promise<void>;
+  onPathsChanged: (sourceType: SyncSourceType, paths: string[]) => void | Promise<void>;
+  /** Callback invoked by periodic full-source resync fallback */
+  onFullResync: (sourceType: SyncSourceType) => void | Promise<void>;
 }
 
 export interface WatcherStatus {
@@ -109,11 +111,11 @@ export function createWatcher(config: WatcherConfig): WatcherInstance {
     debounceTimer = setTimeout(async () => {
       debounceTimer = null;
 
-      // Fire sync for each source type that has pending paths
+      // Fire path-scoped sync for each source type that has pending paths
       for (const [sourceType, paths] of pendingPaths.entries()) {
         if (paths.size > 0) {
           try {
-            await config.onSyncTrigger(sourceType);
+            await config.onPathsChanged(sourceType, Array.from(paths).sort());
             status.lastSyncAt = new Date().toISOString();
           } catch (err) {
             status.lastError = err instanceof Error ? err.message : String(err);
@@ -154,7 +156,7 @@ export function createWatcher(config: WatcherConfig): WatcherInstance {
   function runPeriodicResync(): void {
     for (const sourceType of config.sourceDirs.keys()) {
       try {
-        const result = config.onSyncTrigger(sourceType);
+        const result = config.onFullResync(sourceType);
         if (result instanceof Promise) {
           result.catch((err) => {
             status.lastError = err instanceof Error ? err.message : String(err);

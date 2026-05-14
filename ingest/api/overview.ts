@@ -548,10 +548,12 @@ overviewRoutes.get('/api/v1/overview/status', async (c) => {
     lastSyncAt: watcherStatus?.lastSyncAt ?? null,
   };
 
+  const sync = ctx?.syncScheduler?.getStatus() ?? null;
+
   // Gateway status — placeholder per CONTEXT.md deferred ideas
   const gateway = {
     status: 'disconnected' as const,
   };
 
-  return c.json({ ingest, watcher, gateway });
+  return c.json({ ingest, watcher, sync, gateway });
 });

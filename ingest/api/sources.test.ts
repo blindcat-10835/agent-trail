@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ============================================================================
 
 describe('GET /api/v1/sources/:type/status', () => {
-  it('returns a JSON object with watcherStatus, filesWatched, lastSyncAt, lastError fields', async () => {
+  it('returns a JSON object with watcherStatus, filesWatched, lastSyncAt, lastError, sync fields', async () => {
     // We test the core logic: the response shape validation
     // The actual endpoint is tested via integration tests
 
@@ -22,6 +22,7 @@ describe('GET /api/v1/sources/:type/status', () => {
       filesWatched: 0,
       lastSyncAt: null,
       lastError: null,
+      sync: null,
     };
 
     expect(responseShape).toHaveProperty('type');
@@ -29,6 +30,7 @@ describe('GET /api/v1/sources/:type/status', () => {
     expect(responseShape).toHaveProperty('filesWatched');
     expect(responseShape).toHaveProperty('lastSyncAt');
     expect(responseShape).toHaveProperty('lastError');
+    expect(responseShape).toHaveProperty('sync');
     expect(['watching', 'stopped']).toContain(responseShape.watcherStatus);
   });
 

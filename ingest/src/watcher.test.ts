@@ -38,7 +38,8 @@ function buildConfig(overrides?: Partial<WatcherConfig>): WatcherConfig {
     debounceMs: 100, // Short debounce for tests
     resyncIntervalMs: 60000, // Long interval to avoid firing during tests
     fileExtensions: ['.jsonl', '.json', '.md'],
-    onSyncTrigger: vi.fn(),
+    onPathsChanged: vi.fn(),
+    onFullResync: vi.fn(),
     ...overrides,
   };
 }
@@ -82,7 +83,7 @@ describe('watcher.start()', () => {
   it('watches source directories with chokidar for file changes', async () => {
     const onSync = vi.fn();
     const watcher = createWatcher(buildConfig({
-      onSyncTrigger: onSync,
+      onPathsChanged: onSync,
       debounceMs: 200,
     }));
     await watcher.start();
@@ -96,14 +97,14 @@ describe('watcher.start()', () => {
     // Wait for chokidar awaitWriteFinish (300ms) + debounce (200ms) + buffer
     await new Promise((r) => setTimeout(r, 800));
 
-    expect(onSync).toHaveBeenCalledWith('openclaw');
+    expect(onSync).toHaveBeenCalledWith('openclaw', [path.join(tempDir, 'session1.jsonl')]);
     await watcher.stop();
   }, 15000);
 
   it('watches .json and .md files as well as .jsonl', async () => {
     const onSync = vi.fn();
     const watcher = createWatcher(buildConfig({
-      onSyncTrigger: onSync,
+      onPathsChanged: onSync,
       debounceMs: 200,
       fileExtensions: ['.jsonl', '.json', '.md'],
     }));
@@ -113,7 +114,7 @@ describe('watcher.start()', () => {
     await createFile(path.join(tempDir, 'session1.md'), '# Test\n');
 
     await new Promise((r) => setTimeout(r, 800));
-    expect(onSync).toHaveBeenCalledWith('openclaw');
+    expect(onSync).toHaveBeenCalledWith('openclaw', [path.join(tempDir, 'session1.md')]);
     await watcher.stop();
   }, 15000);
 });
@@ -126,7 +127,7 @@ describe('debounce behavior', () => {
   it('batches rapid file changes within debounce window into a single sync trigger', async () => {
     const onSync = vi.fn();
     const watcher = createWatcher(buildConfig({
-      onSyncTrigger: onSync,
+      onPathsChanged: onSync,
       debounceMs: 500,
     }));
     await watcher.start();
@@ -142,7 +143,11 @@ describe('debounce behavior', () => {
 
     // Should be called exactly once for this batch (all same source type)
     expect(onSync).toHaveBeenCalledTimes(1);
-    expect(onSync).toHaveBeenCalledWith('openclaw');
+    expect(onSync).toHaveBeenCalledWith('openclaw', [
+      path.join(tempDir, 'a.jsonl'),
+      path.join(tempDir, 'b.jsonl'),
+      path.join(tempDir, 'c.jsonl'),
+    ]);
     await watcher.stop();
   }, 20000);
 });
@@ -154,7 +159,7 @@ describe('debounce behavior', () => {
 describe('temp file filtering', () => {
   it('filters out editor swap files ending in ~', async () => {
     const onSync = vi.fn();
-    const watcher = createWatcher(buildConfig({ onSyncTrigger: onSync, debounceMs: 200 }));
+    const watcher = createWatcher(buildConfig({ onPathsChanged: onSync, debounceMs: 200 }));
     await watcher.start();
     await new Promise((r) => setTimeout(r, 500));
 
@@ -168,7 +173,7 @@ describe('temp file filtering', () => {
 
   it('filters out .DS_Store files', async () => {
     const onSync = vi.fn();
-    const watcher = createWatcher(buildConfig({ onSyncTrigger: onSync, debounceMs: 200 }));
+    const watcher = createWatcher(buildConfig({ onPathsChanged: onSync, debounceMs: 200 }));
     await watcher.start();
     await new Promise((r) => setTimeout(r, 500));
 
@@ -181,7 +186,7 @@ describe('temp file filtering', () => {
 
   it('filters out .swp files', async () => {
     const onSync = vi.fn();
-    const watcher = createWatcher(buildConfig({ onSyncTrigger: onSync, debounceMs: 200 }));
+    const watcher = createWatcher(buildConfig({ onPathsChanged: onSync, debounceMs: 200 }));
     await watcher.start();
     await new Promise((r) => setTimeout(r, 500));
 
@@ -195,7 +200,7 @@ describe('temp file filtering', () => {
   it('allows valid .jsonl files through', async () => {
     const onSync = vi.fn();
     const watcher = createWatcher(buildConfig({
-      onSyncTrigger: onSync,
+      onPathsChanged: onSync,
       debounceMs: 200,
     }));
     await watcher.start();
@@ -204,7 +209,7 @@ describe('temp file filtering', () => {
     await createFile(path.join(tempDir, 'valid.jsonl'), '{"test":1}\n');
 
     await new Promise((r) => setTimeout(r, 800));
-    expect(onSync).toHaveBeenCalledWith('openclaw');
+    expect(onSync).toHaveBeenCalledWith('openclaw', [path.join(tempDir, 'valid.jsonl')]);
     await watcher.stop();
   }, 15000);
 });
@@ -219,7 +224,7 @@ describe('error handling', () => {
     const onSync = vi.fn();
     const watcher = createWatcher(buildConfig({
       sourceDirs: new Map([['openclaw', [missingDir]]]),
-      onSyncTrigger: onSync,
+      onPathsChanged: onSync,
     }));
     // Should not throw
     await watcher.start();
@@ -248,7 +253,7 @@ describe('periodic resync', () => {
     vi.useFakeTimers();
     const onSync = vi.fn();
     const watcher = createWatcher(buildConfig({
-      onSyncTrigger: onSync,
+      onFullResync: onSync,
       resyncIntervalMs: 300000, // 5 min
       debounceMs: 500,
     }));
@@ -266,7 +271,7 @@ describe('periodic resync', () => {
   it('periodic resync does not crash if onSyncTrigger throws synchronously', async () => {
     vi.useFakeTimers();
     const watcher = createWatcher(buildConfig({
-      onSyncTrigger: () => { throw new Error('test error'); },
+      onFullResync: () => { throw new Error('test error'); },
       resyncIntervalMs: 300000,
     }));
     await watcher.start();

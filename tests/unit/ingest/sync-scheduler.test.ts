@@ -1,0 +1,108 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createSyncScheduler } from '@/ingest/src/sync-scheduler';
+import type { SyncResult } from '@/ingest/sync';
+
+function result(overrides?: Partial<SyncResult>): SyncResult {
+  return {
+    sessionsInserted: 0,
+    sessionsUpdated: 0,
+    messagesInserted: 0,
+    toolCallsInserted: 0,
+    toolResultEventsInserted: 0,
+    errors: [],
+    metrics: {
+      filesConsidered: 0,
+      filesSkippedBeforeParse: 0,
+      filesParsed: 0,
+      largestFileBytes: 0,
+    },
+    ...overrides,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+describe('createSyncScheduler', () => {
+  it('runs queued sync jobs serially', async () => {
+    const first = deferred<SyncResult>();
+    const order: string[] = [];
+    const syncSource = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        order.push('first:start');
+        const value = await first.promise;
+        order.push('first:end');
+        return value;
+      })
+      .mockImplementationOnce(async () => {
+        order.push('second');
+        return result();
+      });
+
+    const scheduler = createSyncScheduler({
+      syncSource,
+      syncPaths: vi.fn(),
+    });
+
+    const firstRun = scheduler.enqueueFullSource('codex', 'background');
+    const secondRun = scheduler.enqueueFullSource('claude-code', 'periodic');
+
+    await Promise.resolve();
+    expect(scheduler.getStatus().active).toBe(true);
+    expect(scheduler.getStatus().queued).toBe(true);
+    expect(order).toEqual(['first:start']);
+
+    first.resolve(result());
+    await Promise.all([firstRun, secondRun]);
+
+    expect(order).toEqual(['first:start', 'first:end', 'second']);
+    expect(syncSource).toHaveBeenCalledTimes(2);
+    expect(scheduler.getStatus().active).toBe(false);
+    expect(scheduler.getStatus().lastDurationMs).not.toBeNull();
+  });
+
+  it('coalesces duplicate queued requests while active', async () => {
+    const blocker = deferred<SyncResult>();
+    const syncSource = vi
+      .fn()
+      .mockImplementationOnce(() => blocker.promise)
+      .mockResolvedValue(result());
+
+    const scheduler = createSyncScheduler({
+      syncSource,
+      syncPaths: vi.fn(),
+    });
+
+    const firstRun = scheduler.enqueueFullSource('codex', 'background');
+    const queuedA = scheduler.enqueueFullSource('claude-code', 'periodic');
+    const queuedB = scheduler.enqueueFullSource('claude-code', 'periodic');
+
+    await Promise.resolve();
+    expect(queuedA).toBe(queuedB);
+    expect(scheduler.getStatus().queuedReasons).toEqual(['periodic']);
+
+    blocker.resolve(result());
+    await Promise.all([firstRun, queuedA, queuedB]);
+
+    expect(syncSource).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports errors without leaving scheduler active', async () => {
+    const scheduler = createSyncScheduler({
+      syncSource: vi.fn().mockRejectedValue(new Error('sync failed')),
+      syncPaths: vi.fn(),
+    });
+
+    await expect(scheduler.enqueueFullSource('codex', 'manual')).rejects.toThrow('sync failed');
+
+    const status = scheduler.getStatus();
+    expect(status.active).toBe(false);
+    expect(status.lastError).toBe('sync failed');
+  });
+});

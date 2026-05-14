@@ -15,7 +15,6 @@ import {
   discoverOpenClawSources,
   type DiscoveredSource,
 } from '../sync/sources';
-import { syncSource } from '../sync';
 import { getServiceContext } from '../index.js';
 
 export const sourcesRoutes = new Hono();
@@ -126,7 +125,10 @@ sourcesRoutes.post('/api/v1/sources/:type/sync', async (c) => {
     }
     const force = queryForce === 'true' || bodyForce;
 
-    const result = await syncSource(type, { force });
+    const ctx = getServiceContext();
+    const result = ctx?.syncScheduler
+      ? await ctx.syncScheduler.enqueueFullSource(type, 'manual', { force })
+      : await (await import('../sync')).syncSource(type, { force });
 
     return c.json({
       type,
@@ -171,6 +173,7 @@ sourcesRoutes.get('/api/v1/sources/:type/status', (c) => {
     filesWatched: status?.filesWatched ?? 0,
     lastSyncAt: status?.lastSyncAt ?? null,
     lastError: status?.lastError ?? null,
+    sync: ctx?.syncScheduler?.getStatus() ?? null,
   });
 });
 
@@ -186,4 +189,3 @@ sourcesRoutes.get('/api/v1/events', async (c) => {
     'Connection': 'keep-alive'
   });
 });
-

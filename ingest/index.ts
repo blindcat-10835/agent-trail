@@ -19,6 +19,7 @@ import { searchRoutes } from './api/search.js';
 import { eventsRoutes } from './api/routes/events.js';
 import { rateLimiter } from './api/middleware/rate-limit.js';
 import { createWatcher } from './src/watcher.js';
+import { createSyncScheduler } from './src/sync-scheduler.js';
 import { sseManager } from './src/sse.js';
 import {
   discoverOpenClawSources,
@@ -27,7 +28,7 @@ import {
 } from './sync/sources.js';
 import type { ServiceContext, HealthStatus, StartupSyncState, VersionInfo } from './types.js';
 import type { TraceSource } from '../types/trace.js';
-import type { SyncSourceType } from './sync/index.js';
+import { syncPaths, syncSource, type SyncSourceType } from './sync/index.js';
 
 // ============================================================================
 // Module State
@@ -57,7 +58,9 @@ app.get('/health', (c) => {
     version: '0.1.0',
     uptime: process.uptime(),
     database: context?.db ? 'connected' : 'disconnected',
-    sync: context?.syncState ?? null,
+    sync: context?.syncState
+      ? { ...context.syncState, scheduler: context.syncScheduler?.getStatus() ?? null }
+      : null,
   };
 
   return c.json(health);
@@ -157,8 +160,10 @@ export async function start(): Promise<void> {
       port: config.port,
     });
 
+    const syncScheduler = createSyncScheduler({ syncSource, syncPaths });
+
     // Store context before background initialization so routes/health can answer.
-    context = { config, db, server, sseManager, watcher: null, syncState };
+    context = { config, db, server, sseManager, watcher: null, syncScheduler, syncState };
 
     console.log(`Ingest service listening on port ${config.port}`);
     console.log(`Health check: http://localhost:${config.port}/health`);
@@ -189,30 +194,35 @@ async function initializeSourcesAndSync(): Promise<void> {
     sourceDirs.set('claude-code', claudeSources.filter((s) => !s.error && s.path).map((s) => s.path));
     sourceDirs.set('codex', codexSources.filter((s) => !s.error && s.path).map((s) => s.path));
 
-    // Start file watcher
-    console.log('Starting file watcher...');
+    // Create watcher before warmup so routes can report it, but start it only
+    // after foreground warmup. This prevents startup warmup and file events
+    // from overlapping before the scheduler is ready to coalesce work.
     const watcher = createWatcher({
       sourceDirs,
       debounceMs: active.config.debounceMs,
       resyncIntervalMs: active.config.resyncIntervalMs,
       fileExtensions: ['.jsonl', '.json', '.md'],
-      onSyncTrigger: async (sourceType) => {
+      onPathsChanged: async (sourceType, paths) => {
         try {
-          const { syncSource } = await import('./sync/index.js');
-          await syncSource(sourceType);
+          await active.syncScheduler?.enqueuePaths(sourceType, paths, 'watcher');
         } catch (err) {
-          console.error(`[watcher] Sync failed for ${sourceType}:`, err);
+          console.error(`[watcher] Path sync failed for ${sourceType}:`, err);
+        }
+      },
+      onFullResync: async (sourceType) => {
+        try {
+          await active.syncScheduler?.enqueueFullSource(sourceType, 'periodic');
+        } catch (err) {
+          console.error(`[watcher] Periodic sync failed for ${sourceType}:`, err);
         }
       },
     });
-    await watcher.start();
     if (context) {
       context.watcher = watcher;
     }
 
     // Bounded startup warmup: parse a small latest-first slice before reporting
     // ready=true. Full historical indexing continues in the background below.
-    const { syncSource } = await import('./sync/index.js');
     const sourceTypes = ['openclaw', 'claude-code', 'codex'] as SyncSourceType[];
 
     if (active.config.startupSyncLimit > 0) {
@@ -222,7 +232,7 @@ async function initializeSourcesAndSync(): Promise<void> {
       for (const sourceType of sourceTypes) {
         active.syncState.currentSource = sourceType;
         try {
-          const result = await syncSource(sourceType, {
+          const result = await active.syncScheduler!.enqueueFullSource(sourceType, 'startup-warmup', {
             limit: active.config.startupSyncLimit,
             sortByMtimeDesc: true,
           });
@@ -239,6 +249,9 @@ async function initializeSourcesAndSync(): Promise<void> {
     active.syncState.startupComplete = true;
     active.syncState.currentSource = null;
 
+    console.log('Starting file watcher...');
+    await watcher.start();
+
     if (!active.config.backgroundSyncEnabled) {
       active.syncState.phase = 'idle';
       console.log('Background sync disabled; ingest is ready after startup warmup.');
@@ -250,7 +263,7 @@ async function initializeSourcesAndSync(): Promise<void> {
     for (const sourceType of sourceTypes) {
       active.syncState.currentSource = sourceType;
       try {
-        const result = await syncSource(sourceType);
+        const result = await active.syncScheduler!.enqueueFullSource(sourceType, 'background');
         active.syncState.lastSyncAt = new Date().toISOString();
         console.log(`  Background sync ${sourceType}: +${result.sessionsInserted} new, ~${result.sessionsUpdated} updated`);
       } catch (err) {
