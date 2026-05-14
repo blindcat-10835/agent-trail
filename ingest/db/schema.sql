@@ -223,13 +223,24 @@ CREATE INDEX IF NOT EXISTS idx_messages_session_ordinal ON messages(session_id, 
 -- Tool calls indexes
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls(session_id);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_message_ordinal ON tool_calls(message_ordinal);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_calls_session_tool_id_unique
+  ON tool_calls(session_id, tool_id);
 
 -- Tool result events indexes
 CREATE INDEX IF NOT EXISTS idx_tool_result_events_tool_call_id ON tool_result_events(tool_call_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_result_events_unique
+  ON tool_result_events(tool_call_id, COALESCE(timestamp, ''), content, is_partial);
 
 -- Subagent link indexes
 CREATE INDEX IF NOT EXISTS idx_subagent_links_session_id ON subagent_links(session_id);
 CREATE INDEX IF NOT EXISTS idx_subagent_links_message_ordinal ON subagent_links(message_ordinal);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subagent_links_unique
+  ON subagent_links(
+    session_id,
+    subagent_session_id,
+    relationship,
+    COALESCE(message_ordinal, -1)
+  );
 
 -- Turns indexes
 CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);

@@ -143,7 +143,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 11;
+  const targetVersion = 12;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -330,6 +330,26 @@ export function runMigrations(): void {
     {
       desc: 'Add ingest file cursor session index',
       sql: 'CREATE INDEX IF NOT EXISTS idx_ingest_file_cursors_session_id ON ingest_file_cursors(session_id)',
+    },
+    {
+      desc: 'Add unique tool call idempotency index',
+      sql: 'CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_calls_session_tool_id_unique ON tool_calls(session_id, tool_id)',
+    },
+    {
+      desc: 'Add unique tool result event idempotency index',
+      sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_result_events_unique ON tool_result_events(tool_call_id, COALESCE(timestamp, ''), content, is_partial)",
+    },
+    {
+      desc: 'Add unique subagent link idempotency index',
+      sql: `
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_subagent_links_unique
+        ON subagent_links(
+          session_id,
+          subagent_session_id,
+          relationship,
+          COALESCE(message_ordinal, -1)
+        )
+      `,
     },
   ];
 

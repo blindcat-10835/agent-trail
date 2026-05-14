@@ -105,6 +105,18 @@ export type CursorDecision =
       snapshot?: FileSnapshotWithIdentity;
     };
 
+interface UpsertCursorInput {
+  sourceType: SyncSourceType;
+  filePath: string;
+  sessionId: string;
+  snapshot: FileSnapshotWithIdentity;
+  lastIndexedOffset: number;
+  lastIndexedLine: number;
+  lastMessageOrdinal: number;
+  lastTurnIndex: number;
+  fallbackReason: string | null;
+}
+
 /**
  * Options for writeSessionToDatabase
  */
@@ -428,7 +440,7 @@ export function decideCursorSync(
   filePath: string,
   snapshot: FileSnapshotWithIdentity | undefined,
   opts: SyncSourceOptions,
-  database: Database.Database = getDatabase()
+  database?: Database.Database
 ): CursorDecision {
   if (!snapshot) {
     return { type: 'full_reparse', reason: 'snapshot_unavailable' };
@@ -438,7 +450,7 @@ export function decideCursorSync(
     return { type: 'full_reparse', reason: 'force', snapshot };
   }
 
-  const cursor = getIngestFileCursor(sourceType, filePath, database);
+  const cursor = getIngestFileCursor(sourceType, filePath, database ?? getDatabase());
   if (!cursor) {
     return { type: 'full_reparse', reason: 'no_cursor', snapshot };
   }
@@ -497,6 +509,107 @@ export function decideCursorSync(
     startOrdinal: cursor.lastMessageOrdinal + 1,
     startTurnIndex: cursor.lastTurnIndex,
   };
+}
+
+function upsertIngestFileCursor(database: Database.Database, input: UpsertCursorInput): void {
+  database.prepare(`
+    INSERT INTO ingest_file_cursors (
+      source_type,
+      file_path,
+      session_id,
+      file_size,
+      file_mtime,
+      file_inode,
+      file_device,
+      parser_version,
+      last_indexed_offset,
+      last_indexed_line,
+      last_message_ordinal,
+      last_turn_index,
+      last_success_at,
+      last_fallback_reason
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(source_type, file_path) DO UPDATE SET
+      session_id = excluded.session_id,
+      file_size = excluded.file_size,
+      file_mtime = excluded.file_mtime,
+      file_inode = excluded.file_inode,
+      file_device = excluded.file_device,
+      parser_version = excluded.parser_version,
+      last_indexed_offset = excluded.last_indexed_offset,
+      last_indexed_line = excluded.last_indexed_line,
+      last_message_ordinal = excluded.last_message_ordinal,
+      last_turn_index = excluded.last_turn_index,
+      last_success_at = excluded.last_success_at,
+      last_fallback_reason = excluded.last_fallback_reason
+  `).run(
+    input.sourceType,
+    input.filePath,
+    input.sessionId,
+    input.snapshot.size,
+    input.snapshot.mtimeIso,
+    input.snapshot.inode,
+    input.snapshot.device,
+    PARSER_CACHE_VERSION,
+    input.lastIndexedOffset,
+    input.lastIndexedLine,
+    input.lastMessageOrdinal,
+    input.lastTurnIndex,
+    new Date().toISOString(),
+    input.fallbackReason
+  );
+}
+
+function countCompleteJsonlLines(filePath: string): number {
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let count = 0;
+
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null);
+      for (let i = 0; i < bytesRead; i++) {
+        if (buffer[i] === 10) count++;
+      }
+    } while (bytesRead > 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  return count;
+}
+
+function updateCursorAfterFullParse(
+  database: Database.Database,
+  sourceType: SyncSourceType,
+  filePath: string,
+  parseResult: ParseResult,
+  fallbackReason: string | null
+): void {
+  const snapshot = tryGetFileSnapshot(filePath);
+  if (!snapshot) return;
+
+  const lastMessageOrdinal = parseResult.messages.reduce(
+    (max, message) => Math.max(max, message.ordinal),
+    -1
+  );
+  const lastTurnIndex = parseResult.messages.reduce(
+    (max, message) => Math.max(max, typeof message.turnIndex === 'number' ? message.turnIndex : -1),
+    -1
+  );
+
+  upsertIngestFileCursor(database, {
+    sourceType,
+    filePath,
+    sessionId: parseResult.session.id,
+    snapshot,
+    lastIndexedOffset: snapshot.size,
+    lastIndexedLine: countCompleteJsonlLines(filePath),
+    lastMessageOrdinal,
+    lastTurnIndex,
+    fallbackReason,
+  });
 }
 
 function recordFileConsidered(result: SyncResult, snapshot?: FileSnapshot): void {
@@ -913,6 +1026,269 @@ export function writeSessionToDatabase(
   };
 }
 
+export function appendSessionDeltaToDatabase(
+  delta: IncrementalParseDelta,
+  db: Database.Database,
+  sourceFile: string,
+  decision: Extract<CursorDecision, { type: 'incremental_append' }>
+): SyncResult {
+  const errors: string[] = [];
+  let sessionsInserted = 0;
+  let sessionsUpdated = 0;
+  let messagesInserted = 0;
+  let toolCallsInserted = 0;
+  let toolResultEventsInserted = 0;
+
+  try {
+    const lastSyncAt = new Date().toISOString();
+    const sessionId = delta.sessionId;
+    const existingSession = db
+      .prepare('SELECT id FROM sessions WHERE id = ?')
+      .get(sessionId) as { id: string } | undefined;
+    const toolCallsByOrdinal = new Map<number, IncrementalParseDelta['toolCalls']>();
+    for (const toolCall of delta.toolCalls) {
+      if (typeof toolCall.messageOrdinal !== 'number') continue;
+      const list = toolCallsByOrdinal.get(toolCall.messageOrdinal) ?? [];
+      list.push(toolCall);
+      toolCallsByOrdinal.set(toolCall.messageOrdinal, list);
+    }
+    let insertedUserMessages = 0;
+    let insertedInputTokens = 0;
+    let insertedOutputTokens = 0;
+
+    const writeTransaction = db.transaction(() => {
+      if (existingSession) {
+        db.prepare(`
+          UPDATE sessions SET
+            project = COALESCE(NULLIF(?, ''), project),
+            ended_at = COALESCE(?, ended_at),
+            status = COALESCE(?, status),
+            cwd = COALESCE(?, cwd),
+            git_branch = COALESCE(?, git_branch),
+            source_session_id = COALESCE(?, source_session_id),
+            source_version = COALESCE(?, source_version),
+            file_path = ?,
+            file_size = ?,
+            file_mtime = ?,
+            last_sync_at = ?
+          WHERE id = ?
+        `).run(
+          delta.sessionPatch.project || '',
+          delta.sessionPatch.endedAt || null,
+          delta.sessionPatch.status || null,
+          delta.sessionPatch.cwd || null,
+          delta.sessionPatch.gitBranch || null,
+          delta.sessionPatch.sourceSessionId || null,
+          delta.sessionPatch.sourceVersion || null,
+          sourceFile,
+          decision.snapshot.size,
+          decision.snapshot.mtimeIso,
+          lastSyncAt,
+          sessionId
+        );
+        sessionsUpdated++;
+      } else {
+        db.prepare(`
+          INSERT INTO sessions (
+            id, source, project, started_at, ended_at, status,
+            message_count, user_message_count, total_output_tokens, total_input_tokens,
+            has_tool_calls, parser_malformed_lines, is_truncated,
+            file_path, file_size, file_mtime, last_sync_at,
+            cwd, git_branch, source_session_id, source_version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          sessionId,
+          delta.sourceType,
+          delta.sessionPatch.project || 'default',
+          delta.sessionPatch.startedAt || null,
+          delta.sessionPatch.endedAt || null,
+          delta.sessionPatch.status || 'idle',
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          sourceFile,
+          decision.snapshot.size,
+          decision.snapshot.mtimeIso,
+          lastSyncAt,
+          delta.sessionPatch.cwd || null,
+          delta.sessionPatch.gitBranch || null,
+          delta.sessionPatch.sourceSessionId || sessionId,
+          delta.sessionPatch.sourceVersion || null
+        );
+        sessionsInserted++;
+      }
+
+      const insertMessage = db.prepare(`
+        INSERT OR IGNORE INTO messages (
+          id, session_id, ordinal, role, content, timestamp, model,
+          has_tool_use, turn_id, turn_index, is_real_user_input,
+          token_usage_json, source_file, source_line
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const message of delta.messages) {
+        const messageId = (message.id && message.id.trim())
+          ? message.id
+          : `${sessionId}:${message.ordinal}`;
+        const result = insertMessage.run(
+          messageId,
+          sessionId,
+          message.ordinal,
+          message.role,
+          message.content,
+          message.timestamp || null,
+          message.model || '',
+          toolCallsByOrdinal.has(message.ordinal) ? 1 : 0,
+          message.turnId || null,
+          typeof message.turnIndex === 'number' ? message.turnIndex : null,
+          message.isRealUserInput ? 1 : 0,
+          message.tokenUsage ? JSON.stringify(message.tokenUsage) : '',
+          message.sourceMetadata.sourceFile,
+          message.sourceMetadata.sourceLine || null
+        );
+        messagesInserted += result.changes;
+        if (result.changes > 0) {
+          if (message.role === 'user') insertedUserMessages++;
+          insertedInputTokens += message.tokenUsage?.inputTokens ?? 0;
+          insertedOutputTokens += message.tokenUsage?.outputTokens ?? 0;
+        }
+      }
+
+      const upsertToolCall = db.prepare(`
+        INSERT INTO tool_calls (
+          session_id, message_ordinal, tool_id, name, category,
+          input_json, status, error, duration_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id, tool_id) DO UPDATE SET
+          message_ordinal = excluded.message_ordinal,
+          name = excluded.name,
+          category = excluded.category,
+          input_json = excluded.input_json,
+          status = excluded.status,
+          error = excluded.error,
+          duration_ms = excluded.duration_ms
+      `);
+      const insertResultEvent = db.prepare(`
+        INSERT OR IGNORE INTO tool_result_events (tool_call_id, timestamp, content, is_partial)
+        VALUES (?, ?, ?, ?)
+      `);
+      const getToolCallId = db.prepare(`
+        SELECT id FROM tool_calls WHERE session_id = ? AND tool_id = ?
+      `);
+
+      for (const toolCall of delta.toolCalls) {
+        const result = upsertToolCall.run(
+          sessionId,
+          toolCall.messageOrdinal ?? 0,
+          toolCall.id,
+          toolCall.name,
+          toolCall.category || 'Other',
+          coerceSqlText(toolCall.inputJson),
+          toolCall.status,
+          toolCall.error || null,
+          toolCall.durationMs || null
+        );
+        toolCallsInserted += result.changes;
+        const row = getToolCallId.get(sessionId, toolCall.id) as { id: number } | undefined;
+        if (!row) continue;
+
+        for (const event of toolCall.resultEvents) {
+          const eventResult = insertResultEvent.run(
+            row.id,
+            event.timestamp || null,
+            coerceSqlText(event.content),
+            event.isPartial ? 1 : 0
+          );
+          toolResultEventsInserted += eventResult.changes;
+        }
+      }
+
+      for (const event of delta.toolResultEvents) {
+        const row = getToolCallId.get(sessionId, event.toolId) as { id: number } | undefined;
+        if (!row) {
+          throw new Error(`Missing tool call for result event: ${event.toolId}`);
+        }
+        const eventResult = insertResultEvent.run(
+          row.id,
+          event.event.timestamp || null,
+          coerceSqlText(event.event.content),
+          event.event.isPartial ? 1 : 0
+        );
+        toolResultEventsInserted += eventResult.changes;
+      }
+
+      const insertSubagentLink = db.prepare(`
+        INSERT OR IGNORE INTO subagent_links (
+          session_id, subagent_session_id, subagent_source, relationship, message_ordinal
+        ) VALUES (?, ?, ?, ?, ?)
+      `);
+      for (const link of delta.subagentLinks) {
+        insertSubagentLink.run(
+          sessionId,
+          link.subagentSessionId,
+          link.subagentSource,
+          link.relationship,
+          typeof link.messageOrdinal === 'number' ? link.messageOrdinal : null
+        );
+      }
+
+      db.prepare(`
+        UPDATE sessions SET
+          message_count = message_count + ?,
+          user_message_count = user_message_count + ?,
+          total_output_tokens = COALESCE(total_output_tokens, 0) + ?,
+          total_input_tokens = COALESCE(total_input_tokens, 0) + ?,
+          has_tool_calls = CASE WHEN ? THEN 1 ELSE has_tool_calls END,
+          parser_malformed_lines = parser_malformed_lines + ?
+        WHERE id = ?
+      `).run(
+        messagesInserted,
+        insertedUserMessages,
+        insertedOutputTokens,
+        insertedInputTokens,
+        toolCallsInserted > 0 || toolResultEventsInserted > 0 || delta.toolResultEvents.length > 0 ? 1 : 0,
+        messagesInserted > 0 ? delta.metricsDelta.parserMalformedLines : 0,
+        sessionId
+      );
+
+      upsertIngestFileCursor(db, {
+        sourceType: delta.sourceType,
+        filePath: sourceFile,
+        sessionId,
+        snapshot: decision.snapshot,
+        lastIndexedOffset: delta.cursorUpdate.lastIndexedOffset,
+        lastIndexedLine: delta.cursorUpdate.lastIndexedLine,
+        lastMessageOrdinal: delta.cursorUpdate.lastMessageOrdinal,
+        lastTurnIndex: delta.cursorUpdate.lastTurnIndex,
+        fallbackReason: null,
+      });
+    });
+
+    writeTransaction();
+
+    sseManager.emit('session_updated', {
+      sessionId,
+      source: delta.sourceType,
+    });
+    sseManager.emitSessionEvent(sessionId, 'session_updated', {});
+  } catch (err) {
+    errors.push(err instanceof Error ? err.message : 'Unknown error');
+  }
+
+  return {
+    sessionsInserted,
+    sessionsUpdated,
+    messagesInserted,
+    toolCallsInserted,
+    toolResultEventsInserted,
+    errors,
+  };
+}
+
 // ============================================================================
 // Source Sync Orchestration
 // ============================================================================
@@ -1118,6 +1494,7 @@ async function parseAndWriteCandidate(
     return;
   }
 
+  let fullReparseReason: string | null = null;
   if (sourceType !== 'openclaw') {
     const decision = decideCursorSync(sourceType, filePath, snapshot, opts);
     if (decision.type === 'skip_unchanged') {
@@ -1126,17 +1503,27 @@ async function parseAndWriteCandidate(
     }
 
     if (decision.type === 'incremental_append') {
-      const parsedIncrementally = await parseIncrementalAppendCandidate(
+      const incrementalResult = await parseIncrementalAppendCandidate(
         sourceType,
         candidate,
         decision,
         totalResult
       );
-      if (parsedIncrementally) return;
+      if (incrementalResult.handled) return;
+      fullReparseReason = incrementalResult.fallbackReason || 'incremental_append_fallback';
+    } else {
+      fullReparseReason = decision.reason;
     }
   }
 
-  await parseFullCandidate(sourceType, candidate, opts, totalResult, relationshipsByChild);
+  await parseFullCandidate(
+    sourceType,
+    candidate,
+    opts,
+    totalResult,
+    relationshipsByChild,
+    fullReparseReason
+  );
 }
 
 async function parseFullCandidate(
@@ -1144,7 +1531,8 @@ async function parseFullCandidate(
   candidate: SyncFileCandidate,
   opts: SyncSourceOptions,
   totalResult: SyncResult,
-  relationshipsByChild = new Map<string, { parentSessionId: string; rootSessionId?: string }>()
+  relationshipsByChild = new Map<string, { parentSessionId: string; rootSessionId?: string }>(),
+  fallbackReason: string | null = null
 ): Promise<void> {
   const filePath = candidate.filePath;
 
@@ -1155,7 +1543,12 @@ async function parseFullCandidate(
     parseResult.session.name = extractSessionName(parseResult);
     parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
     parseResult.session.agentName = extractAgentNameFromPath(filePath, 'openclaw');
-    mergeSyncResult(totalResult, writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force }));
+    const writeResult = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
+    if (writeResult.errors.length === 0) {
+      const database = getDatabase();
+      updateCursorAfterFullParse(database, sourceType, filePath, parseResult, fallbackReason);
+    }
+    mergeSyncResult(totalResult, writeResult);
     return;
   }
 
@@ -1165,7 +1558,12 @@ async function parseFullCandidate(
     recordFileParsed(totalResult, 'full');
     parseResult.session.name = extractSessionName(parseResult);
     parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
-    mergeSyncResult(totalResult, writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force }));
+    const writeResult = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
+    if (writeResult.errors.length === 0) {
+      const database = getDatabase();
+      updateCursorAfterFullParse(database, sourceType, filePath, parseResult, fallbackReason);
+    }
+    mergeSyncResult(totalResult, writeResult);
     return;
   }
 
@@ -1181,7 +1579,12 @@ async function parseFullCandidate(
   }
   parseResult.session.name = extractSessionName(parseResult);
   parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
-  mergeSyncResult(totalResult, writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force }));
+  const writeResult = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
+  if (writeResult.errors.length === 0) {
+    const database = getDatabase();
+    updateCursorAfterFullParse(database, sourceType, filePath, parseResult, fallbackReason);
+  }
+  mergeSyncResult(totalResult, writeResult);
 }
 
 async function parseIncrementalAppendCandidate(
@@ -1189,7 +1592,7 @@ async function parseIncrementalAppendCandidate(
   candidate: SyncFileCandidate,
   decision: Extract<CursorDecision, { type: 'incremental_append' }>,
   totalResult: SyncResult
-): Promise<boolean> {
+): Promise<{ handled: boolean; fallbackReason?: string }> {
   const filePath = candidate.filePath;
   const parserContext = readIncrementalParserContext(decision.cursor);
   const options = {
@@ -1219,11 +1622,18 @@ async function parseIncrementalAppendCandidate(
 
   if (delta.requiresFullReparse) {
     recordIncrementalFallback(totalResult);
-    return false;
+    return { handled: false, fallbackReason: delta.fallbackReason || 'incremental_parser_fallback' };
+  }
+
+  const writeResult = appendSessionDeltaToDatabase(delta, getDatabase(), filePath, decision);
+  if (writeResult.errors.length > 0) {
+    recordIncrementalFallback(totalResult);
+    return { handled: false, fallbackReason: `append_writer_failed:${writeResult.errors[0]}` };
   }
 
   recordFileParsed(totalResult, 'incremental');
-  return true;
+  mergeSyncResult(totalResult, writeResult);
+  return { handled: true };
 }
 
 function readIncrementalParserContext(cursor: IngestFileCursor): IncrementalParserContext {

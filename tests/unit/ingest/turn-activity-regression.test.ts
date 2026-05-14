@@ -14,8 +14,13 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { writeSessionToDatabase } from '@/ingest/sync/index';
-import type { ParseResult } from '@/ingest/parser/types';
+import {
+  appendSessionDeltaToDatabase,
+  PARSER_CACHE_VERSION,
+  writeSessionToDatabase,
+} from '@/ingest/sync/index';
+import type { IncrementalParseDelta, ParseResult } from '@/ingest/parser/types';
+import type { CursorDecision } from '@/ingest/sync';
 import type { TraceSubagentLink, TraceToolCall, TraceToolResultEvent } from '@/types/trace';
 
 // ============================================================================
@@ -415,5 +420,88 @@ describe('turn activity regression — assembleTurns reads tool activities from 
     // The tool_result message should not create a new turn
     expect(turns.length).toBe(1);
     expect(turns[0].userMessage?.content).toBe('Run ls');
+  });
+
+  it('assembleTurns sees append-written messages, result events, and subagent links', async () => {
+    const { assembleTurns } = await import('@/ingest/turns/assembler');
+    const sessionId = 'sess-append-assembled';
+    const sourceFile = '/fake/append-session.jsonl';
+
+    writeSessionToDatabase({
+      session: {
+        id: sessionId,
+        source: 'codex',
+        project: 'test',
+        startedAt: '2026-05-15T00:00:00Z',
+        endedAt: '2026-05-15T00:00:01Z',
+        status: 'idle',
+        metrics: { messageCount: 1, userMessageCount: 1, hasToolCalls: false, parserMalformedLines: 0, isTruncated: false },
+        turns: [],
+      },
+      messages: [
+        { id: `${sessionId}:0`, ordinal: 0, role: 'user', content: 'seed', turnId: 'turn-0', turnIndex: 0, isRealUserInput: true, sourceMetadata: { sourceType: 'codex', sourceFile, sourceLine: 1 } },
+      ],
+      activities: [],
+      errors: [],
+      warnings: [],
+    }, db);
+
+    const delta: IncrementalParseDelta = {
+      sessionId,
+      sourceType: 'codex',
+      messages: [
+        { id: `${sessionId}:1`, ordinal: 1, role: 'user', content: 'spawn helper', turnId: 'turn-1', turnIndex: 1, isRealUserInput: true, sourceMetadata: { sourceType: 'codex', sourceFile, sourceLine: 2 } },
+        { id: `${sessionId}:2`, ordinal: 2, role: 'assistant', content: '', turnId: 'turn-1', turnIndex: 1, isRealUserInput: false, sourceMetadata: { sourceType: 'codex', sourceFile, sourceLine: 3 } },
+      ],
+      toolCalls: [
+        { type: 'tool_call', id: 'call-append-assemble', name: 'spawn_agent', category: 'Agent', inputJson: '{}', resultEvents: [{ type: 'result_event', content: 'child ready', isPartial: false }], status: 'success', messageOrdinal: 2 },
+      ],
+      toolResultEvents: [],
+      subagentLinks: [
+        { type: 'subagent_link', subagentSessionId: 'child-append-assembled', subagentSource: 'codex', relationship: 'spawned', messageOrdinal: 2 },
+      ],
+      sessionPatch: { project: 'test', status: 'idle' },
+      metricsDelta: { messageCount: 2, userMessageCount: 1, totalInputTokens: 0, totalOutputTokens: 0, hasToolCalls: true, parserMalformedLines: 0 },
+      cursorUpdate: { lastIndexedOffset: 32, lastIndexedLine: 2, lastMessageOrdinal: 2, lastTurnIndex: 1 },
+      errors: [],
+      warnings: [],
+    };
+    const decision: Extract<CursorDecision, { type: 'incremental_append' }> = {
+      type: 'incremental_append',
+      cursor: {
+        sourceType: 'codex',
+        filePath: sourceFile,
+        sessionId,
+        fileSize: 16,
+        fileMtime: '2026-05-15T00:00:00.000Z',
+        fileInode: 1,
+        fileDevice: 1,
+        parserVersion: PARSER_CACHE_VERSION,
+        lastIndexedOffset: 16,
+        lastIndexedLine: 1,
+        lastMessageOrdinal: 0,
+        lastTurnIndex: 0,
+        lastSuccessAt: null,
+        lastFallbackReason: null,
+      },
+      snapshot: { size: 32, mtimeIso: '2026-05-15T00:00:01.000Z', inode: 1, device: 1 },
+      startOffset: 16,
+      endOffset: 32,
+      startLine: 1,
+      startOrdinal: 1,
+      startTurnIndex: 0,
+    };
+
+    const appendResult = appendSessionDeltaToDatabase(delta, db, sourceFile, decision);
+    expect(appendResult.errors).toEqual([]);
+
+    const turns = await assembleTurns(sessionId, db);
+    const appendedTurn = turns.find((turn) => turn.userMessage?.content === 'spawn helper');
+    expect(appendedTurn).toBeDefined();
+    const tool = appendedTurn?.activities.find((activity) => activity.type === 'tool_call') as TraceToolCall | undefined;
+    const subagent = appendedTurn?.activities.find((activity) => activity.type === 'subagent_link') as TraceSubagentLink | undefined;
+
+    expect(tool?.resultEvents[0].content).toBe('child ready');
+    expect(subagent?.subagentSessionId).toBe('child-append-assembled');
   });
 });

@@ -96,7 +96,7 @@ describe('ingest database migrations', () => {
     expect(indexes.map((index) => index.name)).toContain('idx_messages_session_turn_index');
     expect(tables.map((table) => table.name)).toContain('subagent_links');
     expect(tables.map((table) => table.name)).toContain('ingest_file_cursors');
-    expect(version).toBe(11);
+    expect(version).toBe(12);
   });
 
   it('initializes ingest file cursor schema idempotently', () => {
@@ -136,6 +136,62 @@ describe('ingest database migrations', () => {
       ])
     );
     expect(indexes.map((index) => index.name)).toContain('idx_ingest_file_cursors_session_id');
-    expect(version).toBe(11);
+    expect(version).toBe(12);
+  });
+
+  it('enforces append writer idempotency constraints', () => {
+    dbPath = join(tmpdir(), `ingest-append-constraints-${randomUUID()}.db`);
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    initSchema();
+
+    const db = new Database(dbPath);
+    db.prepare(`
+      INSERT INTO sessions (
+        id, source, project, status, message_count, user_message_count,
+        has_tool_calls, file_path
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('session-constraints', 'codex', 'test', 'idle', 0, 0, 1, '/tmp/session.jsonl');
+    db.prepare(`
+      INSERT INTO tool_calls (
+        session_id, message_ordinal, tool_id, name, category, input_json, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run('session-constraints', 1, 'call-1', 'bash', 'Bash', '{}', 'pending');
+    expect(() => {
+      db.prepare(`
+        INSERT INTO tool_calls (
+          session_id, message_ordinal, tool_id, name, category, input_json, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run('session-constraints', 1, 'call-1', 'bash', 'Bash', '{}', 'pending');
+    }).toThrow();
+
+    const toolCallId = (
+      db.prepare('SELECT id FROM tool_calls WHERE session_id = ? AND tool_id = ?')
+        .get('session-constraints', 'call-1') as { id: number }
+    ).id;
+    db.prepare(`
+      INSERT INTO tool_result_events (tool_call_id, timestamp, content, is_partial)
+      VALUES (?, ?, ?, ?)
+    `).run(toolCallId, null, 'same output', 0);
+    expect(() => {
+      db.prepare(`
+        INSERT INTO tool_result_events (tool_call_id, timestamp, content, is_partial)
+        VALUES (?, ?, ?, ?)
+      `).run(toolCallId, null, 'same output', 0);
+    }).toThrow();
+
+    db.prepare(`
+      INSERT INTO subagent_links (
+        session_id, subagent_session_id, subagent_source, relationship, message_ordinal
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run('session-constraints', 'child-1', 'codex', 'spawned', null);
+    expect(() => {
+      db.prepare(`
+        INSERT INTO subagent_links (
+          session_id, subagent_session_id, subagent_source, relationship, message_ordinal
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run('session-constraints', 'child-1', 'codex', 'spawned', null);
+    }).toThrow();
+    db.close();
   });
 });
