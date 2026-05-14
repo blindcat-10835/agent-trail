@@ -2,7 +2,7 @@
 
 日期：2026-05-13 初稿；2026-05-14 补充可视化执行路径  
 范围：`ingest` 服务的文件监听、同步调度、JSONL 解析、SQLite 写入路径  
-状态：Phase 15 已实施 P0/P1/P3 范围；剩余 append-only cursor/upsert 属于后续可选优化
+状态：Phase 15 已实施 P0/P1/P3 稳定性范围；Phase 16 已创建，用于承接剩余 append-only cursor/upsert、run history、debug metrics 与 bounded batching/concurrency 优化
 
 ## 结论
 

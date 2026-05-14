@@ -6,7 +6,7 @@
 ## Milestones
 
 - **v1.0 MVP** — Phases 1-9, shipped 2026-05-12
-- **v1.1 Data-Rich HUD Redesign** — Phases 10-15, active
+- **v1.1 Data-Rich HUD Redesign** — Phases 10-16, active
 
 ## Phases
 
@@ -38,6 +38,7 @@
 | 13 | Sessions Table & Trace Detail v2 | 改造 Sessions indexed table 和 Session Detail trace thread，同时保留 v1.0 replay 能力。 | SES-101..105 |
 | 14 | Visual QA & Integration Hardening | 完成 light/dark、source switching、a11y、长 session、回归测试和视觉验证。 | SES-106, TEST-102, TEST-103 |
 | 15 | Ingest Sync Performance Hardening | 修复 ingest watcher/background/periodic sync 重叠导致的高内存、高 CPU、大 JSONL 重复解析问题。 | PERF-101..106, TEST-103, OPEN-103 |
+| 16 | Ingest Incremental JSONL and Sync Observability Hardening | 完成 Phase 15 剩余 P2/P3：append-only JSONL 增量解析、cursor 安全回退、append/upsert 写入、sync run 历史与生产级 debug 指标。 | PERF-107..112 |
 
 #### Phase 10: Rich Ingest Metrics & Data Contracts
 
@@ -140,6 +141,28 @@ Plans:
 6. Health/debug output reports active sync, queued sync, reason, scope, skipped count, parsed count, last error, and recent duration.
 7. Existing parser, API, BFF, replay, sync, and migration tests still pass.
 
+#### Phase 16: Ingest Incremental JSONL and Sync Observability Hardening
+
+**Goal:** Complete the remaining Phase 15 optimization track by making active Claude/Codex JSONL appends incremental, making cursor fallback safe, and expanding sync observability from last-run status to production-debuggable run history.
+
+**Requirements:** PERF-107, PERF-108, PERF-109, PERF-110, PERF-111, PERF-112
+
+**Depends on:** Phase 15
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 16` to break down)
+
+**Success criteria:**
+1. Appending to a large Claude/Codex JSONL reads and parses only new complete lines when cursor metadata proves append-only growth.
+2. Cursor safety detects truncate, rewrite, inode/device change, partial line, and parser version change, then falls back to full reparse without corrupting existing rows.
+3. Append-only sync writes new messages, tool calls, result events, turns, and activity rows through idempotent append/upsert logic instead of deleting and reinserting the whole session.
+4. Sync debug output exposes current file, current file size, current offset, recent run history, write counts, largest file, max RSS sample, duration, queue/coalesce behavior, and errors.
+5. Each sync run emits one structured log summary with reason, scope, files considered/skipped/parsed, rows written, duration, and error count.
+6. Any parse concurrency or SQLite batching introduced in this phase is bounded by explicit config and cannot reintroduce unbounded parallel work.
+7. Existing parser, API, BFF, replay, sync, migration, and Phase 15 performance regression tests still pass.
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -160,6 +183,7 @@ Plans:
 | 13. Sessions & Trace Detail v2 | v1.1 | 0/TBD | Planned | — |
 | 14. Visual QA & Hardening | v1.1 | 0/TBD | Planned | — |
 | 15. Ingest Sync Performance | v1.1 | 3/3 | Complete | 2026-05-14 |
+| 16. Incremental Sync Observability | v1.1 | 0/TBD | Planned | — |
 
 ## Future Enhancements
 

@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: ready_to_execute
-last_updated: "2026-05-14T13:58:43.000Z"
+last_updated: "2026-05-14T14:27:14.000Z"
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 3
   total_plans: 12
   completed_plans: 9
@@ -45,7 +45,7 @@ Plan: 1 of 3
 **Progress Bar:**
 
 ```text
-v1.1:                [▓▓▓▓▓▓▓▓░░] 75% (9/12 plans complete, 3/6 phases complete)
+v1.1:                [▓▓▓▓▓▓▓▓░░] 75% (9/12 plans complete, 3/7 phases complete)
 ```
 
 **Phase Progress:**
@@ -68,6 +68,7 @@ v1.1:                [▓▓▓▓▓▓▓▓░░] 75% (9/12 plans complete, 
   - 15-01: Sync scheduler, watcher path handoff, periodic no-reentry — ✓ Complete
   - 15-02: Pre-parse skip, streaming hash, Codex relationship guardrails — ✓ Complete
   - 15-03: Sync observability and regression verification — ✓ Complete
+- Phase 16: Ingest Incremental JSONL and Sync Observability Hardening — Planned
 
 ---
 
@@ -126,6 +127,7 @@ v1.1 has two explicit workstreams:
 ### Roadmap Evolution
 
 - 2026-05-14: Phase 15 added: Ingest Sync Performance Hardening. Scope is based on `.planning/debug/ingest-memory-performance-fix-policy.md` and targets watcher/scheduler/full-sync memory amplification before continuing downstream UI work.
+- 2026-05-14: Phase 16 added: Ingest Incremental JSONL and Sync Observability Hardening. Scope covers the remaining Phase 15 policy P2/P3 work: append-only JSONL cursors, safe fallback, append/upsert writes, sync run history, structured logs, bounded concurrency, and batching controls.
 
 ### v1.0 Archive
 
