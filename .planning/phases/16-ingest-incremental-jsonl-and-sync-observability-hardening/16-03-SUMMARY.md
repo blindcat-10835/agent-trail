@@ -37,6 +37,7 @@ completed: 2026-05-15
 - Added `appendSessionDeltaToDatabase()` for message/tool/result/subagent append writes.
 - Updated full parse fallback to seed/update cursor rows with fallback reason.
 - Added replay regression proving append-written rows assemble into turns and activities.
+- Preserved turn boundary data on `messages.turn_id` and `messages.turn_index`; append writes do not delete existing `turns` rows, and current replay paths assemble turns from stored message boundaries.
 
 ## Task Commits
 

@@ -71,12 +71,12 @@
 
 ### Ingest Incremental Sync And Production Observability
 
-- [ ] **PERF-107**: Developer can append to a large Claude/Codex JSONL file and ingest reads/parses only new complete lines when stored cursor metadata proves append-only growth.
-- [ ] **PERF-108**: Developer can rely on cursor safety checks that detect truncate, rewrite, inode/device change, partial line, and parser version change, then fall back to full reparse without corrupting existing rows.
-- [ ] **PERF-109**: Developer can sync append-only session updates through idempotent append/upsert writes for messages, tool calls, result events, turns, and activity rows instead of deleting and reinserting the whole session.
-- [ ] **PERF-110**: Developer can inspect sync debug output with current file, current file size, current offset, recent run history, write counts, largest file, max RSS sample, duration, queue/coalesce behavior, and recent errors.
-- [ ] **PERF-111**: Developer can read one structured sync completion log per run with reason, scope, files considered/skipped/parsed, rows written, duration, coalesced/queued status, and error count.
-- [ ] **PERF-112**: Developer can bound any parse concurrency and SQLite write batching through explicit configuration so performance hardening cannot reintroduce unbounded parallel work.
+- [x] **PERF-107**: Developer can append to a large Claude/Codex JSONL file and ingest reads/parses only new complete lines when stored cursor metadata proves append-only growth.
+- [x] **PERF-108**: Developer can rely on cursor safety checks that detect truncate, rewrite, inode/device change, partial line, and parser version change, then fall back to full reparse without corrupting existing rows.
+- [x] **PERF-109**: Developer can sync append-only session updates through idempotent append/upsert writes for messages, tool calls, result events, turns, and activity rows instead of deleting and reinserting the whole session.
+- [x] **PERF-110**: Developer can inspect sync debug output with current file, current file size, current offset, recent run history, write counts, largest file, max RSS sample, duration, queue/coalesce behavior, and recent errors.
+- [x] **PERF-111**: Developer can read one structured sync completion log per run with reason, scope, files considered/skipped/parsed, rows written, duration, coalesced/queued status, and error count.
+- [x] **PERF-112**: Developer can bound any parse concurrency and SQLite write batching through explicit configuration so performance hardening cannot reintroduce unbounded parallel work.
 
 ## Future Requirements
 
@@ -148,12 +148,12 @@
 | PERF-104 | Phase 15 | Complete |
 | PERF-105 | Phase 15 | Complete |
 | PERF-106 | Phase 15 | Complete |
-| PERF-107 | Phase 16 | Pending |
-| PERF-108 | Phase 16 | Pending |
-| PERF-109 | Phase 16 | Pending |
-| PERF-110 | Phase 16 | Pending |
-| PERF-111 | Phase 16 | Pending |
-| PERF-112 | Phase 16 | Pending |
+| PERF-107 | Phase 16 | Complete |
+| PERF-108 | Phase 16 | Complete |
+| PERF-109 | Phase 16 | Complete |
+| PERF-110 | Phase 16 | Complete |
+| PERF-111 | Phase 16 | Complete |
+| PERF-112 | Phase 16 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 45 total
@@ -162,4 +162,4 @@
 
 ---
 *Requirements defined: 2026-05-12*
-*Last updated: 2026-05-12 after v1.1 milestone definition*
+*Last updated: 2026-05-15 after Phase 16 completion*

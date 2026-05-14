@@ -1,7 +1,7 @@
 # agent-tracing-dashboard Roadmap
 
 **Project**: agent-tracing-dashboard
-**Last Updated**: 2026-05-14
+**Last Updated**: 2026-05-15
 
 ## Milestones
 
@@ -149,20 +149,20 @@ Plans:
 
 **Depends on:** Phase 15
 
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
-- [ ] 16-01-PLAN.md — Cursor schema and safety decision layer
+- [x] 16-01-PLAN.md — Cursor schema and safety decision layer
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 16-02-PLAN.md — Claude/Codex append parser paths
+- [x] 16-02-PLAN.md — Claude/Codex append parser paths
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 16-03-PLAN.md — Idempotent append/upsert write path
+- [x] 16-03-PLAN.md — Idempotent append/upsert write path
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 16-04-PLAN.md — Sync debug history, structured logs, bounded config, regression gate
+- [x] 16-04-PLAN.md — Sync debug history, structured logs, bounded config, regression gate
 
 **Success criteria:**
 1. Appending to a large Claude/Codex JSONL reads and parses only new complete lines when cursor metadata proves append-only growth.
@@ -193,7 +193,7 @@ Plans:
 | 13. Sessions & Trace Detail v2 | v1.1 | 0/TBD | Planned | — |
 | 14. Visual QA & Hardening | v1.1 | 0/TBD | Planned | — |
 | 15. Ingest Sync Performance | v1.1 | 3/3 | Complete | 2026-05-14 |
-| 16. Incremental Sync Observability | v1.1 | 0/4 | Planned | — |
+| 16. Incremental Sync Observability | v1.1 | 4/4 | Complete | 2026-05-15 |
 
 ## Future Enhancements
 

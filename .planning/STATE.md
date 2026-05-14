@@ -3,20 +3,20 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: ready_to_execute
-last_updated: "2026-05-14T14:54:18.902Z"
+last_updated: "2026-05-14T15:41:38Z"
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 16
-  completed_plans: 9
-  percent: 56
+  completed_plans: 13
+  percent: 81
 ---
 
 # agent-tracing-dashboard Project State
 
 **Project:** agent-tracing-dashboard
 **Core Value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
-**Last Updated:** 2026-05-14
+**Last Updated:** 2026-05-15
 
 ---
 
@@ -26,26 +26,26 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Core value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
-**Current focus:** Phase 16 — Ingest Incremental JSONL and Sync Observability Hardening
+**Current focus:** Phase 12 — Overview v2 Real Data
 
 ---
 
 ## Current Position
 
-Phase: 16 (Ingest Incremental JSONL and Sync Observability Hardening) — READY TO EXECUTE
-Plan: 1 of 4
+Phase: 12 (Overview v2 Real Data) — READY TO EXECUTE
+Plan: 1 of 3
 **Milestone:** v1.1 Data-Rich HUD Redesign — ACTIVE
 
-**Phase:** 16 (Ingest Incremental JSONL and Sync Observability Hardening)
+**Phase:** 12 (Overview v2 Real Data)
 
-**Plan:** 01 ready
+**Plan:** 12-01 ready
 
-**Status:** Phase 16 planned; ready to execute
+**Status:** Phase 16 complete; Phase 12 ready to execute
 
 **Progress Bar:**
 
 ```text
-v1.1:                [▓▓▓▓▓▓░░░░] 56% (9/16 plans complete, 3/7 phases complete)
+v1.1:                [▓▓▓▓▓▓▓▓░░] 81% (13/16 plans complete, 4/7 phases complete)
 ```
 
 **Phase Progress:**
@@ -68,11 +68,11 @@ v1.1:                [▓▓▓▓▓▓░░░░] 56% (9/16 plans complete, 
   - 15-01: Sync scheduler, watcher path handoff, periodic no-reentry — ✓ Complete
   - 15-02: Pre-parse skip, streaming hash, Codex relationship guardrails — ✓ Complete
   - 15-03: Sync observability and regression verification — ✓ Complete
-- Phase 16: Ingest Incremental JSONL and Sync Observability Hardening — Planned (0/4 plans)
-  - 16-01: Cursor schema and safety decision layer — Planned
-  - 16-02: Claude/Codex append parser paths — Planned
-  - 16-03: Idempotent append/upsert write path — Planned
-  - 16-04: Sync debug history, structured logs, bounded config, regression gate — Planned
+- Phase 16: Ingest Incremental JSONL and Sync Observability Hardening — ✓ Complete (4/4 plans)
+  - 16-01: Cursor schema and safety decision layer — ✓ Complete
+  - 16-02: Claude/Codex append parser paths — ✓ Complete
+  - 16-03: Idempotent append/upsert write path — ✓ Complete
+  - 16-04: Sync debug history, structured logs, bounded config, regression gate — ✓ Complete
 
 ---
 
@@ -132,6 +132,7 @@ v1.1 has two explicit workstreams:
 
 - 2026-05-14: Phase 15 added: Ingest Sync Performance Hardening. Scope is based on `.planning/debug/ingest-memory-performance-fix-policy.md` and targets watcher/scheduler/full-sync memory amplification before continuing downstream UI work.
 - 2026-05-14: Phase 16 added: Ingest Incremental JSONL and Sync Observability Hardening. Scope covers the remaining Phase 15 policy P2/P3 work: append-only JSONL cursors, safe fallback, append/upsert writes, sync run history, structured logs, bounded concurrency, and batching controls.
+- 2026-05-15: Phase 16 completed. Safe Claude/Codex append sync now uses cursor decisions, range-bounded append parsers, idempotent append writes, and `/api/v1/debug/sync` observability; broad `pnpm test:run` is blocked only by watcher `EMFILE` in `ingest/src/watcher.test.ts`.
 
 ### v1.0 Archive
 
@@ -161,7 +162,7 @@ v1.1 has two explicit workstreams:
 
 ### Blockers
 
-None currently known.
+- Broad `pnpm test:run` currently fails in `ingest/src/watcher.test.ts` with `EMFILE: too many open files, watch`; targeted Phase 16 suites and typechecks pass.
 
 ### Watchpoints
 
@@ -174,24 +175,23 @@ None currently known.
 
 ## Session Continuity
 
-**Last Session**: 2026-05-12 — Executing Phase 11, Plan 02 complete
+**Last Session**: 2026-05-15 — Completed Phase 16 incremental ingest optimization
 
 **What Was Done:**
 
-- Executed Plan 11-01: Design tokens + status bar real data
-- Executed Plan 11-02: Right rail scope tabs + source-color spines
-- Added RailScope type and state to ui-store (recent/starred/live)
-- Built scope tab bar with accent-active highlight
-- Implemented scope-based session filtering (STARRED=starredIds, LIVE=status=active, RECENT=all)
-- Added source-color spines on session entries (green/chartreuse/cyan)
+- Executed Plan 16-01: cursor schema and safety decision layer
+- Executed Plan 16-02: Claude/Codex append parser paths
+- Executed Plan 16-03: idempotent append/upsert write path
+- Executed Plan 16-04: sync debug history, structured logs, bounded config, regression gate
+- Added Phase 16 review and verification artifacts
 
 **What's Next:**
 
-- Phase 11 is complete (2/2 plans done)
-- Awaiting next phase planning
+- Phase 12 remains the next planned frontend phase: Overview v2 Real Data
+- Start with `12-01` unless the watcher `EMFILE` broad-suite blocker should be investigated first
 
 ---
 
 *State created: 2026-05-06*
-*Last updated: 2026-05-12*
-*Last activity: 2026-05-12 - Completed Plan 11-01, Phase 11 in progress*
+*Last updated: 2026-05-15*
+*Last activity: 2026-05-15 - Completed Phase 16*
