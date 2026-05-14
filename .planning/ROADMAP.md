@@ -1,12 +1,12 @@
 # agent-tracing-dashboard Roadmap
 
 **Project**: agent-tracing-dashboard
-**Last Updated**: 2026-05-12
+**Last Updated**: 2026-05-14
 
 ## Milestones
 
 - **v1.0 MVP** — Phases 1-9, shipped 2026-05-12
-- **v1.1 Data-Rich HUD Redesign** — Phases 10-14, active
+- **v1.1 Data-Rich HUD Redesign** — Phases 10-15, active
 
 ## Phases
 
@@ -33,10 +33,11 @@
 | # | Phase | Goal | Requirements |
 |---|-------|------|--------------|
 | 10 | Rich Ingest Metrics & Data Contracts | 扩展 schema、聚合查询、BFF contract 和 migration，为 Overview/Session Detail 提供真实数据。 | DATA-101..106, TURN-101..105, OPEN-101..103, TEST-101, TEST-104 |
-| 11 | 2/2 | Complete   | 2026-05-11 |
+| 11 | HUD Shell & Design System Foundation | 建立 production HUD shell、status bar、right rail scope tabs、source-aware shared chrome 和视觉 token。 | UI-101..104 |
 | 12 | Overview v2 Real Data | 用真实 BFF-backed data 实现新版 Overview：KPI、usage/cost、ranking、timeline、stars、agents、automations。 | OVR-101..105 |
 | 13 | Sessions Table & Trace Detail v2 | 改造 Sessions indexed table 和 Session Detail trace thread，同时保留 v1.0 replay 能力。 | SES-101..105 |
 | 14 | Visual QA & Integration Hardening | 完成 light/dark、source switching、a11y、长 session、回归测试和视觉验证。 | SES-106, TEST-102, TEST-103 |
+| 15 | Ingest Sync Performance Hardening | 修复 ingest watcher/background/periodic sync 重叠导致的高内存、高 CPU、大 JSONL 重复解析问题。 | PERF-101..106, TEST-103, OPEN-103 |
 
 #### Phase 10: Rich Ingest Metrics & Data Contracts
 
@@ -115,6 +116,30 @@ Plans:
 3. Existing v1.0 parser, API, BFF, replay, sync, and security tests pass.
 4. Visual review confirms no text overflow, incoherent overlap, mock data leaks, or hardcoded prototype values remain.
 
+#### Phase 15: Ingest Sync Performance Hardening
+
+**Goal:** Stabilize ingest sync so local indexing no longer amplifies watcher/background/periodic triggers into overlapping full-source parses, and so unchanged large JSONL files are skipped before expensive parser/hash work.
+
+**Requirements:** PERF-101, PERF-102, PERF-103, PERF-104, PERF-105, PERF-106, TEST-103, OPEN-103
+
+**Depends on:** Phase 10
+
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 15-01-PLAN.md — Sync scheduler, watcher path handoff, periodic no-reentry (P0)
+- [x] 15-02-PLAN.md — Pre-parse skip, streaming hash, Codex relationship guardrails (P1)
+- [x] 15-03-PLAN.md — Incremental-read readiness, health/debug observability, regression verification (P2/P3 foundation)
+
+**Success criteria:**
+1. Startup warmup, background sync, watcher-triggered sync, manual sync, and periodic resync all pass through one scheduler that serializes and coalesces work.
+2. A single `.jsonl` append/change from watcher syncs only the changed path/session scope instead of the whole source history.
+3. Periodic resync cannot start a second full-source sync while another sync is active.
+4. Unchanged historical files are skipped before parser allocation and before any whole-file hash read.
+5. Large JSONL files are never hashed with `fs.readFileSync()` on the hot path.
+6. Health/debug output reports active sync, queued sync, reason, scope, skipped count, parsed count, last error, and recent duration.
+7. Existing parser, API, BFF, replay, sync, and migration tests still pass.
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -130,10 +155,11 @@ Plans:
 | 8. Real-data Repair | v1.0 | 5/5 | Complete | 2026-05-10 |
 | 9. Batch 2 Fixes | v1.0 | 5/5 | Complete | 2026-05-10 |
 | 10. Rich Ingest Metrics | v1.1 | 4/4 | Complete | 2026-05-12 |
-| 11. HUD Shell Foundation | v1.1 | 0/2 | Planned | — |
-| 12. Overview v2 | v1.1 | 0/TBD | Planned | — |
+| 11. HUD Shell Foundation | v1.1 | 2/2 | Complete | 2026-05-12 |
+| 12. Overview v2 | v1.1 | 0/3 | Planned | — |
 | 13. Sessions & Trace Detail v2 | v1.1 | 0/TBD | Planned | — |
 | 14. Visual QA & Hardening | v1.1 | 0/TBD | Planned | — |
+| 15. Ingest Sync Performance | v1.1 | 3/3 | Complete | 2026-05-14 |
 
 ## Future Enhancements
 

@@ -57,8 +57,17 @@
 
 - [x] **TEST-101**: Developer can run ingest regression tests covering overview aggregate queries, time-window math, source filters, cost/token fallbacks, top rankings, starred sessions, and timeline events.
 - [ ] **TEST-102**: Developer can run frontend tests or Playwright checks for shell chrome, overview, sessions table, and session detail in both light and dark themes.
-- [ ] **TEST-103**: Developer can run the existing v1.0 parser, API, BFF, replay, sync, and security tests without regressions.
+- [x] **TEST-103**: Developer can run the existing v1.0 parser, API, BFF, replay, sync, and security tests without regressions.
 - [x] **TEST-104**: Developer can migrate an existing local SQLite index through additive schema/index changes and cache invalidation without manually deleting the database.
+
+### Ingest Performance And Sync Stability
+
+- [x] **PERF-101**: Developer can run ingest with startup warmup, background sync, watcher events, and periodic resync enabled without overlapping full-source sync runs.
+- [x] **PERF-102**: Developer can append or change a single session file and ingest syncs only the changed path or session scope, not the entire source history.
+- [x] **PERF-103**: Developer can rely on periodic resync as a low-priority fallback that skips or coalesces while another sync is active.
+- [x] **PERF-104**: Developer can rerun sync against unchanged historical files and observe parser-before-skip work avoided through pre-parse file metadata checks.
+- [x] **PERF-105**: Developer can index large Codex/Claude JSONL files without whole-file `readFileSync` hashing in the hot path.
+- [x] **PERF-106**: Developer can inspect health/debug output that distinguishes idle, active sync, queued sync, sync reason, scope, skipped files, parsed files, and recent sync errors.
 
 ## Future Requirements
 
@@ -104,7 +113,7 @@
 | TURN-105 | Phase 10 | ✓ Complete (10-03) |
 | OPEN-101 | Phase 10 | Done (10-02) |
 | OPEN-102 | Phase 10 | Done (10-02) |
-| OPEN-103 | Phase 10 | Done (10-02) |
+| OPEN-103 | Phase 10, Phase 15 | Complete |
 | UI-101 | Phase 11 | Pending |
 | UI-102 | Phase 11 | Pending |
 | UI-103 | Phase 11 | Pending |
@@ -122,12 +131,18 @@
 | SES-106 | Phase 14 | Pending |
 | TEST-101 | Phase 10 | Done (10-02) |
 | TEST-102 | Phase 14 | Pending |
-| TEST-103 | Phase 14 | Pending |
+| TEST-103 | Phase 14, Phase 15 | Complete |
 | TEST-104 | Phase 10 | Done (10-01) |
+| PERF-101 | Phase 15 | Complete |
+| PERF-102 | Phase 15 | Complete |
+| PERF-103 | Phase 15 | Complete |
+| PERF-104 | Phase 15 | Complete |
+| PERF-105 | Phase 15 | Complete |
+| PERF-106 | Phase 15 | Complete |
 
 **Coverage:**
-- v1.1 requirements: 33 total
-- Mapped to phases: 33
+- v1.1 requirements: 39 total
+- Mapped to phases: 39
 - Unmapped: 0
 
 ---

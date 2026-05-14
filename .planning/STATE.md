@@ -2,20 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
-status: verifying
-last_updated: "2026-05-11T18:56:13.846Z"
+status: ready_to_execute
+last_updated: "2026-05-14T13:58:43.000Z"
 progress:
-  total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_phases: 6
+  completed_phases: 3
+  total_plans: 12
+  completed_plans: 9
+  percent: 75
 ---
 
 # agent-tracing-dashboard Project State
 
 **Project:** agent-tracing-dashboard
 **Core Value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
-**Last Updated:** 2026-05-12
+**Last Updated:** 2026-05-14
 
 ---
 
@@ -25,24 +26,26 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Core value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
-**Current focus:** v1.1 Data-Rich HUD Redesign — Phase 11 in progress
+**Current focus:** Phase 12 — Overview v2 Real Data
 
 ---
 
 ## Current Position
 
+Phase: 12 (Overview v2 Real Data) — READY TO EXECUTE
+Plan: 1 of 3
 **Milestone:** v1.1 Data-Rich HUD Redesign — ACTIVE
 
-**Phase:** 11 (HUD Shell & Design System Foundation) — in progress
+**Phase:** 12 (Overview v2 Real Data)
 
-**Plan:** 02 complete (2/2)
+**Plan:** 01 ready
 
-**Status:** Phase 11 Plan 02 complete — right rail scope tabs + source-color spines
+**Status:** Phase 15 complete; ready to resume Phase 12
 
 **Progress Bar:**
 
 ```text
-v1.1:                [▓▓░░░░░░░░] 25% (5/5 plans in Phase 10-11, 1/5 phases complete)
+v1.1:                [▓▓▓▓▓▓▓▓░░] 75% (9/12 plans complete, 3/6 phases complete)
 ```
 
 **Phase Progress:**
@@ -55,6 +58,16 @@ v1.1:                [▓▓░░░░░░░░] 25% (5/5 plans in Phase 10
 - Phase 11: HUD Shell & Design System Foundation — Complete (2/2 plans)
   - 11-01: Design tokens + status bar real data — ✓ Complete
   - 11-02: Right rail scope tabs + source-color spines — ✓ Complete
+- Phase 12: Overview v2 Real Data — Planned (0/3 plans)
+  - 12-01: Data KPI rankings — Planned
+  - 12-02: Starred timeline agents — Planned
+  - 12-03: States polish — Planned
+- Phase 13: Sessions Table & Trace Detail v2 — Planned
+- Phase 14: Visual QA & Integration Hardening — Planned
+- Phase 15: Ingest Sync Performance Hardening — ✓ Complete (3/3 plans)
+  - 15-01: Sync scheduler, watcher path handoff, periodic no-reentry — ✓ Complete
+  - 15-02: Pre-parse skip, streaming hash, Codex relationship guardrails — ✓ Complete
+  - 15-03: Sync observability and regression verification — ✓ Complete
 
 ---
 
@@ -109,6 +122,10 @@ v1.1 has two explicit workstreams:
 ---
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- 2026-05-14: Phase 15 added: Ingest Sync Performance Hardening. Scope is based on `.planning/debug/ingest-memory-performance-fix-policy.md` and targets watcher/scheduler/full-sync memory amplification before continuing downstream UI work.
 
 ### v1.0 Archive
 
