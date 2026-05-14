@@ -11,6 +11,8 @@ import {
   TraceSession,
   TraceMessage,
   TraceToolCall,
+  TraceToolResultEvent,
+  TraceSubagentLink,
   TraceActivity,
   SourceMetadata,
 } from '@/types/trace';
@@ -94,6 +96,52 @@ export interface ParseError {
   line: number;
   raw: string;
   error: string;
+}
+
+export interface IncrementalToolResultEvent {
+  toolId: string;
+  event: TraceToolResultEvent;
+}
+
+export interface IncrementalParseOptions {
+  startOffset: number;
+  endOffset: number;
+  startLine: number;
+  startOrdinal: number;
+  startTurnIndex: number;
+  sessionId?: string;
+  currentTurnId?: string;
+  currentModel?: string;
+  knownToolCallIds?: string[];
+  parserVersion: string;
+}
+
+export interface IncrementalParseDelta {
+  sessionId: string;
+  sourceType: 'claude-code' | 'codex';
+  messages: TraceMessage[];
+  toolCalls: TraceToolCall[];
+  toolResultEvents: IncrementalToolResultEvent[];
+  subagentLinks: TraceSubagentLink[];
+  sessionPatch: Partial<TraceSession>;
+  metricsDelta: {
+    messageCount: number;
+    userMessageCount: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    hasToolCalls: boolean;
+    parserMalformedLines: number;
+  };
+  cursorUpdate: {
+    lastIndexedOffset: number;
+    lastIndexedLine: number;
+    lastMessageOrdinal: number;
+    lastTurnIndex: number;
+  };
+  errors: ParseError[];
+  warnings: string[];
+  requiresFullReparse?: boolean;
+  fallbackReason?: string;
 }
 
 /**

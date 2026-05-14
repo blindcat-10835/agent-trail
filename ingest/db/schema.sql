@@ -236,6 +236,32 @@ CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);
 CREATE INDEX IF NOT EXISTS idx_turns_session_index ON turns(session_id, turn_index);
 
 -- ============================================================================
+-- Ingest File Cursors (Phase 16 - append-only incremental sync)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS ingest_file_cursors (
+  source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex')),
+  file_path TEXT NOT NULL,
+  session_id TEXT,
+  file_size INTEGER NOT NULL,
+  file_mtime TEXT,
+  file_inode INTEGER,
+  file_device INTEGER,
+  parser_version TEXT NOT NULL,
+  last_indexed_offset INTEGER NOT NULL DEFAULT 0,
+  last_indexed_line INTEGER NOT NULL DEFAULT 0,
+  last_message_ordinal INTEGER NOT NULL DEFAULT -1,
+  last_turn_index INTEGER NOT NULL DEFAULT -1,
+  last_success_at TEXT,
+  last_fallback_reason TEXT,
+  PRIMARY KEY (source_type, file_path),
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ingest_file_cursors_session_id
+  ON ingest_file_cursors(session_id);
+
+-- ============================================================================
 -- WAL Mode (Write-Ahead Logging)
 -- ============================================================================
 

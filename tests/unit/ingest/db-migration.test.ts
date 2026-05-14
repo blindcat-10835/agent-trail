@@ -95,6 +95,47 @@ describe('ingest database migrations', () => {
     );
     expect(indexes.map((index) => index.name)).toContain('idx_messages_session_turn_index');
     expect(tables.map((table) => table.name)).toContain('subagent_links');
-    expect(version).toBe(10);
+    expect(tables.map((table) => table.name)).toContain('ingest_file_cursors');
+    expect(version).toBe(11);
+  });
+
+  it('initializes ingest file cursor schema idempotently', () => {
+    dbPath = join(tmpdir(), `ingest-cursor-schema-${randomUUID()}.db`);
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+
+    expect(() => initSchema()).not.toThrow();
+    expect(() => initSchema()).not.toThrow();
+
+    const db = new Database(dbPath, { readonly: true });
+    const columns = db
+      .prepare('PRAGMA table_info(ingest_file_cursors)')
+      .all() as { name: string }[];
+    const indexes = db
+      .prepare('PRAGMA index_list(ingest_file_cursors)')
+      .all() as { name: string }[];
+    const version = db.pragma('user_version', { simple: true });
+    db.close();
+
+    expect(columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'source_type',
+        'file_path',
+        'session_id',
+        'file_size',
+        'file_mtime',
+        'file_inode',
+        'file_device',
+        'parser_version',
+        'last_indexed_offset',
+        'last_indexed_line',
+        'last_message_ordinal',
+        'last_turn_index',
+        'last_success_at',
+        'last_fallback_reason',
+      ])
+    );
+    expect(indexes.map((index) => index.name)).toContain('idx_ingest_file_cursors_session_id');
+    expect(version).toBe(11);
   });
 });

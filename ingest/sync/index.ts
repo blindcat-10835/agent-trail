@@ -14,10 +14,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { getDatabase } from '../db';
-import { ParseResult } from '../parser/types';
+import { IncrementalParseDelta, ParseResult } from '../parser/types';
 import { sseManager } from '../src/sse';
 
-const PARSER_CACHE_VERSION = 'parser-v7-turn-activity-placement';
+export const PARSER_CACHE_VERSION = 'parser-v7-turn-activity-placement';
 
 // ============================================================================
 // Types
@@ -42,10 +42,65 @@ export interface SyncMetrics {
 
 export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex';
 
-interface FileSnapshot {
+export interface FileSnapshotWithIdentity {
   size: number;
   mtimeIso: string;
+  inode: number;
+  device: number;
 }
+
+type FileSnapshot = FileSnapshotWithIdentity;
+
+export interface IngestFileCursor {
+  sourceType: SyncSourceType;
+  filePath: string;
+  sessionId: string | null;
+  fileSize: number;
+  fileMtime: string | null;
+  fileInode: number | null;
+  fileDevice: number | null;
+  parserVersion: string;
+  lastIndexedOffset: number;
+  lastIndexedLine: number;
+  lastMessageOrdinal: number;
+  lastTurnIndex: number;
+  lastSuccessAt: string | null;
+  lastFallbackReason: string | null;
+}
+
+export type CursorFallbackReason =
+  | 'no_cursor'
+  | 'force'
+  | 'snapshot_unavailable'
+  | 'truncated'
+  | 'file_identity_changed'
+  | 'parser_version_changed'
+  | 'invalid_offset'
+  | 'rewrite_detected';
+
+export type CursorDecision =
+  | {
+      type: 'skip_unchanged';
+      cursor?: IngestFileCursor;
+      snapshot: FileSnapshotWithIdentity;
+      pendingPartialLine?: boolean;
+    }
+  | {
+      type: 'incremental_append';
+      cursor: IngestFileCursor;
+      snapshot: FileSnapshotWithIdentity;
+      startOffset: number;
+      endOffset: number;
+      startLine: number;
+      startOrdinal: number;
+      startTurnIndex: number;
+    }
+  | {
+      type: 'full_reparse';
+      reason: CursorFallbackReason;
+      cursor?: IngestFileCursor;
+      snapshot?: FileSnapshotWithIdentity;
+    };
 
 /**
  * Options for writeSessionToDatabase
@@ -278,10 +333,161 @@ function tryGetFileSnapshot(filePath: string): FileSnapshot | undefined {
     return {
       size: stats.size,
       mtimeIso: new Date(stats.mtimeMs).toISOString(),
+      inode: stats.ino,
+      device: stats.dev,
     };
   } catch {
     return undefined;
   }
+}
+
+export function readFileSnapshotWithIdentity(filePath: string): FileSnapshotWithIdentity | undefined {
+  return tryGetFileSnapshot(filePath);
+}
+
+function rowToCursor(row: Record<string, unknown>): IngestFileCursor {
+  return {
+    sourceType: row.source_type as SyncSourceType,
+    filePath: row.file_path as string,
+    sessionId: (row.session_id as string | null) ?? null,
+    fileSize: Number(row.file_size ?? 0),
+    fileMtime: (row.file_mtime as string | null) ?? null,
+    fileInode: row.file_inode == null ? null : Number(row.file_inode),
+    fileDevice: row.file_device == null ? null : Number(row.file_device),
+    parserVersion: String(row.parser_version ?? ''),
+    lastIndexedOffset: Number(row.last_indexed_offset ?? 0),
+    lastIndexedLine: Number(row.last_indexed_line ?? 0),
+    lastMessageOrdinal: Number(row.last_message_ordinal ?? -1),
+    lastTurnIndex: Number(row.last_turn_index ?? -1),
+    lastSuccessAt: (row.last_success_at as string | null) ?? null,
+    lastFallbackReason: (row.last_fallback_reason as string | null) ?? null,
+  };
+}
+
+export function getIngestFileCursor(
+  sourceType: SyncSourceType,
+  filePath: string,
+  database: Database.Database = getDatabase()
+): IngestFileCursor | undefined {
+  const row = database.prepare(`
+    SELECT *
+    FROM ingest_file_cursors
+    WHERE source_type = ? AND file_path = ?
+  `).get(sourceType, filePath) as Record<string, unknown> | undefined;
+
+  return row ? rowToCursor(row) : undefined;
+}
+
+export function findLastCompleteJsonlOffset(
+  filePath: string,
+  startOffset: number,
+  endOffset?: number
+): number {
+  const fileSize = endOffset ?? fs.statSync(filePath).size;
+  if (startOffset < 0 || startOffset > fileSize) {
+    throw new Error(`Invalid JSONL offset range: ${startOffset}..${fileSize}`);
+  }
+
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let position = startOffset;
+  let lastCompleteOffset = startOffset;
+
+  try {
+    while (position < fileSize) {
+      const toRead = Math.min(buffer.length, fileSize - position);
+      const bytesRead = fs.readSync(fd, buffer, 0, toRead, position);
+      if (bytesRead <= 0) break;
+
+      for (let i = 0; i < bytesRead; i++) {
+        if (buffer[i] === 10) {
+          lastCompleteOffset = position + i + 1;
+        }
+      }
+
+      position += bytesRead;
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  return lastCompleteOffset;
+}
+
+export function decideCursorSync(
+  sourceType: SyncSourceType,
+  filePath: string,
+  snapshot: FileSnapshotWithIdentity | undefined,
+  opts: SyncSourceOptions,
+  database: Database.Database = getDatabase()
+): CursorDecision {
+  if (!snapshot) {
+    return { type: 'full_reparse', reason: 'snapshot_unavailable' };
+  }
+
+  if (opts.force) {
+    return { type: 'full_reparse', reason: 'force', snapshot };
+  }
+
+  const cursor = getIngestFileCursor(sourceType, filePath, database);
+  if (!cursor) {
+    return { type: 'full_reparse', reason: 'no_cursor', snapshot };
+  }
+
+  if (cursor.parserVersion !== PARSER_CACHE_VERSION) {
+    return { type: 'full_reparse', reason: 'parser_version_changed', cursor, snapshot };
+  }
+
+  if (
+    cursor.lastIndexedOffset < 0 ||
+    cursor.lastIndexedOffset > cursor.fileSize ||
+    cursor.lastIndexedLine < 0 ||
+    cursor.lastMessageOrdinal < -1 ||
+    cursor.lastTurnIndex < -1
+  ) {
+    return { type: 'full_reparse', reason: 'invalid_offset', cursor, snapshot };
+  }
+
+  if (snapshot.size < cursor.lastIndexedOffset || snapshot.size < cursor.fileSize) {
+    return { type: 'full_reparse', reason: 'truncated', cursor, snapshot };
+  }
+
+  if (cursor.fileInode == null || cursor.fileDevice == null) {
+    return { type: 'full_reparse', reason: 'file_identity_changed', cursor, snapshot };
+  }
+
+  if (cursor.fileInode !== snapshot.inode || cursor.fileDevice !== snapshot.device) {
+    return { type: 'full_reparse', reason: 'file_identity_changed', cursor, snapshot };
+  }
+
+  if (snapshot.size === cursor.fileSize && snapshot.mtimeIso === cursor.fileMtime) {
+    return { type: 'skip_unchanged', cursor, snapshot };
+  }
+
+  if (snapshot.size <= cursor.lastIndexedOffset) {
+    return { type: 'full_reparse', reason: 'rewrite_detected', cursor, snapshot };
+  }
+
+  const safeEndOffset = findLastCompleteJsonlOffset(
+    filePath,
+    cursor.lastIndexedOffset,
+    snapshot.size
+  );
+
+  if (safeEndOffset <= cursor.lastIndexedOffset) {
+    return { type: 'skip_unchanged', cursor, snapshot, pendingPartialLine: true };
+  }
+
+  return {
+    type: 'incremental_append',
+    cursor,
+    snapshot,
+    startOffset: cursor.lastIndexedOffset,
+    endOffset: safeEndOffset,
+    startLine: cursor.lastIndexedLine,
+    startOrdinal: cursor.lastMessageOrdinal + 1,
+    startTurnIndex: cursor.lastTurnIndex,
+  };
 }
 
 function recordFileConsidered(result: SyncResult, snapshot?: FileSnapshot): void {

@@ -117,6 +117,7 @@ export function initSchema(): void {
     'turns',
     'sync_status',
     'session_stars',
+    'ingest_file_cursors',
   ];
   const missingTables = expectedTables.filter(
     (t) => !tables.find((table) => table.name === t)
@@ -142,7 +143,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 10;
+  const targetVersion = 11;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -302,6 +303,33 @@ export function runMigrations(): void {
     {
       desc: 'Invalidate skip cache to backfill total_input_tokens',
       sql: `UPDATE sessions SET file_hash = NULL WHERE total_input_tokens IS NULL OR total_input_tokens = 0`,
+    },
+    {
+      desc: 'Create ingest file cursors table',
+      sql: `
+        CREATE TABLE IF NOT EXISTS ingest_file_cursors (
+          source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex')),
+          file_path TEXT NOT NULL,
+          session_id TEXT,
+          file_size INTEGER NOT NULL,
+          file_mtime TEXT,
+          file_inode INTEGER,
+          file_device INTEGER,
+          parser_version TEXT NOT NULL,
+          last_indexed_offset INTEGER NOT NULL DEFAULT 0,
+          last_indexed_line INTEGER NOT NULL DEFAULT 0,
+          last_message_ordinal INTEGER NOT NULL DEFAULT -1,
+          last_turn_index INTEGER NOT NULL DEFAULT -1,
+          last_success_at TEXT,
+          last_fallback_reason TEXT,
+          PRIMARY KEY (source_type, file_path),
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
+        )
+      `,
+    },
+    {
+      desc: 'Add ingest file cursor session index',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_ingest_file_cursors_session_id ON ingest_file_cursors(session_id)',
     },
   ];
 
