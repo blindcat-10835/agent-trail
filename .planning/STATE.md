@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: ready_to_execute
-last_updated: "2026-05-14T14:27:14.000Z"
+last_updated: "2026-05-14T14:54:18.902Z"
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 12
+  total_plans: 16
   completed_plans: 9
-  percent: 75
+  percent: 56
 ---
 
 # agent-tracing-dashboard Project State
@@ -26,26 +26,26 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Core value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
-**Current focus:** Phase 12 — Overview v2 Real Data
+**Current focus:** Phase 16 — Ingest Incremental JSONL and Sync Observability Hardening
 
 ---
 
 ## Current Position
 
-Phase: 12 (Overview v2 Real Data) — READY TO EXECUTE
-Plan: 1 of 3
+Phase: 16 (Ingest Incremental JSONL and Sync Observability Hardening) — READY TO EXECUTE
+Plan: 1 of 4
 **Milestone:** v1.1 Data-Rich HUD Redesign — ACTIVE
 
-**Phase:** 12 (Overview v2 Real Data)
+**Phase:** 16 (Ingest Incremental JSONL and Sync Observability Hardening)
 
 **Plan:** 01 ready
 
-**Status:** Phase 15 complete; ready to resume Phase 12
+**Status:** Phase 16 planned; ready to execute
 
 **Progress Bar:**
 
 ```text
-v1.1:                [▓▓▓▓▓▓▓▓░░] 75% (9/12 plans complete, 3/7 phases complete)
+v1.1:                [▓▓▓▓▓▓░░░░] 56% (9/16 plans complete, 3/7 phases complete)
 ```
 
 **Phase Progress:**
@@ -68,7 +68,11 @@ v1.1:                [▓▓▓▓▓▓▓▓░░] 75% (9/12 plans complete, 
   - 15-01: Sync scheduler, watcher path handoff, periodic no-reentry — ✓ Complete
   - 15-02: Pre-parse skip, streaming hash, Codex relationship guardrails — ✓ Complete
   - 15-03: Sync observability and regression verification — ✓ Complete
-- Phase 16: Ingest Incremental JSONL and Sync Observability Hardening — Planned
+- Phase 16: Ingest Incremental JSONL and Sync Observability Hardening — Planned (0/4 plans)
+  - 16-01: Cursor schema and safety decision layer — Planned
+  - 16-02: Claude/Codex append parser paths — Planned
+  - 16-03: Idempotent append/upsert write path — Planned
+  - 16-04: Sync debug history, structured logs, bounded config, regression gate — Planned
 
 ---
 
