@@ -97,6 +97,9 @@ initializeSourcesAndSync()                             // 后台执行
 | `INGEST_BACKGROUND_SYNC_ENABLED` | `true` | 预热后是否执行完整同步 |
 | `INGEST_DEBOUNCE_MS` | `500` | chokidar 事件合并窗口 |
 | `INGEST_RESYNC_INTERVAL_MS` | `300000` | 定期完整重新同步的兜底间隔 |
+| `INGEST_PARSE_CONCURRENCY` | `1` | Phase 16 有界解析并发开关；当前保持串行 |
+| `INGEST_SQLITE_BATCH_SIZE` | `500` | SQLite 批量写入上限；append writer 使用有界事务写入 |
+| `INGEST_SYNC_HISTORY_LIMIT` | `20` | sync debug recent-run 历史条数 |
 | `INGEST_RATE_LIMIT_RPM` | `100` | 每个 IP 每分钟上限 |
 | `INGEST_DEBUG` | `false` | 为 true 时，错误响应包含堆栈追踪 |
 
@@ -202,6 +205,31 @@ export async function syncSource(
 - 发出带有总数的 `sync_complete` SSE 事件。
 
 **没有通用数据源回退**（D-21）。添加新数据源需要扩展枚举并在 `syncSource` 中添加新分支。
+
+### Phase 16 增量 append 同步
+
+Claude Code 和 Codex 在安全 append 场景下不再每次重新解析整个 JSONL 文件：
+
+1. sync 层读取文件 `size`、`mtime`、`inode`、`device`，并查询 `ingest_file_cursors`。
+2. `decideCursorSync()` 判断文件是否未变、append-only、安全增量，或必须 full reparse。
+3. 安全增量只读取 cursor offset 之后的完整 JSONL 行；尾部半行会保留到下一次同步。
+4. append parser 返回 `IncrementalParseDelta`，包含新增 messages、tool calls、result events、subagent links 和 cursor 更新。
+5. `appendSessionDeltaToDatabase()` 在一个 SQLite transaction 内幂等写入增量行，然后才更新 cursor。
+6. truncate、inode/device 变化、parser version 变化、缺少 turn/tool 上下文等情况都会回退到原有 `writeSessionToDatabase()` full replacement 路径。
+
+这个路径解决了常驻 ingest 进程在 5 分钟 resync 或 watcher 事件后反复全量解析大文件的问题。默认解析并发仍为 1；`INGEST_PARSE_CONCURRENCY` 只是有界配置，避免后续优化重新引入无界 fan-out。
+
+### Sync debug status
+
+`GET /api/v1/debug/sync` 返回 scheduler 的运行态：
+
+- `activeRun`：当前 run id、reason、scope、source、当前文件路径、文件大小、当前 offset、文件/写入计数、最大 RSS sample 和运行时长。
+- `queue`：是否有排队任务、queued reasons、coalesced count。
+- `recentRuns`：有界 ring buffer，默认 20 条，可通过 `INGEST_SYNC_HISTORY_LIMIT` 调整。
+- `metrics`：最近完成 run 的文件数、full/incremental parse 数、写入行数、最大文件大小和最大 RSS。
+- `config`：吞吐相关配置。
+
+debug payload 只包含路径、大小、offset 和计数，不序列化 JSONL 行内容或 message 内容。
 
 ### `writeSessionToDatabase(parseResult, db?, sourceFile?, options?)`
 

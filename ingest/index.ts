@@ -79,6 +79,44 @@ app.get('/version', (c) => {
   return c.json(version);
 });
 
+app.get('/api/v1/debug/sync', (c) => {
+  const debug = context?.syncScheduler?.getDebugStatus() ?? {
+    activeRun: null,
+    queue: { queued: false, queuedReasons: [], coalescedCount: 0 },
+    recentRuns: [],
+    recentErrors: [],
+    metrics: {
+      filesConsidered: 0,
+      filesSkippedBeforeParse: 0,
+      filesParsed: 0,
+      filesParsedFully: 0,
+      filesParsedIncrementally: 0,
+      incrementalFallbacks: 0,
+      largestFileBytes: 0,
+      messagesWritten: 0,
+      toolCallsWritten: 0,
+      resultEventsWritten: 0,
+      sessionsInserted: 0,
+      sessionsUpdated: 0,
+      maxRssBytes: 0,
+      lastDurationMs: null,
+    },
+    config: {
+      historyLimit: context?.config.syncHistoryLimit ?? 20,
+    },
+  };
+
+  return c.json({
+    ...debug,
+    config: {
+      ...debug.config,
+      parseConcurrency: context?.config.parseConcurrency ?? 1,
+      sqliteBatchSize: context?.config.sqliteBatchSize ?? 500,
+      historyLimit: context?.config.syncHistoryLimit ?? debug.config.historyLimit,
+    },
+  });
+});
+
 // Mount sources API routes
 app.route('/', sourcesRoutes);
 
@@ -160,7 +198,10 @@ export async function start(): Promise<void> {
       port: config.port,
     });
 
-    const syncScheduler = createSyncScheduler({ syncSource, syncPaths });
+    const syncScheduler = createSyncScheduler(
+      { syncSource, syncPaths },
+      { historyLimit: config.syncHistoryLimit }
+    );
 
     // Store context before background initialization so routes/health can answer.
     context = { config, db, server, sseManager, watcher: null, syncScheduler, syncState };

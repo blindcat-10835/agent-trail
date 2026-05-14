@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSyncScheduler } from '@/ingest/src/sync-scheduler';
 import type { SyncResult } from '@/ingest/sync';
 
@@ -14,6 +14,9 @@ function result(overrides?: Partial<SyncResult>): SyncResult {
       filesConsidered: 0,
       filesSkippedBeforeParse: 0,
       filesParsed: 0,
+      filesParsedFully: 0,
+      filesParsedIncrementally: 0,
+      incrementalFallbacks: 0,
       largestFileBytes: 0,
     },
     ...overrides,
@@ -29,6 +32,10 @@ function deferred<T>() {
 }
 
 describe('createSyncScheduler', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('runs queued sync jobs serially', async () => {
     const first = deferred<SyncResult>();
     const order: string[] = [];
@@ -117,6 +124,7 @@ describe('createSyncScheduler', () => {
   });
 
   it('reports errors without leaving scheduler active', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
     const scheduler = createSyncScheduler({
       syncSource: vi.fn().mockRejectedValue(new Error('sync failed')),
       syncPaths: vi.fn(),
@@ -127,5 +135,49 @@ describe('createSyncScheduler', () => {
     const status = scheduler.getStatus();
     expect(status.active).toBe(false);
     expect(status.lastError).toBe('sync failed');
+  });
+
+  it('caps recent history at 20 runs by default', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const scheduler = createSyncScheduler({
+      syncSource: vi.fn().mockResolvedValue(result()),
+      syncPaths: vi.fn(),
+    });
+
+    for (let i = 0; i < 25; i++) {
+      await scheduler.enqueueFullSource('codex', 'manual', { force: i % 2 === 0 });
+    }
+
+    expect(scheduler.getDebugStatus().recentRuns).toHaveLength(20);
+  });
+
+  it('reports active file and offset from sync progress', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const blocker = deferred<SyncResult>();
+    const syncSource = vi.fn().mockImplementation((_source, options) => {
+      options.observer.onFileStart({
+        sourceType: 'codex',
+        filePath: '/tmp/session.jsonl',
+        fileSize: 2048,
+        currentOffset: 1024,
+        filesConsidered: 1,
+        filesSkippedBeforeParse: 0,
+        filesParsed: 0,
+        largestFileBytes: 2048,
+      });
+      return blocker.promise;
+    });
+    const scheduler = createSyncScheduler({ syncSource, syncPaths: vi.fn() });
+
+    const run = scheduler.enqueueFullSource('codex', 'watcher');
+    await Promise.resolve();
+
+    const status = scheduler.getStatus();
+    expect(status.currentFile).toBe('/tmp/session.jsonl');
+    expect(status.currentFileSize).toBe(2048);
+    expect(status.currentOffset).toBe(1024);
+
+    blocker.resolve(result());
+    await run;
   });
 });

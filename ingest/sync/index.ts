@@ -37,10 +37,27 @@ export interface SyncMetrics {
   filesConsidered: number;
   filesSkippedBeforeParse: number;
   filesParsed: number;
-  filesParsedFully: number;
-  filesParsedIncrementally: number;
-  incrementalFallbacks: number;
+  filesParsedFully?: number;
+  filesParsedIncrementally?: number;
+  incrementalFallbacks?: number;
   largestFileBytes: number;
+}
+
+export interface SyncProgressEvent {
+  sourceType: SyncSourceType;
+  filePath: string;
+  fileSize: number;
+  currentOffset: number;
+  filesConsidered: number;
+  filesSkippedBeforeParse: number;
+  filesParsed: number;
+  largestFileBytes: number;
+}
+
+export interface SyncObserver {
+  onFileStart?: (event: SyncProgressEvent) => void;
+  onFileProgress?: (event: SyncProgressEvent) => void;
+  onFileComplete?: (event: SyncProgressEvent) => void;
 }
 
 export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex';
@@ -338,9 +355,9 @@ function mergeSyncResult(target: SyncResult, result: SyncResult): void {
     target.metrics.filesConsidered += result.metrics.filesConsidered;
     target.metrics.filesSkippedBeforeParse += result.metrics.filesSkippedBeforeParse;
     target.metrics.filesParsed += result.metrics.filesParsed;
-    target.metrics.filesParsedFully += result.metrics.filesParsedFully;
-    target.metrics.filesParsedIncrementally += result.metrics.filesParsedIncrementally;
-    target.metrics.incrementalFallbacks += result.metrics.incrementalFallbacks;
+    target.metrics.filesParsedFully = (target.metrics.filesParsedFully ?? 0) + (result.metrics.filesParsedFully ?? 0);
+    target.metrics.filesParsedIncrementally = (target.metrics.filesParsedIncrementally ?? 0) + (result.metrics.filesParsedIncrementally ?? 0);
+    target.metrics.incrementalFallbacks = (target.metrics.incrementalFallbacks ?? 0) + (result.metrics.incrementalFallbacks ?? 0);
     target.metrics.largestFileBytes = Math.max(
       target.metrics.largestFileBytes,
       result.metrics.largestFileBytes
@@ -629,15 +646,34 @@ function recordFileParsed(result: SyncResult, mode: 'full' | 'incremental' = 'fu
   if (!result.metrics) return;
   result.metrics.filesParsed += 1;
   if (mode === 'incremental') {
-    result.metrics.filesParsedIncrementally += 1;
+    result.metrics.filesParsedIncrementally = (result.metrics.filesParsedIncrementally ?? 0) + 1;
   } else {
-    result.metrics.filesParsedFully += 1;
+    result.metrics.filesParsedFully = (result.metrics.filesParsedFully ?? 0) + 1;
   }
 }
 
 function recordIncrementalFallback(result: SyncResult): void {
   if (!result.metrics) return;
-  result.metrics.incrementalFallbacks += 1;
+  result.metrics.incrementalFallbacks = (result.metrics.incrementalFallbacks ?? 0) + 1;
+}
+
+function buildProgressEvent(
+  sourceType: SyncSourceType,
+  filePath: string,
+  snapshot: FileSnapshot | undefined,
+  result: SyncResult,
+  currentOffset: number
+): SyncProgressEvent {
+  return {
+    sourceType,
+    filePath,
+    fileSize: snapshot?.size ?? 0,
+    currentOffset,
+    filesConsidered: result.metrics?.filesConsidered ?? 0,
+    filesSkippedBeforeParse: result.metrics?.filesSkippedBeforeParse ?? 0,
+    filesParsed: result.metrics?.filesParsed ?? 0,
+    largestFileBytes: result.metrics?.largestFileBytes ?? 0,
+  };
 }
 
 function shouldSkipBeforeParse(
@@ -1327,6 +1363,8 @@ export interface SyncSourceOptions {
   limit?: number;
   /** Sort candidate files by newest mtime before applying limit */
   sortByMtimeDesc?: boolean;
+  /** Internal progress reporter used by the scheduler/debug endpoint. */
+  observer?: SyncObserver;
 }
 
 interface SyncFileCandidate {
@@ -1488,9 +1526,13 @@ async function parseAndWriteCandidate(
   const filePath = candidate.filePath;
   const snapshot = tryGetFileSnapshot(filePath);
   recordFileConsidered(totalResult, snapshot);
+  opts.observer?.onFileStart?.(buildProgressEvent(sourceType, filePath, snapshot, totalResult, 0));
 
   if (snapshot && shouldSkipBeforeParse(sourceType, filePath, snapshot, opts)) {
     recordFileSkippedBeforeParse(totalResult);
+    opts.observer?.onFileComplete?.(
+      buildProgressEvent(sourceType, filePath, snapshot, totalResult, snapshot.size)
+    );
     return;
   }
 
@@ -1499,17 +1541,28 @@ async function parseAndWriteCandidate(
     const decision = decideCursorSync(sourceType, filePath, snapshot, opts);
     if (decision.type === 'skip_unchanged') {
       recordFileSkippedBeforeParse(totalResult);
+      opts.observer?.onFileComplete?.(
+        buildProgressEvent(sourceType, filePath, snapshot, totalResult, snapshot?.size ?? 0)
+      );
       return;
     }
 
     if (decision.type === 'incremental_append') {
+      opts.observer?.onFileProgress?.(
+        buildProgressEvent(sourceType, filePath, snapshot, totalResult, decision.startOffset)
+      );
       const incrementalResult = await parseIncrementalAppendCandidate(
         sourceType,
         candidate,
         decision,
         totalResult
       );
-      if (incrementalResult.handled) return;
+      if (incrementalResult.handled) {
+        opts.observer?.onFileComplete?.(
+          buildProgressEvent(sourceType, filePath, snapshot, totalResult, decision.endOffset)
+        );
+        return;
+      }
       fullReparseReason = incrementalResult.fallbackReason || 'incremental_append_fallback';
     } else {
       fullReparseReason = decision.reason;
@@ -1523,6 +1576,9 @@ async function parseAndWriteCandidate(
     totalResult,
     relationshipsByChild,
     fullReparseReason
+  );
+  opts.observer?.onFileComplete?.(
+    buildProgressEvent(sourceType, filePath, snapshot, totalResult, snapshot?.size ?? 0)
   );
 }
 

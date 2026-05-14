@@ -20,6 +20,9 @@ export interface IngestConfig {
   debounceMs: number;            // default 500
   startupSyncLimit: number;      // default 50 sessions per source before ready=true
   backgroundSyncEnabled: boolean; // default true
+  parseConcurrency: number;      // default 1; reserved bounded throughput control
+  sqliteBatchSize: number;       // default 500
+  syncHistoryLimit: number;      // default 20
   rateLimitRPM: number;          // default 100
   rateLimitEnabled: boolean;     // default true (parse from INGEST_RATE_LIMIT_ENABLED)
   debugMode: boolean;            // default false (parse from INGEST_DEBUG)
@@ -101,6 +104,24 @@ export function loadConfig(): IngestConfig {
     throw new Error(`Invalid INGEST_STARTUP_SYNC_LIMIT: "${startupSyncLimitStr}" must be a non-negative number`);
   }
 
+  const parseConcurrencyStr = process.env.INGEST_PARSE_CONCURRENCY || '1';
+  const parseConcurrency = parseInt(parseConcurrencyStr, 10);
+  if (isNaN(parseConcurrency) || parseConcurrency < 1 || parseConcurrency > 4) {
+    throw new Error(`Invalid INGEST_PARSE_CONCURRENCY: "${parseConcurrencyStr}" must be an integer between 1 and 4`);
+  }
+
+  const sqliteBatchSizeStr = process.env.INGEST_SQLITE_BATCH_SIZE || '500';
+  const sqliteBatchSize = parseInt(sqliteBatchSizeStr, 10);
+  if (isNaN(sqliteBatchSize) || sqliteBatchSize < 1 || sqliteBatchSize > 5000) {
+    throw new Error(`Invalid INGEST_SQLITE_BATCH_SIZE: "${sqliteBatchSizeStr}" must be an integer between 1 and 5000`);
+  }
+
+  const syncHistoryLimitStr = process.env.INGEST_SYNC_HISTORY_LIMIT || '20';
+  const syncHistoryLimit = parseInt(syncHistoryLimitStr, 10);
+  if (isNaN(syncHistoryLimit) || syncHistoryLimit < 1 || syncHistoryLimit > 100) {
+    throw new Error(`Invalid INGEST_SYNC_HISTORY_LIMIT: "${syncHistoryLimitStr}" must be an integer between 1 and 100`);
+  }
+
   // Parse background sync toggle (default true; accepts "true"/"1"/"yes")
   const backgroundSyncEnabled = ['true', '1', 'yes'].includes(
     (process.env.INGEST_BACKGROUND_SYNC_ENABLED || 'true').toLowerCase()
@@ -129,6 +150,9 @@ export function loadConfig(): IngestConfig {
     debounceMs,
     startupSyncLimit,
     backgroundSyncEnabled,
+    parseConcurrency,
+    sqliteBatchSize,
+    syncHistoryLimit,
     rateLimitRPM,
     rateLimitEnabled,
     debugMode,
@@ -143,6 +167,9 @@ export function loadConfig(): IngestConfig {
     debounceMs: config.debounceMs,
     startupSyncLimit: config.startupSyncLimit,
     backgroundSyncEnabled: config.backgroundSyncEnabled,
+    parseConcurrency: config.parseConcurrency,
+    sqliteBatchSize: config.sqliteBatchSize,
+    syncHistoryLimit: config.syncHistoryLimit,
     rateLimitRPM: config.rateLimitRPM,
     rateLimitEnabled: config.rateLimitEnabled,
     debugMode: config.debugMode,

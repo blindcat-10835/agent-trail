@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { start, stop } from '@/ingest';
+import { app } from '@/ingest';
 
 describe('ingest API integration tests', () => {
   beforeAll(async () => {
@@ -16,6 +16,22 @@ describe('ingest API integration tests', () => {
     it('should return health status', async () => {
       // TODO: Implement test
       // Verify: status='ok', version present, uptime present, database='connected'
+    });
+  });
+
+  describe('GET /api/v1/debug/sync', () => {
+    it('returns sync debug sections', async () => {
+      const res = await app.request('/api/v1/debug/sync');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(body).toHaveProperty('activeRun');
+      expect(body).toHaveProperty('recentRuns');
+      expect(body).toHaveProperty('metrics');
+      expect(body).toHaveProperty('config');
+      expect(body.config).toHaveProperty('parseConcurrency');
+      expect(body.config).toHaveProperty('sqliteBatchSize');
+      expect(body.config).toHaveProperty('historyLimit');
     });
   });
 
