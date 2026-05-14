@@ -31,6 +31,8 @@ import {
 import {
   CodexJsonlLine,
   CodexTurnContext,
+  IncrementalParseDelta,
+  IncrementalParseOptions,
   ParseResult,
   ParseError,
   SessionContext,
@@ -43,6 +45,17 @@ interface PendingCodexUserMessage {
   tokenCount: number;
   message: TraceMessage;
   lineNum: number;
+}
+
+interface JsonlRangeLine {
+  line: string;
+  lineNumber: number;
+}
+
+interface JsonlRangeRead {
+  lines: JsonlRangeLine[];
+  cursorOffset: number;
+  cursorLine: number;
 }
 
 function getCodexPayload(parsed: CodexJsonlLine): CodexPayload | undefined {
@@ -798,6 +811,569 @@ export async function parseCodexSession(
     activities,
     errors,
     warnings,
+  };
+}
+
+export async function parseCodexSessionAppend(
+  filePath: string,
+  project: string,
+  options: IncrementalParseOptions
+): Promise<IncrementalParseDelta> {
+  const context = extractCodexSessionContext(filePath, project);
+  const baseDelta = () => createCodexIncrementalDelta(context, options);
+
+  if (!fs.existsSync(filePath)) {
+    const delta = baseDelta();
+    delta.requiresFullReparse = true;
+    delta.fallbackReason = 'file_missing';
+    delta.errors.push({ line: 0, raw: filePath, error: 'File does not exist' });
+    return delta;
+  }
+
+  let range: JsonlRangeRead;
+  try {
+    range = readCompleteJsonlRange(filePath, options.startOffset, options.endOffset, options.startLine);
+  } catch (err) {
+    const delta = baseDelta();
+    delta.requiresFullReparse = true;
+    delta.fallbackReason = 'range_read_failed';
+    delta.errors.push({
+      line: options.startLine,
+      raw: filePath,
+      error: err instanceof Error ? err.message : 'Failed to read JSONL range',
+    });
+    return delta;
+  }
+
+  const delta = baseDelta();
+  const knownToolCallIds = new Set(options.knownToolCallIds ?? []);
+  const localToolCallMap = new Map<string, TraceToolCall>();
+  const toolCallOrdinalMap = new Map<string, number>();
+  const messageVersions = new Map<string, { tokenCount: number; message: TraceMessage }>();
+  let pendingUserResponseMessage: PendingCodexUserMessage | undefined;
+  let ordinal = options.startOrdinal;
+  let currentTurnIndex = options.startTurnIndex;
+  let currentTurnId = options.currentTurnId;
+  let currentModel = options.currentModel;
+  let sessionCwd: string | undefined;
+  let sessionGitBranch: string | undefined;
+  let sessionModel: string | undefined;
+  let sessionId = options.sessionId || context.uuid;
+
+  const markFallback = (reason: string, lineNumber: number, raw: string): IncrementalParseDelta => {
+    delta.requiresFullReparse = true;
+    delta.fallbackReason = reason;
+    delta.errors.push({ line: lineNumber, raw: raw.substring(0, 200), error: reason });
+    return delta;
+  };
+
+  const ensureTurn = (turnId?: string, startedAtForTurn?: string | null): void => {
+    if (!turnId && currentTurnId) {
+      return;
+    }
+    const nextTurnId = turnId || `turn-${currentTurnIndex + 1}`;
+    if (currentTurnId !== nextTurnId) {
+      currentTurnId = nextTurnId;
+      currentTurnIndex++;
+    }
+    if (startedAtForTurn) {
+      delta.sessionPatch.startedAt = delta.sessionPatch.startedAt || startedAtForTurn;
+    }
+  };
+
+  const currentTurnMetadata = () => ({
+    turnId: currentTurnId,
+    turnIndex: currentTurnIndex >= 0 ? currentTurnIndex : undefined,
+  });
+
+  const flushPendingUserResponseMessage = (): void => {
+    if (!pendingUserResponseMessage) return;
+    handleDedup(
+      pendingUserResponseMessage.dedupKey,
+      pendingUserResponseMessage.tokenCount,
+      pendingUserResponseMessage.message,
+      messageVersions,
+      delta.warnings,
+      pendingUserResponseMessage.lineNum
+    );
+    pendingUserResponseMessage = undefined;
+  };
+
+  const addToolResultEvent = (
+    callId: string | undefined,
+    event: TraceToolResultEvent,
+    lineNumber: number,
+    raw: string
+  ): IncrementalParseDelta | undefined => {
+    if (!callId) {
+      return markFallback('missing_tool_result_id', lineNumber, raw);
+    }
+
+    const localToolCall = localToolCallMap.get(callId);
+    if (localToolCall) {
+      localToolCall.resultEvents.push(event);
+      if (!event.isPartial) localToolCall.status = 'success';
+      return undefined;
+    }
+
+    if (knownToolCallIds.has(callId)) {
+      delta.toolResultEvents.push({ toolId: callId, event });
+      return undefined;
+    }
+
+    return markFallback('missing_tool_context', lineNumber, raw);
+  };
+
+  for (const record of range.lines) {
+    const line = record.line;
+    if (!line.trim()) continue;
+
+    try {
+      const parsed: CodexJsonlLine = JSON.parse(line);
+
+      if (parsed.timestamp) {
+        delta.sessionPatch.endedAt = parsed.timestamp;
+        delta.sessionPatch.status = 'idle';
+      }
+
+      const eventMsgBeforeResponse = getCodexEventMsg(parsed);
+      if (parsed.type === 'event_msg' && eventMsgBeforeResponse?.type === 'task_started') {
+        ensureTurn(
+          eventMsgBeforeResponse.turn_id || eventMsgBeforeResponse.id,
+          parsed.timestamp
+        );
+      }
+
+      const sessionMeta = getCodexSessionMeta(parsed);
+      if (parsed.type === 'session_meta' && sessionMeta) {
+        if (sessionMeta.session_id) {
+          sessionId = sessionMeta.session_id;
+          delta.sessionId = sessionMeta.session_id;
+          delta.sessionPatch.id = sessionMeta.session_id;
+          delta.sessionPatch.sourceSessionId = sessionMeta.session_id;
+        }
+        if (sessionMeta.cwd) {
+          sessionCwd = sessionMeta.cwd;
+          delta.sessionPatch.cwd = sessionMeta.cwd;
+          delta.sessionPatch.project = sessionMeta.cwd;
+        }
+        if (sessionMeta.git_branch) {
+          sessionGitBranch = sessionMeta.git_branch;
+          delta.sessionPatch.gitBranch = sessionMeta.git_branch;
+        }
+        if (sessionMeta.model) {
+          sessionModel = sessionMeta.model;
+        }
+        continue;
+      }
+
+      const turnContext = getCodexTurnContext(parsed);
+      if (parsed.type === 'turn_context' && turnContext) {
+        const turnStartedAt = turnContext.started_at || parsed.timestamp;
+        currentModel = turnContext.model || currentModel;
+        sessionCwd = turnContext.cwd || sessionCwd;
+        sessionGitBranch = turnContext.git_branch || sessionGitBranch;
+        delta.sessionPatch.cwd = sessionCwd || delta.sessionPatch.cwd;
+        delta.sessionPatch.gitBranch = sessionGitBranch || delta.sessionPatch.gitBranch;
+        if (!currentTurnId) {
+          ensureTurn(turnContext.turn_id || `turn-${record.lineNumber}`, turnStartedAt);
+        } else if (turnContext.turn_id && currentTurnId !== turnContext.turn_id) {
+          currentTurnId = turnContext.turn_id;
+          currentTurnIndex++;
+        }
+        continue;
+      }
+
+      const responseItem = getCodexResponseItem(parsed);
+      if (parsed.type === 'response_item' && responseItem) {
+        const ri = responseItem;
+        const timestamp = parsed.timestamp;
+
+        if (ri.type === 'input_text') {
+          ensureTurn(undefined, timestamp || null);
+          const content = ri.input_text || '';
+          const tokenCount = ri.token_count ?? 0;
+          const message: TraceMessage = {
+            id: `${sessionId}-${ordinal}`,
+            ordinal,
+            role: 'user',
+            content,
+            timestamp,
+            model: currentModel || sessionModel,
+            ...currentTurnMetadata(),
+            isRealUserInput: true,
+            sourceMetadata: createSourceMetadata(context, record.lineNumber, sessionCwd, sessionGitBranch),
+          };
+          handleDedup(`text:${content}`, tokenCount, message, messageVersions, delta.warnings, record.lineNumber);
+          ordinal++;
+          continue;
+        }
+
+        if (ri.type === 'message') {
+          const content = extractCodexMessageContent(ri.content);
+          const role = mapCodexRole(ri.role);
+          if (!content || !role) {
+            delta.warnings.push(`Line ${record.lineNumber}: Skipping message payload without role/content`);
+            continue;
+          }
+          if (role === 'user') {
+            if (isCodexMetadataUserMessage(content)) {
+              continue;
+            }
+            ensureTurn(undefined, timestamp || null);
+          } else if (!currentTurnId && currentTurnIndex >= 0) {
+            return markFallback('missing_turn_context', record.lineNumber, line);
+          }
+
+          const tokenCount = ri.token_count ?? 0;
+          const message: TraceMessage = {
+            id: `${sessionId}-${ordinal}`,
+            ordinal,
+            role,
+            content,
+            timestamp,
+            model: currentModel || sessionModel,
+            ...currentTurnMetadata(),
+            isRealUserInput: role === 'user' && !isCodexMetadataUserMessage(content),
+            sourceMetadata: createSourceMetadata(context, record.lineNumber, sessionCwd, sessionGitBranch),
+          };
+          if (role === 'user') {
+            pendingUserResponseMessage = {
+              dedupKey: `message:${role}:${content}`,
+              tokenCount,
+              message,
+              lineNum: record.lineNumber,
+            };
+          } else {
+            flushPendingUserResponseMessage();
+            handleDedup(
+              `message:${role}:${content}`,
+              tokenCount,
+              message,
+              messageVersions,
+              delta.warnings,
+              record.lineNumber
+            );
+          }
+          ordinal++;
+          continue;
+        }
+
+        if (ri.type === 'text' || ri.type === 'output_text') {
+          if (!currentTurnId && currentTurnIndex >= 0) {
+            return markFallback('missing_turn_context', record.lineNumber, line);
+          }
+          flushPendingUserResponseMessage();
+          const content = ri.text || ri.output_text || '';
+          const tokenCount = ri.token_count ?? 0;
+          const message: TraceMessage = {
+            id: `${sessionId}-${ordinal}`,
+            ordinal,
+            role: 'assistant',
+            content,
+            timestamp,
+            model: currentModel || sessionModel,
+            ...currentTurnMetadata(),
+            isRealUserInput: false,
+            sourceMetadata: createSourceMetadata(context, record.lineNumber, sessionCwd, sessionGitBranch),
+          };
+          handleDedup(`text:${content}`, tokenCount, message, messageVersions, delta.warnings, record.lineNumber);
+          ordinal++;
+          continue;
+        }
+
+        if (ri.type === 'function_call_output') {
+          flushPendingUserResponseMessage();
+          const maybeFallback = addToolResultEvent(
+            ri.call_id,
+            {
+              type: 'result_event',
+              timestamp,
+              content: ri.output || ri.content || '',
+              isPartial: ri.status !== 'completed',
+            },
+            record.lineNumber,
+            line
+          );
+          if (maybeFallback) return maybeFallback;
+          continue;
+        }
+
+        if (ri.type === 'function_call' || ri.type === 'custom_tool_call') {
+          if (!currentTurnId && currentTurnIndex >= 0) {
+            return markFallback('missing_turn_context', record.lineNumber, line);
+          }
+          flushPendingUserResponseMessage();
+          const callId = ri.call_id || `call-${record.lineNumber}`;
+          const name = ri.name || 'unknown';
+          const inputJson = ri.arguments
+            ? ri.arguments
+            : ri.input
+              ? JSON.stringify(ri.input)
+              : '{}';
+          const tokenCount = ri.token_count ?? 0;
+          const dedupKey = ri.type === 'custom_tool_call' ? `ctc:${callId}` : `fc:${callId}`;
+
+          const existingVersion = messageVersions.get(dedupKey);
+          if (existingVersion && existingVersion.tokenCount >= tokenCount) {
+            delta.warnings.push(
+              `Line ${record.lineNumber}: Duplicate ${ri.type} with same/lower token_count — keeping previous`
+            );
+            continue;
+          }
+
+          const toolCall: TraceToolCall = {
+            type: 'tool_call',
+            id: callId,
+            name,
+            category: inferToolCategory(name),
+            inputJson,
+            resultEvents: [],
+            status: 'pending',
+            messageOrdinal: ordinal,
+            sourceLine: record.lineNumber,
+          };
+          localToolCallMap.set(callId, toolCall);
+          toolCallOrdinalMap.set(callId, ordinal);
+          delta.toolCalls.push(toolCall);
+
+          messageVersions.set(dedupKey, {
+            tokenCount,
+            message: {
+              id: callId,
+              ordinal,
+              role: 'assistant',
+              content: '',
+              timestamp,
+              model: currentModel || sessionModel,
+              ...currentTurnMetadata(),
+              isRealUserInput: false,
+              sourceMetadata: createSourceMetadata(context, record.lineNumber, sessionCwd, sessionGitBranch),
+            },
+          });
+          ordinal++;
+          continue;
+        }
+
+        if (ri.type === 'reasoning' || ri.type === 'web_search_call') {
+          continue;
+        }
+
+        delta.warnings.push(`Line ${record.lineNumber}: Skipping unknown response_item type: ${ri.type}`);
+        continue;
+      }
+
+      const eventMsg = getCodexEventMsg(parsed);
+      if (parsed.type === 'event_msg' && eventMsg) {
+        const ev = eventMsg;
+
+        if (ev.type === 'user_message') {
+          const content = extractCodexUserEventContent(ev);
+          if (content && !isCodexMetadataUserMessage(content)) {
+            ensureTurn(ev.turn_id, parsed.timestamp);
+            if (
+              pendingUserResponseMessage &&
+              normalizeCodexUserContent(pendingUserResponseMessage.message.content) === normalizeCodexUserContent(content)
+            ) {
+              pendingUserResponseMessage = undefined;
+            }
+            const message: TraceMessage = {
+              id: `${sessionId}-${ordinal}`,
+              ordinal,
+              role: 'user',
+              content,
+              timestamp: parsed.timestamp,
+              model: currentModel || sessionModel,
+              ...currentTurnMetadata(),
+              isRealUserInput: true,
+              sourceMetadata: createSourceMetadata(context, record.lineNumber, sessionCwd, sessionGitBranch),
+            };
+            handleDedup(
+              `event_user:${currentTurnId || ordinal}:${content}`,
+              0,
+              message,
+              messageVersions,
+              delta.warnings,
+              record.lineNumber
+            );
+            ordinal++;
+          }
+        }
+
+        if (ev.type === 'function_call_output' || ev.type === 'custom_tool_call_output') {
+          flushPendingUserResponseMessage();
+          const maybeFallback = addToolResultEvent(
+            ev.call_id,
+            {
+              type: 'result_event',
+              timestamp: parsed.timestamp,
+              content: ev.output || ev.content || '',
+              isPartial: ev.status !== 'completed',
+            },
+            record.lineNumber,
+            line
+          );
+          if (maybeFallback) return maybeFallback;
+        }
+
+        if (
+          ev.type === 'collab_agent_spawn_end' &&
+          typeof ev.new_thread_id === 'string' &&
+          ev.new_thread_id.length > 0
+        ) {
+          const messageOrdinal = typeof ev.call_id === 'string'
+            ? toolCallOrdinalMap.get(ev.call_id)
+            : undefined;
+          delta.subagentLinks.push({
+            type: 'subagent_link',
+            subagentSessionId: ev.new_thread_id,
+            subagentSource: 'codex',
+            relationship: 'spawned',
+            ...(messageOrdinal !== undefined ? { messageOrdinal } : {}),
+          });
+        }
+        continue;
+      }
+
+      if (parsed.type === 'spawn_agent' && parsed.spawn_agent) {
+        delta.subagentLinks.push({
+          type: 'subagent_link',
+          subagentSessionId: parsed.spawn_agent.session_id,
+          subagentSource: 'codex',
+          relationship: parsed.spawn_agent.type === 'attached' ? 'attached' : 'spawned',
+        });
+        continue;
+      }
+
+      delta.warnings.push(`Line ${record.lineNumber}: Skipping unknown type: ${parsed.type}`);
+    } catch (err) {
+      delta.errors.push({
+        line: record.lineNumber,
+        raw: line.substring(0, 200),
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
+  }
+
+  flushPendingUserResponseMessage();
+  Array.from(messageVersions.values())
+    .map((entry) => entry.message)
+    .sort((a, b) => a.ordinal - b.ordinal)
+    .forEach((message) => {
+      delta.messages.push(message);
+      if (message.tokenUsage) {
+        delta.metricsDelta.totalInputTokens += message.tokenUsage.inputTokens;
+        delta.metricsDelta.totalOutputTokens += message.tokenUsage.outputTokens;
+      }
+    });
+
+  finalizeCodexDelta(delta, range, ordinal, currentTurnIndex);
+  return delta;
+}
+
+function createCodexIncrementalDelta(
+  context: SessionContext,
+  options: IncrementalParseOptions
+): IncrementalParseDelta {
+  return {
+    sessionId: options.sessionId || context.uuid,
+    sourceType: 'codex',
+    messages: [],
+    toolCalls: [],
+    toolResultEvents: [],
+    subagentLinks: [],
+    sessionPatch: {
+      id: options.sessionId || context.uuid,
+      source: 'codex',
+      project: context.project,
+      sourceSessionId: options.sessionId || context.uuid,
+      sourceVersion: '1.0',
+    },
+    metricsDelta: {
+      messageCount: 0,
+      userMessageCount: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      hasToolCalls: false,
+      parserMalformedLines: 0,
+    },
+    cursorUpdate: {
+      lastIndexedOffset: options.startOffset,
+      lastIndexedLine: options.startLine,
+      lastMessageOrdinal: options.startOrdinal - 1,
+      lastTurnIndex: options.startTurnIndex,
+    },
+    errors: [],
+    warnings: [],
+  };
+}
+
+function finalizeCodexDelta(
+  delta: IncrementalParseDelta,
+  range: JsonlRangeRead,
+  nextOrdinal: number,
+  currentTurnIndex: number
+): void {
+  delta.metricsDelta.messageCount = delta.messages.length;
+  delta.metricsDelta.userMessageCount = delta.messages.filter((message) => message.role === 'user').length;
+  delta.metricsDelta.hasToolCalls = delta.toolCalls.length > 0;
+  delta.metricsDelta.parserMalformedLines = delta.errors.length;
+  delta.cursorUpdate = {
+    lastIndexedOffset: range.cursorOffset,
+    lastIndexedLine: range.cursorLine,
+    lastMessageOrdinal: nextOrdinal - 1,
+    lastTurnIndex: currentTurnIndex,
+  };
+}
+
+function readCompleteJsonlRange(
+  filePath: string,
+  startOffset: number,
+  endOffset: number,
+  startLine: number
+): JsonlRangeRead {
+  if (startOffset < 0 || endOffset < startOffset) {
+    throw new Error(`Invalid JSONL range: ${startOffset}..${endOffset}`);
+  }
+
+  const length = endOffset - startOffset;
+  if (length === 0) {
+    return { lines: [], cursorOffset: startOffset, cursorLine: startLine };
+  }
+
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.allocUnsafe(length);
+  let bytesRead = 0;
+  try {
+    while (bytesRead < length) {
+      const read = fs.readSync(fd, buffer, bytesRead, length - bytesRead, startOffset + bytesRead);
+      if (read <= 0) break;
+      bytesRead += read;
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  let completeLength = bytesRead;
+  if (completeLength > 0 && buffer[completeLength - 1] !== 10) {
+    completeLength = buffer.subarray(0, completeLength).lastIndexOf(10) + 1;
+  }
+
+  if (completeLength <= 0) {
+    return { lines: [], cursorOffset: startOffset, cursorLine: startLine };
+  }
+
+  const text = buffer.subarray(0, completeLength).toString('utf8');
+  const rawLines = text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n');
+  const lines = rawLines.map((rawLine, index) => ({
+    line: rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine,
+    lineNumber: startLine + index + 1,
+  }));
+
+  return {
+    lines,
+    cursorOffset: startOffset + completeLength,
+    cursorLine: startLine + rawLines.length,
   };
 }
 

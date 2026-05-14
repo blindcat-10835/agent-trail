@@ -37,6 +37,9 @@ export interface SyncMetrics {
   filesConsidered: number;
   filesSkippedBeforeParse: number;
   filesParsed: number;
+  filesParsedFully: number;
+  filesParsedIncrementally: number;
+  incrementalFallbacks: number;
   largestFileBytes: number;
 }
 
@@ -303,6 +306,9 @@ function createSyncResult(): SyncResult {
       filesConsidered: 0,
       filesSkippedBeforeParse: 0,
       filesParsed: 0,
+      filesParsedFully: 0,
+      filesParsedIncrementally: 0,
+      incrementalFallbacks: 0,
       largestFileBytes: 0,
     },
   };
@@ -320,6 +326,9 @@ function mergeSyncResult(target: SyncResult, result: SyncResult): void {
     target.metrics.filesConsidered += result.metrics.filesConsidered;
     target.metrics.filesSkippedBeforeParse += result.metrics.filesSkippedBeforeParse;
     target.metrics.filesParsed += result.metrics.filesParsed;
+    target.metrics.filesParsedFully += result.metrics.filesParsedFully;
+    target.metrics.filesParsedIncrementally += result.metrics.filesParsedIncrementally;
+    target.metrics.incrementalFallbacks += result.metrics.incrementalFallbacks;
     target.metrics.largestFileBytes = Math.max(
       target.metrics.largestFileBytes,
       result.metrics.largestFileBytes
@@ -503,9 +512,19 @@ function recordFileSkippedBeforeParse(result: SyncResult): void {
   result.metrics.filesSkippedBeforeParse += 1;
 }
 
-function recordFileParsed(result: SyncResult): void {
+function recordFileParsed(result: SyncResult, mode: 'full' | 'incremental' = 'full'): void {
   if (!result.metrics) return;
   result.metrics.filesParsed += 1;
+  if (mode === 'incremental') {
+    result.metrics.filesParsedIncrementally += 1;
+  } else {
+    result.metrics.filesParsedFully += 1;
+  }
+}
+
+function recordIncrementalFallback(result: SyncResult): void {
+  if (!result.metrics) return;
+  result.metrics.incrementalFallbacks += 1;
 }
 
 function shouldSkipBeforeParse(
@@ -940,6 +959,12 @@ interface SyncFileCandidate {
   mtimeMs: number;
 }
 
+interface IncrementalParserContext {
+  currentTurnId?: string;
+  currentModel?: string;
+  knownToolCallIds: string[];
+}
+
 function isSessionFileName(sourceType: SyncSourceType, fileName: string): boolean {
   if (sourceType !== 'openclaw') return fileName.endsWith('.jsonl');
   if (fileName.endsWith('.jsonl')) return true;
@@ -1093,10 +1118,40 @@ async function parseAndWriteCandidate(
     return;
   }
 
+  if (sourceType !== 'openclaw') {
+    const decision = decideCursorSync(sourceType, filePath, snapshot, opts);
+    if (decision.type === 'skip_unchanged') {
+      recordFileSkippedBeforeParse(totalResult);
+      return;
+    }
+
+    if (decision.type === 'incremental_append') {
+      const parsedIncrementally = await parseIncrementalAppendCandidate(
+        sourceType,
+        candidate,
+        decision,
+        totalResult
+      );
+      if (parsedIncrementally) return;
+    }
+  }
+
+  await parseFullCandidate(sourceType, candidate, opts, totalResult, relationshipsByChild);
+}
+
+async function parseFullCandidate(
+  sourceType: SyncSourceType,
+  candidate: SyncFileCandidate,
+  opts: SyncSourceOptions,
+  totalResult: SyncResult,
+  relationshipsByChild = new Map<string, { parentSessionId: string; rootSessionId?: string }>()
+): Promise<void> {
+  const filePath = candidate.filePath;
+
   if (sourceType === 'openclaw') {
     const { parseOpenClawSession } = await import('../parser/openclaw');
     const parseResult = await parseOpenClawSession(filePath, candidate.project);
-    recordFileParsed(totalResult);
+    recordFileParsed(totalResult, 'full');
     parseResult.session.name = extractSessionName(parseResult);
     parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
     parseResult.session.agentName = extractAgentNameFromPath(filePath, 'openclaw');
@@ -1107,7 +1162,7 @@ async function parseAndWriteCandidate(
   if (sourceType === 'claude-code') {
     const { parseClaudeSession } = await import('../parser/claude');
     const parseResult = await parseClaudeSession(filePath, candidate.project);
-    recordFileParsed(totalResult);
+    recordFileParsed(totalResult, 'full');
     parseResult.session.name = extractSessionName(parseResult);
     parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
     mergeSyncResult(totalResult, writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force }));
@@ -1116,7 +1171,7 @@ async function parseAndWriteCandidate(
 
   const { parseCodexSession } = await import('../parser/codex');
   const parseResult = await parseCodexSession(filePath, candidate.project);
-  recordFileParsed(totalResult);
+  recordFileParsed(totalResult, 'full');
   const relationship = relationshipsByChild.get(parseResult.session.id);
   if (relationship) {
     parseResult.session.parentSessionId = relationship.parentSessionId;
@@ -1127,6 +1182,78 @@ async function parseAndWriteCandidate(
   parseResult.session.name = extractSessionName(parseResult);
   parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
   mergeSyncResult(totalResult, writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force }));
+}
+
+async function parseIncrementalAppendCandidate(
+  sourceType: Exclude<SyncSourceType, 'openclaw'>,
+  candidate: SyncFileCandidate,
+  decision: Extract<CursorDecision, { type: 'incremental_append' }>,
+  totalResult: SyncResult
+): Promise<boolean> {
+  const filePath = candidate.filePath;
+  const parserContext = readIncrementalParserContext(decision.cursor);
+  const options = {
+    startOffset: decision.startOffset,
+    endOffset: decision.endOffset,
+    startLine: decision.startLine,
+    startOrdinal: decision.startOrdinal,
+    startTurnIndex: decision.startTurnIndex,
+    sessionId: decision.cursor.sessionId || undefined,
+    currentTurnId: parserContext.currentTurnId,
+    currentModel: parserContext.currentModel,
+    knownToolCallIds: parserContext.knownToolCallIds,
+    parserVersion: PARSER_CACHE_VERSION,
+  };
+
+  const delta: IncrementalParseDelta = sourceType === 'claude-code'
+    ? await (await import('../parser/claude')).parseClaudeSessionAppend(
+        filePath,
+        candidate.project,
+        options
+      )
+    : await (await import('../parser/codex')).parseCodexSessionAppend(
+        filePath,
+        candidate.project,
+        options
+      );
+
+  if (delta.requiresFullReparse) {
+    recordIncrementalFallback(totalResult);
+    return false;
+  }
+
+  recordFileParsed(totalResult, 'incremental');
+  return true;
+}
+
+function readIncrementalParserContext(cursor: IngestFileCursor): IncrementalParserContext {
+  if (!cursor.sessionId) {
+    return { knownToolCallIds: [] };
+  }
+
+  try {
+    const database = getDatabase();
+    const message = database.prepare(`
+      SELECT turn_id, model
+      FROM messages
+      WHERE session_id = ?
+      ORDER BY ordinal DESC
+      LIMIT 1
+    `).get(cursor.sessionId) as { turn_id: string | null; model: string | null } | undefined;
+    const toolRows = database.prepare(`
+      SELECT tool_id
+      FROM tool_calls
+      WHERE session_id = ?
+    `).all(cursor.sessionId) as { tool_id: string }[];
+
+    return {
+      currentTurnId: message?.turn_id || undefined,
+      currentModel: message?.model || undefined,
+      knownToolCallIds: toolRows.map((row) => row.tool_id).filter(Boolean),
+    };
+  } catch {
+    return { knownToolCallIds: [] };
+  }
 }
 
 /**
@@ -1238,7 +1365,6 @@ async function syncOpenClawSource(opts: SyncSourceOptions): Promise<SyncResult> 
  */
 async function syncClaudeCodeSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const { discoverClaudeSources } = await import('./sources');
-  const { parseClaudeSession } = await import('../parser/claude');
 
   const { getConfig } = await import('../config');
   const toolDirs = getConfig().toolDirs;
@@ -1249,25 +1375,11 @@ async function syncClaudeCodeSource(opts: SyncSourceOptions): Promise<SyncResult
     const candidates = await collectSessionFileCandidates(sources, 'claude-code', opts);
 
     for (const candidate of candidates) {
-      const filePath = candidate.filePath;
-
       try {
-        const snapshot = tryGetFileSnapshot(filePath);
-        recordFileConsidered(totalResult, snapshot);
-        if (snapshot && shouldSkipBeforeParse('claude-code', filePath, snapshot, opts)) {
-          recordFileSkippedBeforeParse(totalResult);
-          continue;
-        }
-
-        const parseResult = await parseClaudeSession(filePath, candidate.project);
-        recordFileParsed(totalResult);
-        parseResult.session.name = extractSessionName(parseResult);
-        parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
-        const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
-        mergeSyncResult(totalResult, result);
+        await parseAndWriteCandidate('claude-code', candidate, opts, totalResult);
       } catch (err) {
         totalResult.errors.push(
-          `Failed to parse Claude session ${filePath}: ${err}`
+          `Failed to parse Claude session ${candidate.filePath}: ${err}`
         );
       }
     }
@@ -1297,7 +1409,6 @@ async function syncClaudeCodeSource(opts: SyncSourceOptions): Promise<SyncResult
  */
 async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const { discoverCodexSources } = await import('./sources');
-  const { parseCodexSession } = await import('../parser/codex');
 
   const { getConfig } = await import('../config');
   const toolDirs = getConfig().toolDirs;
@@ -1311,32 +1422,11 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
     const candidates = await collectSessionFileCandidates(sources, 'codex', opts);
 
     for (const candidate of candidates) {
-      const filePath = candidate.filePath;
-
       try {
-        const snapshot = tryGetFileSnapshot(filePath);
-        recordFileConsidered(totalResult, snapshot);
-        if (snapshot && shouldSkipBeforeParse('codex', filePath, snapshot, opts)) {
-          recordFileSkippedBeforeParse(totalResult);
-          continue;
-        }
-
-        const parseResult = await parseCodexSession(filePath, candidate.project);
-        recordFileParsed(totalResult);
-        const relationship = relationshipsByChild.get(parseResult.session.id);
-        if (relationship) {
-          parseResult.session.parentSessionId = relationship.parentSessionId;
-          parseResult.session.rootSessionId = relationship.rootSessionId || relationship.parentSessionId;
-          parseResult.session.relationshipType = 'subagent';
-          parseResult.session.sourceSessionId = parseResult.session.sourceSessionId || parseResult.session.id;
-        }
-        parseResult.session.name = extractSessionName(parseResult);
-        parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
-        const result = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
-        mergeSyncResult(totalResult, result);
+        await parseAndWriteCandidate('codex', candidate, opts, totalResult, relationshipsByChild);
       } catch (err) {
         totalResult.errors.push(
-          `Failed to parse Codex session ${filePath}: ${err}`
+          `Failed to parse Codex session ${candidate.filePath}: ${err}`
         );
       }
     }

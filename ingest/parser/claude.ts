@@ -28,6 +28,8 @@ import {
   ClaudeJsonlLine,
   ClaudeDAGNode,
   ClaudeCompactBoundary,
+  IncrementalParseDelta,
+  IncrementalParseOptions,
   ParseResult,
   ParseError,
   SessionContext,
@@ -40,6 +42,17 @@ type ClaudeSessionContext = SessionContext & {
   sourceSessionId?: string;
   sourceVersion?: string;
 };
+
+interface JsonlRangeLine {
+  line: string;
+  lineNumber: number;
+}
+
+interface JsonlRangeRead {
+  lines: JsonlRangeLine[];
+  cursorOffset: number;
+  cursorLine: number;
+}
 
 // ============================================================================
 // Main Parser Entry Point
@@ -476,6 +489,399 @@ export async function parseClaudeSession(
     activities,
     errors,
     warnings,
+  };
+}
+
+export async function parseClaudeSessionAppend(
+  filePath: string,
+  project: string,
+  options: IncrementalParseOptions
+): Promise<IncrementalParseDelta> {
+  const context = extractClaudeSessionContext(filePath, project);
+  const baseDelta = () => createClaudeIncrementalDelta(context, options);
+
+  if (!fs.existsSync(filePath)) {
+    const delta = baseDelta();
+    delta.requiresFullReparse = true;
+    delta.fallbackReason = 'file_missing';
+    delta.errors.push({ line: 0, raw: filePath, error: 'File does not exist' });
+    return delta;
+  }
+
+  let range: JsonlRangeRead;
+  try {
+    range = readCompleteJsonlRange(filePath, options.startOffset, options.endOffset, options.startLine);
+  } catch (err) {
+    const delta = baseDelta();
+    delta.requiresFullReparse = true;
+    delta.fallbackReason = 'range_read_failed';
+    delta.errors.push({
+      line: options.startLine,
+      raw: filePath,
+      error: err instanceof Error ? err.message : 'Failed to read JSONL range',
+    });
+    return delta;
+  }
+
+  const delta = baseDelta();
+  const knownToolCallIds = new Set(options.knownToolCallIds ?? []);
+  const localToolCallMap = new Map<string, TraceToolCall>();
+  let ordinal = options.startOrdinal;
+  let currentTurnIndex = options.startTurnIndex;
+  let currentTurnId = options.currentTurnId;
+  let sessionCwd: string | undefined;
+  let sessionGitBranch: string | undefined;
+
+  const markFallback = (reason: string, lineNumber: number, raw: string): IncrementalParseDelta => {
+    delta.requiresFullReparse = true;
+    delta.fallbackReason = reason;
+    delta.errors.push({ line: lineNumber, raw: raw.substring(0, 200), error: reason });
+    return delta;
+  };
+
+  const addToolResultEvent = (
+    toolUseId: string | undefined,
+    event: TraceToolResultEvent,
+    lineNumber: number,
+    raw: string
+  ): IncrementalParseDelta | undefined => {
+    if (!toolUseId) {
+      return markFallback('missing_tool_result_id', lineNumber, raw);
+    }
+
+    const localToolCall = localToolCallMap.get(toolUseId);
+    if (localToolCall) {
+      localToolCall.resultEvents.push(event);
+      localToolCall.status = event.isPartial ? localToolCall.status : 'success';
+      return undefined;
+    }
+
+    if (knownToolCallIds.has(toolUseId)) {
+      delta.toolResultEvents.push({ toolId: toolUseId, event });
+      return undefined;
+    }
+
+    return markFallback('missing_tool_context', lineNumber, raw);
+  };
+
+  for (const record of range.lines) {
+    const line = record.line;
+    if (!line.trim()) continue;
+
+    try {
+      const parsed: ClaudeJsonlLine = JSON.parse(line);
+
+      if (typeof parsed.cwd === 'string' && parsed.cwd.trim()) {
+        sessionCwd = parsed.cwd;
+        delta.sessionPatch.cwd = parsed.cwd;
+        delta.sessionPatch.project = parsed.cwd;
+      }
+      if (typeof parsed.gitBranch === 'string' && parsed.gitBranch.trim()) {
+        sessionGitBranch = parsed.gitBranch;
+        delta.sessionPatch.gitBranch = parsed.gitBranch;
+      }
+
+      if (parsed.timestamp) {
+        delta.sessionPatch.endedAt = parsed.timestamp;
+        delta.sessionPatch.status = 'idle';
+      }
+
+      const isCompact =
+        parsed.type === 'compact' ||
+        (parsed as any).isCompactSummary === true;
+      if (isCompact) {
+        const truncatedUuids: string[] =
+          (parsed as any).compact?.truncatedUuids ||
+          (parsed as any).truncatedUuids ||
+          [];
+        const compactMsg: TraceMessage = {
+          id: `${context.uuid}-${ordinal}`,
+          ordinal,
+          role: 'system',
+          content: `Context compacted at line ${record.lineNumber}. Truncated UUIDs: ${truncatedUuids.join(', ')}`,
+          timestamp: parsed.timestamp,
+          sourceMetadata: {
+            sourceType: 'claude-code',
+            sourceFile: context.filePath,
+            sourceLine: record.lineNumber,
+            sourceVersion: context.sourceVersion || 'unknown',
+            cwd: sessionCwd,
+            gitBranch: sessionGitBranch,
+          },
+          turnId: currentTurnId,
+          turnIndex: currentTurnIndex >= 0 ? currentTurnIndex : undefined,
+          isRealUserInput: false,
+        };
+        delta.messages.push(compactMsg);
+        ordinal++;
+        continue;
+      }
+
+      if (parsed.session) {
+        delta.sessionPatch.sourceSessionId = parsed.session.id;
+        delta.sessionPatch.cwd = parsed.session.cwd || sessionCwd || delta.sessionPatch.cwd;
+        delta.sessionPatch.gitBranch =
+          parsed.session.gitBranch || sessionGitBranch || delta.sessionPatch.gitBranch;
+        if (parsed.session.type === 'subagent') {
+          delta.sessionPatch.relationshipType = 'subagent';
+          delta.sessionPatch.parentSessionId = parsed.session.parentId;
+          delta.sessionPatch.rootSessionId = parsed.session.parentId;
+        }
+      }
+
+      if (!parsed.message) continue;
+
+      const role = parsed.message.role;
+      const userTextContent = role === 'user' ? getClaudeTextContent(parsed) : '';
+      const taskNotification = parseClaudeTaskNotification(userTextContent);
+      if (taskNotification) {
+        const maybeFallback = addToolResultEvent(
+          taskNotification.toolUseId,
+          {
+            type: 'result_event',
+            timestamp: parsed.timestamp,
+            content: taskNotification.content,
+            isPartial: false,
+          },
+          record.lineNumber,
+          line
+        );
+        if (maybeFallback) return maybeFallback;
+        continue;
+      }
+
+      if (isClaudeRequestInterrupted(userTextContent)) {
+        if (!currentTurnId && currentTurnIndex >= 0) {
+          return markFallback('missing_turn_context', record.lineNumber, line);
+        }
+        delta.messages.push(createClaudeSystemMessage(
+          context,
+          ordinal,
+          record.lineNumber,
+          '[Request interrupted by user]',
+          parsed.timestamp,
+          sessionCwd,
+          sessionGitBranch,
+          currentTurnId,
+          currentTurnIndex >= 0 ? currentTurnIndex : undefined
+        ));
+        ordinal++;
+        continue;
+      }
+
+      if (role === 'user' && isClaudeLocalCommandMessage(parsed)) {
+        continue;
+      }
+
+      if (role === 'user' && Array.isArray(parsed.message.content)) {
+        const blocks = parsed.message.content as any[];
+        const toolResultBlocks = blocks.filter((b) => b.type === 'tool_result');
+        const nonToolResultBlocks = blocks.filter((b) => b.type !== 'tool_result');
+
+        for (const tb of toolResultBlocks) {
+          const resultContent = typeof tb.content === 'string'
+            ? tb.content
+            : Array.isArray(tb.content)
+              ? tb.content
+                  .map((c: any) => (typeof c === 'string' ? c : c.text || JSON.stringify(c)))
+                  .join('\n')
+              : JSON.stringify(tb.content ?? '');
+          const maybeFallback = addToolResultEvent(
+            tb.tool_use_id,
+            {
+              type: 'result_event',
+              timestamp: parsed.timestamp,
+              content: resultContent,
+              isPartial: false,
+            },
+            record.lineNumber,
+            line
+          );
+          if (maybeFallback) return maybeFallback;
+        }
+
+        if (nonToolResultBlocks.length === 0 && toolResultBlocks.length > 0) {
+          if (!currentTurnId && currentTurnIndex >= 0) {
+            return markFallback('missing_turn_context', record.lineNumber, line);
+          }
+          delta.messages.push({
+            id: `${context.uuid}-${ordinal}`,
+            ordinal,
+            role: 'tool_result',
+            content: toolResultBlocks
+              .map((tb) => typeof tb.content === 'string' ? tb.content : JSON.stringify(tb.content))
+              .join('\n'),
+            timestamp: parsed.timestamp,
+            sourceMetadata: {
+              sourceType: 'claude-code',
+              sourceFile: context.filePath,
+              sourceLine: record.lineNumber,
+              sourceVersion: context.sourceVersion || 'unknown',
+              cwd: sessionCwd,
+              gitBranch: sessionGitBranch,
+            },
+            turnId: currentTurnId,
+            turnIndex: currentTurnIndex >= 0 ? currentTurnIndex : undefined,
+            isRealUserInput: false,
+          });
+          ordinal++;
+          continue;
+        }
+      }
+
+      if (role !== 'user' && !currentTurnId && currentTurnIndex >= 0) {
+        return markFallback('missing_turn_context', record.lineNumber, line);
+      }
+
+      const message = parseMessage(
+        parsed,
+        ordinal,
+        context,
+        record.lineNumber,
+        sessionCwd,
+        sessionGitBranch
+      );
+      if (message.role === 'user') {
+        currentTurnIndex++;
+        currentTurnId = parsed.uuid || `turn-${currentTurnIndex}`;
+        message.isRealUserInput = true;
+      } else {
+        message.isRealUserInput = false;
+      }
+      message.turnIndex = currentTurnIndex >= 0 ? currentTurnIndex : undefined;
+      message.turnId = currentTurnId;
+      delta.messages.push(message);
+
+      if (role === 'assistant' || parsed.type === 'assistant') {
+        const { toolCalls } = extractClaudeActivities(parsed, context, record.lineNumber, ordinal);
+        for (const toolCall of toolCalls) {
+          localToolCallMap.set(toolCall.id, toolCall);
+          delta.toolCalls.push(toolCall);
+        }
+      }
+
+      if (parsed.message.usage) {
+        delta.metricsDelta.totalInputTokens += parsed.message.usage.input_tokens || 0;
+        delta.metricsDelta.totalOutputTokens += parsed.message.usage.output_tokens || 0;
+      }
+
+      ordinal++;
+    } catch (err) {
+      delta.errors.push({
+        line: record.lineNumber,
+        raw: line.substring(0, 200),
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
+  }
+
+  finalizeClaudeDelta(delta, range, ordinal, currentTurnIndex);
+  return delta;
+}
+
+function createClaudeIncrementalDelta(
+  context: ClaudeSessionContext,
+  options: IncrementalParseOptions
+): IncrementalParseDelta {
+  return {
+    sessionId: options.sessionId || context.uuid,
+    sourceType: 'claude-code',
+    messages: [],
+    toolCalls: [],
+    toolResultEvents: [],
+    subagentLinks: [],
+    sessionPatch: {
+      id: options.sessionId || context.uuid,
+      source: 'claude-code',
+      project: context.project,
+      sourceSessionId: context.sourceSessionId,
+      sourceVersion: context.sourceVersion || 'unknown',
+    },
+    metricsDelta: {
+      messageCount: 0,
+      userMessageCount: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      hasToolCalls: false,
+      parserMalformedLines: 0,
+    },
+    cursorUpdate: {
+      lastIndexedOffset: options.startOffset,
+      lastIndexedLine: options.startLine,
+      lastMessageOrdinal: options.startOrdinal - 1,
+      lastTurnIndex: options.startTurnIndex,
+    },
+    errors: [],
+    warnings: [],
+  };
+}
+
+function finalizeClaudeDelta(
+  delta: IncrementalParseDelta,
+  range: JsonlRangeRead,
+  nextOrdinal: number,
+  currentTurnIndex: number
+): void {
+  delta.metricsDelta.messageCount = delta.messages.length;
+  delta.metricsDelta.userMessageCount = delta.messages.filter((message) => message.role === 'user').length;
+  delta.metricsDelta.hasToolCalls = delta.toolCalls.length > 0;
+  delta.metricsDelta.parserMalformedLines = delta.errors.length;
+  delta.cursorUpdate = {
+    lastIndexedOffset: range.cursorOffset,
+    lastIndexedLine: range.cursorLine,
+    lastMessageOrdinal: nextOrdinal - 1,
+    lastTurnIndex: currentTurnIndex,
+  };
+}
+
+function readCompleteJsonlRange(
+  filePath: string,
+  startOffset: number,
+  endOffset: number,
+  startLine: number
+): JsonlRangeRead {
+  if (startOffset < 0 || endOffset < startOffset) {
+    throw new Error(`Invalid JSONL range: ${startOffset}..${endOffset}`);
+  }
+
+  const length = endOffset - startOffset;
+  if (length === 0) {
+    return { lines: [], cursorOffset: startOffset, cursorLine: startLine };
+  }
+
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.allocUnsafe(length);
+  let bytesRead = 0;
+  try {
+    while (bytesRead < length) {
+      const read = fs.readSync(fd, buffer, bytesRead, length - bytesRead, startOffset + bytesRead);
+      if (read <= 0) break;
+      bytesRead += read;
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  let completeLength = bytesRead;
+  if (completeLength > 0 && buffer[completeLength - 1] !== 10) {
+    completeLength = buffer.subarray(0, completeLength).lastIndexOf(10) + 1;
+  }
+
+  if (completeLength <= 0) {
+    return { lines: [], cursorOffset: startOffset, cursorLine: startLine };
+  }
+
+  const text = buffer.subarray(0, completeLength).toString('utf8');
+  const rawLines = text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n');
+  const lines = rawLines.map((rawLine, index) => ({
+    line: rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine,
+    lineNumber: startLine + index + 1,
+  }));
+
+  return {
+    lines,
+    cursorOffset: startOffset + completeLength,
+    cursorLine: startLine + rawLines.length,
   };
 }
 
