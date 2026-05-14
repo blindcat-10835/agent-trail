@@ -100,6 +100,7 @@ function waitForNextTick(): Promise<void> {
 export function createSyncScheduler(deps: SchedulerDeps): SyncScheduler {
   const queue: QueueItem[] = [];
   const queuedKeys = new Map<string, QueueItem>();
+  const activeKeys = new Map<string, QueueItem>();
   let draining = false;
   let exclusiveTail: Promise<unknown> = Promise.resolve();
 
@@ -126,6 +127,7 @@ export function createSyncScheduler(deps: SchedulerDeps): SyncScheduler {
 
   async function runItem(item: QueueItem): Promise<void> {
     const started = Date.now();
+    activeKeys.set(item.key, item);
     status.active = true;
     status.activeReason = item.reason;
     status.activeScope = item.scope;
@@ -150,6 +152,7 @@ export function createSyncScheduler(deps: SchedulerDeps): SyncScheduler {
       status.lastCompletedAt = new Date().toISOString();
       status.lastDurationMs = Date.now() - started;
       status.startedAt = null;
+      activeKeys.delete(item.key);
     }
   }
 
@@ -174,6 +177,11 @@ export function createSyncScheduler(deps: SchedulerDeps): SyncScheduler {
   }
 
   function enqueue(item: QueueItem): Promise<SyncResult> {
+    const active = activeKeys.get(item.key);
+    if (active) {
+      return active.deferred.promise;
+    }
+
     const existing = queuedKeys.get(item.key);
     if (existing) {
       return existing.deferred.promise;

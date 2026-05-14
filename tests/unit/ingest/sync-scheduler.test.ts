@@ -93,6 +93,29 @@ describe('createSyncScheduler', () => {
     expect(syncSource).toHaveBeenCalledTimes(2);
   });
 
+  it('coalesces duplicate requests with the active run', async () => {
+    const blocker = deferred<SyncResult>();
+    const syncSource = vi.fn().mockImplementation(() => blocker.promise);
+
+    const scheduler = createSyncScheduler({
+      syncSource,
+      syncPaths: vi.fn(),
+    });
+
+    const activeRun = scheduler.enqueueFullSource('codex', 'background');
+
+    await Promise.resolve();
+    const duplicate = scheduler.enqueueFullSource('codex', 'periodic');
+
+    expect(duplicate).toBe(activeRun);
+    expect(scheduler.getStatus().queued).toBe(false);
+
+    blocker.resolve(result());
+    await Promise.all([activeRun, duplicate]);
+
+    expect(syncSource).toHaveBeenCalledTimes(1);
+  });
+
   it('reports errors without leaving scheduler active', async () => {
     const scheduler = createSyncScheduler({
       syncSource: vi.fn().mockRejectedValue(new Error('sync failed')),
