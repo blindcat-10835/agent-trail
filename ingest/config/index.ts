@@ -16,7 +16,7 @@ export interface IngestConfig {
   port: number;
   dbPath: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
-  resyncIntervalMs: number;      // default 300000 (5 min)
+  resyncIntervalMs: number;      // default 900000 (15 min)
   debounceMs: number;            // default 500
   startupSyncLimit: number;      // default 50 sessions per source before ready=true
   backgroundSyncEnabled: boolean; // default true
@@ -82,8 +82,8 @@ export function loadConfig(): IngestConfig {
 
   const logLevel = logLevelStr as IngestConfig['logLevel'];
 
-  // Parse resync interval (default 5 minutes)
-  const resyncIntervalStr = process.env.INGEST_RESYNC_INTERVAL_MS || '300000';
+  // Parse resync interval (default 15 minutes)
+  const resyncIntervalStr = process.env.INGEST_RESYNC_INTERVAL_MS || '900000';
   const resyncIntervalMs = parseInt(resyncIntervalStr, 10);
   if (isNaN(resyncIntervalMs) || resyncIntervalMs < 5000) {
     throw new Error(`Invalid INGEST_RESYNC_INTERVAL_MS: "${resyncIntervalStr}" must be at least 5000ms`);

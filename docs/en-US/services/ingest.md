@@ -63,12 +63,12 @@ initializeSourcesAndSync()                             // background
   syncState.phase = 'discovering'
   discoverOpenClawSources / discoverClaudeSources / discoverCodexSources
   syncState.phase = 'starting watcher'
-  createWatcher({ sourceDirs, debounceMs, resyncIntervalMs, fileExtensions: ['.jsonl', '.json', '.md'], onSyncTrigger })
-  watcher.start()
+  createWatcher({ sourceDirs, debounceMs, resyncIntervalMs, fileExtensions: ['.jsonl', '.json', '.md'], onPathsChanged, onFullResync })
   if startupSyncLimit > 0:
     syncState.phase = 'warming'
     for sourceType in ['openclaw', 'claude-code', 'codex']:
-      syncSource(sourceType, { limit, sortByMtimeDesc: true })   // newest N files only
+      syncScheduler.enqueueFullSource(sourceType, 'startup-warmup', { limit, sortByMtimeDesc: true })   // newest N files only
+  watcher.start()
   syncState.startupComplete = true                     // /health flips ready=true
   if backgroundSyncEnabled:
     syncState.phase = 'indexing'
@@ -96,7 +96,7 @@ All knobs come from env vars parsed in `config/index.ts`. Every variable, defaul
 | `INGEST_STARTUP_SYNC_LIMIT` | `50` | Newest-files-per-source warmup; `0` skips warmup |
 | `INGEST_BACKGROUND_SYNC_ENABLED` | `true` | Whether the post-warmup full sync runs |
 | `INGEST_DEBOUNCE_MS` | `500` | chokidar event coalescing window |
-| `INGEST_RESYNC_INTERVAL_MS` | `300000` | Periodic full resync fallback |
+| `INGEST_RESYNC_INTERVAL_MS` | `900000` | Periodic directory-consistency resync fallback |
 | `INGEST_RATE_LIMIT_RPM` | `100` | Per-IP per-minute cap |
 | `INGEST_DEBUG` | `false` | When true, error responses include stack traces |
 
@@ -234,8 +234,8 @@ Wraps `chokidar` with the project's specific needs.
 - Watches all directories returned by source discovery (one chokidar watcher per directory; aggregated into a single `WatcherInstance`).
 - File extensions watched: `['.jsonl', '.json', '.md']` (Markdown for OpenClaw note files).
 - **Temp file filter** — strips `~`, `.swp`, `.swo`, `.tmp`, `.temp`, `.bak`, `.DS_Store`, `Thumbs.db`, `.gitkeep`.
-- **Debounce** — coalesces multiple events on the same source into a single `onSyncTrigger(sourceType)` call after `INGEST_DEBOUNCE_MS` of quiet (default 500ms).
-- **Periodic resync** — every `INGEST_RESYNC_INTERVAL_MS` (default 5 min) it calls `onSyncTrigger` for every source, regardless of file events. This is the safety net for "watcher missed an event" scenarios.
+- **Debounce** — coalesces multiple events on the same source into a single `onPathsChanged(sourceType, paths)` call after `INGEST_DEBOUNCE_MS` of quiet (default 500ms).
+- **Periodic resync** — every `INGEST_RESYNC_INTERVAL_MS` (default 15 min) it asks the scheduler to run a directory-consistency sync for every source, regardless of file events. This is the safety net for "watcher missed an event" scenarios; unchanged files skip before parser work.
 
 `getStatus()` returns the running flag, files-watched count, last sync time, last error, and source count — surfaced via `/api/v1/sources/:type/status`.
 
@@ -297,7 +297,7 @@ The pre-configured singleton `rateLimiter` is `createRateLimitMiddleware(100, 60
 
 - Per-route: explicit `c.json({ error: '...' }, status)` everywhere, with `400` for validation failures and `404` for missing rows. Status codes are intentional, not defaults.
 - Global: `app.onError((err, c) => ...)` returns `{ error: 'Internal server error' }` (status 500) by default. With `INGEST_DEBUG=true`, returns `{ error: err.message, stack: err.stack }` for debugging — never enable on shared environments.
-- Watcher: failures inside `onSyncTrigger` are caught and logged with `[watcher] Sync failed for <source>: <err>`. The watcher continues running.
+- Watcher: failures inside `onPathsChanged` / `onFullResync` are caught and logged with `[watcher] Sync failed for <source>: <err>`. The watcher continues running.
 - Sync: per-file parser failures are caught and accumulated into `SyncResult.errors`. The sync continues with the next file.
 
 ---

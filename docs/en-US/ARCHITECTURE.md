@@ -17,7 +17,7 @@ For end-to-end data movement (file → DB → UI), see [`DATA-FLOW.md`](DATA-FLO
 │   ~/.claude/projects/{encoded-cwd}/{uuid}.jsonl                                                       │
 │   ~/.codex/sessions/**/*.jsonl                                                                        │
 │                                                       │                                               │
-│                          (chokidar watch + 5-min full resync)                                         │
+│                          (chokidar watch + 15-min consistency resync)                                 │
 │                                                       ▼                                               │
 │   ┌───────────────────────────  Ingest service (Hono on :8078) ────────────────────────────────┐    │
 │   │                                                                                              │    │
@@ -172,15 +172,15 @@ The ingest service's `index.ts` boots in this order:
 1. `loadConfig()` — parses `INGEST_*` env vars with strict validation.
 2. `openDatabase()` + `initSchema()` — opens `data/ingest.db`, runs `schema.sql`, then `runMigrations()` (uses `PRAGMA user_version`, target version 6).
 3. `serve(app)` on `INGEST_PORT` — HTTP is up immediately so `/health` can answer (with `ready: false`).
-4. `initializeSourcesAndSync()` (background): discover sources → start `chokidar` watcher → run a **bounded warmup sync** (`INGEST_STARTUP_SYNC_LIMIT` newest files per source, default 50) → flip `ready: true` → if `INGEST_BACKGROUND_SYNC_ENABLED` is true, run a full sync for each source.
+4. `initializeSourcesAndSync()` (background): discover sources → create `chokidar` watcher → run a **bounded warmup sync** (`INGEST_STARTUP_SYNC_LIMIT` newest files per source, default 50) → start the watcher → flip `ready: true` → if `INGEST_BACKGROUND_SYNC_ENABLED` is true, run a full consistency sync for each source through the scheduler.
 
 This split — TCP open immediately, indexing in the background — was added in quick task 260509-nwg so the frontend doesn't block on a multi-thousand-file historical scan.
 
-The watcher debounces file events (`INGEST_DEBOUNCE_MS`, default 500ms) and falls back to a periodic full resync (`INGEST_RESYNC_INTERVAL_MS`, default 5 min). On every change it calls `syncSource(sourceType)` which:
+The watcher debounces file events (`INGEST_DEBOUNCE_MS`, default 500ms) and falls back to a periodic directory-consistency resync (`INGEST_RESYNC_INTERVAL_MS`, default 15 min). File changes enter path-scoped sync through the scheduler; periodic and manual refresh enter full-source consistency sync, which:
 
 1. Discovers source dirs again (cheap; just `fs.readdir`).
 2. Lists candidate `.jsonl` files (with mtime sort if a limit is set).
-3. For each file: parse → check SHA-256 against `sessions.file_hash` → either skip (only patch `last_sync_at` and missing `name`/`project`) or run a transactional rewrite of the session and its derived rows.
+3. For each file: first compare `sessions.file_size` / `file_mtime` / parser cache version before parser work; changed files then use append cursors or full parse before transactional writes.
 4. Emit SSE: `session_created` / `session_updated` per file, `sync_complete` per source.
 5. Upsert `sync_status`.
 

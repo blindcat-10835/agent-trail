@@ -10,7 +10,10 @@ vi.mock('@/ingest/parser/codex', () => ({
   parseCodexSession,
 }));
 
-function mockCodexParse(sessionId: string) {
+function mockCodexParse(
+  sessionId: string,
+  activities: Array<Record<string, unknown>> = []
+) {
   parseCodexSession.mockResolvedValue({
     session: {
       id: sessionId,
@@ -30,7 +33,7 @@ function mockCodexParse(sessionId: string) {
       turns: [],
     },
     messages: [],
-    activities: [],
+    activities,
     errors: [],
     warnings: [],
   });
@@ -162,5 +165,145 @@ describe('sync performance behavior', () => {
 
     expect(functionBody).not.toContain('readFileSync');
     expect(functionBody).toContain('readSync');
+  });
+
+  it('regular Codex full sync does not run a source-wide relationship scan before skip/parse', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'ingest', 'sync', 'index.ts'), 'utf-8');
+    const functionBody = source.match(/async function syncCodexSource[\s\S]*?\n}\n\n\/\*\*/)?.[0] ?? '';
+
+    expect(functionBody).not.toContain('collectCodexRelationships(sources)');
+    expect(functionBody).toContain('relationshipsByChild: CodexRelationshipsByChild = new Map()');
+  });
+
+  it('regular Codex full sync can repair stored relationship links without parsing unchanged files', async () => {
+    const childFilePath = await createCodexFile(codexRoot, 'child.jsonl', '{"stable":true}\n');
+    const childStats = fs.statSync(childFilePath);
+    const parentId = 'stored-parent-session';
+    const childId = 'stored-child-session';
+
+    const { openDatabase, initSchema, getDatabase } = await import('@/ingest/db');
+    const { syncSource } = await import('@/ingest/sync/index');
+    openDatabase({ path: dbPath });
+    initSchema();
+
+    const insertSession = getDatabase().prepare(`
+      INSERT INTO sessions (
+        id, source, project, status, message_count, user_message_count,
+        has_tool_calls, file_path, file_size, file_mtime, file_hash,
+        parser_malformed_lines, is_truncated, relationship_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertSession.run(
+      parentId,
+      'codex',
+      'test',
+      'idle',
+      0,
+      0,
+      0,
+      path.join(codexRoot, '2026', '05', '14', 'parent.jsonl'),
+      0,
+      '2026-05-14T00:00:00.000Z',
+      'parser-v7-turn-activity-placement:codex:parent',
+      0,
+      0,
+      'root'
+    );
+    insertSession.run(
+      childId,
+      'codex',
+      'test',
+      'idle',
+      0,
+      0,
+      0,
+      childFilePath,
+      childStats.size,
+      new Date(childStats.mtimeMs).toISOString(),
+      'parser-v7-turn-activity-placement:codex:child',
+      0,
+      0,
+      'root'
+    );
+    getDatabase().prepare(`
+      INSERT INTO subagent_links (
+        session_id, subagent_session_id, subagent_source, relationship, message_ordinal
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run(parentId, childId, 'codex', 'spawned', 1);
+
+    const result = await syncSource('codex');
+
+    expect(result.errors).toEqual([]);
+    expect(parseCodexSession).not.toHaveBeenCalled();
+    const row = getDatabase().prepare(`
+      SELECT relationship_type, parent_session_id, root_session_id
+      FROM sessions
+      WHERE id = ?
+    `).get(childId) as {
+      relationship_type: string;
+      parent_session_id: string | null;
+      root_session_id: string | null;
+    };
+
+    expect(row.relationship_type).toBe('subagent');
+    expect(row.parent_session_id).toBe(parentId);
+    expect(row.root_session_id).toBe(parentId);
+  });
+
+  it('path-scoped Codex sync backfills child relationships found in the parsed parent', async () => {
+    const parentFilePath = await createCodexFile(codexRoot, 'parent.jsonl');
+    const parentId = 'parent-session';
+    const childId = 'child-session';
+    mockCodexParse(parentId, [
+      {
+        type: 'subagent_link',
+        subagentSessionId: childId,
+        subagentSource: 'codex',
+        relationship: 'spawned',
+      },
+    ]);
+
+    const { openDatabase, initSchema, getDatabase } = await import('@/ingest/db');
+    const { syncPaths } = await import('@/ingest/sync/index');
+    openDatabase({ path: dbPath });
+    initSchema();
+
+    getDatabase().prepare(`
+      INSERT INTO sessions (
+        id, source, project, status, message_count, user_message_count,
+        has_tool_calls, file_path, parser_malformed_lines, is_truncated, relationship_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      childId,
+      'codex',
+      'test',
+      'idle',
+      0,
+      0,
+      0,
+      path.join(codexRoot, '2026', '05', '14', 'child.jsonl'),
+      0,
+      0,
+      'root'
+    );
+
+    const result = await syncPaths('codex', [parentFilePath]);
+
+    expect(result.errors).toEqual([]);
+    const row = getDatabase().prepare(`
+      SELECT relationship_type, parent_session_id, root_session_id, source_session_id
+      FROM sessions
+      WHERE id = ?
+    `).get(childId) as {
+      relationship_type: string;
+      parent_session_id: string | null;
+      root_session_id: string | null;
+      source_session_id: string | null;
+    };
+
+    expect(row.relationship_type).toBe('subagent');
+    expect(row.parent_session_id).toBe(parentId);
+    expect(row.root_session_id).toBe(parentId);
+    expect(row.source_session_id).toBe(childId);
   });
 });

@@ -1373,6 +1373,9 @@ interface SyncFileCandidate {
   mtimeMs: number;
 }
 
+export type CodexRelationship = { parentSessionId: string; rootSessionId?: string };
+export type CodexRelationshipsByChild = Map<string, CodexRelationship>;
+
 interface IncrementalParserContext {
   currentTurnId?: string;
   currentModel?: string;
@@ -1521,7 +1524,7 @@ async function parseAndWriteCandidate(
   candidate: SyncFileCandidate,
   opts: SyncSourceOptions,
   totalResult: SyncResult,
-  relationshipsByChild = new Map<string, { parentSessionId: string; rootSessionId?: string }>()
+  relationshipsByChild: CodexRelationshipsByChild = new Map()
 ): Promise<void> {
   const filePath = candidate.filePath;
   const snapshot = tryGetFileSnapshot(filePath);
@@ -1555,7 +1558,8 @@ async function parseAndWriteCandidate(
         sourceType,
         candidate,
         decision,
-        totalResult
+        totalResult,
+        relationshipsByChild
       );
       if (incrementalResult.handled) {
         opts.observer?.onFileComplete?.(
@@ -1587,7 +1591,7 @@ async function parseFullCandidate(
   candidate: SyncFileCandidate,
   opts: SyncSourceOptions,
   totalResult: SyncResult,
-  relationshipsByChild = new Map<string, { parentSessionId: string; rootSessionId?: string }>(),
+  relationshipsByChild: CodexRelationshipsByChild = new Map(),
   fallbackReason: string | null = null
 ): Promise<void> {
   const filePath = candidate.filePath;
@@ -1626,17 +1630,12 @@ async function parseFullCandidate(
   const { parseCodexSession } = await import('../parser/codex');
   const parseResult = await parseCodexSession(filePath, candidate.project);
   recordFileParsed(totalResult, 'full');
-  const relationship = relationshipsByChild.get(parseResult.session.id);
-  if (relationship) {
-    parseResult.session.parentSessionId = relationship.parentSessionId;
-    parseResult.session.rootSessionId = relationship.rootSessionId || relationship.parentSessionId;
-    parseResult.session.relationshipType = 'subagent';
-    parseResult.session.sourceSessionId = parseResult.session.sourceSessionId || parseResult.session.id;
-  }
+  applyCodexRelationshipToSession(parseResult, relationshipsByChild);
   parseResult.session.name = extractSessionName(parseResult);
   parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
   const writeResult = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
   if (writeResult.errors.length === 0) {
+    recordCodexRelationshipsFromParseResult(parseResult, relationshipsByChild);
     const database = getDatabase();
     updateCursorAfterFullParse(database, sourceType, filePath, parseResult, fallbackReason);
   }
@@ -1647,7 +1646,8 @@ async function parseIncrementalAppendCandidate(
   sourceType: Exclude<SyncSourceType, 'openclaw'>,
   candidate: SyncFileCandidate,
   decision: Extract<CursorDecision, { type: 'incremental_append' }>,
-  totalResult: SyncResult
+  totalResult: SyncResult,
+  relationshipsByChild: CodexRelationshipsByChild = new Map()
 ): Promise<{ handled: boolean; fallbackReason?: string }> {
   const filePath = candidate.filePath;
   const parserContext = readIncrementalParserContext(decision.cursor);
@@ -1687,6 +1687,9 @@ async function parseIncrementalAppendCandidate(
     return { handled: false, fallbackReason: `append_writer_failed:${writeResult.errors[0]}` };
   }
 
+  if (sourceType === 'codex') {
+    recordCodexRelationshipsFromDelta(delta, relationshipsByChild);
+  }
   recordFileParsed(totalResult, 'incremental');
   mergeSyncResult(totalResult, writeResult);
   return { handled: true };
@@ -1722,11 +1725,154 @@ function readIncrementalParserContext(cursor: IngestFileCursor): IncrementalPars
   }
 }
 
+function rememberCodexRelationship(
+  relationshipsByChild: CodexRelationshipsByChild,
+  childSessionId: unknown,
+  parentSessionId: unknown,
+  rootSessionId?: unknown
+): void {
+  if (
+    typeof childSessionId !== 'string' ||
+    typeof parentSessionId !== 'string' ||
+    childSessionId.length === 0 ||
+    parentSessionId.length === 0 ||
+    childSessionId === parentSessionId
+  ) {
+    return;
+  }
+
+  relationshipsByChild.set(childSessionId, {
+    parentSessionId,
+    rootSessionId: typeof rootSessionId === 'string' && rootSessionId.length > 0
+      ? rootSessionId
+      : parentSessionId,
+  });
+}
+
+function recordCodexRelationshipsFromParseResult(
+  parseResult: ParseResult,
+  relationshipsByChild: CodexRelationshipsByChild
+): void {
+  const parentSessionId = parseResult.session.id;
+  const rootSessionId = parseResult.session.rootSessionId || parentSessionId;
+
+  for (const activity of parseResult.activities) {
+    if (activity.type !== 'subagent_link') continue;
+    if (activity.subagentSource !== 'codex') continue;
+
+    rememberCodexRelationship(
+      relationshipsByChild,
+      activity.subagentSessionId,
+      parentSessionId,
+      rootSessionId
+    );
+  }
+}
+
+function recordCodexRelationshipsFromDelta(
+  delta: IncrementalParseDelta,
+  relationshipsByChild: CodexRelationshipsByChild
+): void {
+  const parentSessionId = delta.sessionId;
+  const rootSessionId = delta.sessionPatch.rootSessionId || parentSessionId;
+
+  for (const link of delta.subagentLinks) {
+    if (link.subagentSource !== 'codex') continue;
+
+    rememberCodexRelationship(
+      relationshipsByChild,
+      link.subagentSessionId,
+      parentSessionId,
+      rootSessionId
+    );
+  }
+}
+
+function lookupCodexRelationshipFromDatabase(childSessionId: string): CodexRelationship | undefined {
+  try {
+    const row = getDatabase().prepare(`
+      SELECT
+        links.session_id AS parent_session_id,
+        COALESCE(NULLIF(parent.root_session_id, ''), links.session_id) AS root_session_id
+      FROM subagent_links links
+      LEFT JOIN sessions parent
+        ON parent.id = links.session_id
+       AND parent.source = 'codex'
+      WHERE links.subagent_source = 'codex'
+        AND links.subagent_session_id = ?
+      ORDER BY links.id DESC
+      LIMIT 1
+    `).get(childSessionId) as {
+      parent_session_id: string | null;
+      root_session_id: string | null;
+    } | undefined;
+
+    if (!row?.parent_session_id || row.parent_session_id === childSessionId) {
+      return undefined;
+    }
+
+    return {
+      parentSessionId: row.parent_session_id,
+      rootSessionId: row.root_session_id || row.parent_session_id,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function collectCodexRelationshipsFromStoredLinks(
+  database: Database.Database,
+  relationshipsByChild: CodexRelationshipsByChild = new Map()
+): CodexRelationshipsByChild {
+  const rows = database.prepare(`
+    SELECT
+      links.subagent_session_id AS child_session_id,
+      links.session_id AS parent_session_id,
+      COALESCE(NULLIF(parent.root_session_id, ''), links.session_id) AS root_session_id
+    FROM subagent_links links
+    LEFT JOIN sessions parent
+      ON parent.id = links.session_id
+     AND parent.source = 'codex'
+    WHERE links.subagent_source = 'codex'
+  `).all() as Array<{
+    child_session_id: string | null;
+    parent_session_id: string | null;
+    root_session_id: string | null;
+  }>;
+
+  for (const row of rows) {
+    rememberCodexRelationship(
+      relationshipsByChild,
+      row.child_session_id,
+      row.parent_session_id,
+      row.root_session_id || row.parent_session_id || undefined
+    );
+  }
+
+  return relationshipsByChild;
+}
+
+function applyCodexRelationshipToSession(
+  parseResult: ParseResult,
+  relationshipsByChild: CodexRelationshipsByChild
+): void {
+  const relationship = relationshipsByChild.get(parseResult.session.id)
+    ?? lookupCodexRelationshipFromDatabase(parseResult.session.id);
+
+  if (!relationship) return;
+
+  parseResult.session.parentSessionId = relationship.parentSessionId;
+  parseResult.session.rootSessionId = relationship.rootSessionId || relationship.parentSessionId;
+  parseResult.session.relationshipType = 'subagent';
+  parseResult.session.sourceSessionId = parseResult.session.sourceSessionId || parseResult.session.id;
+}
+
 /**
  * Sync only explicitly changed session file paths for a source type.
  *
  * This is the watcher hot path: it intentionally avoids source-wide discovery,
- * Codex relationship collection, and full history parsing for unrelated files.
+ * source-wide Codex relationship collection, and full history parsing for
+ * unrelated files.
  */
 export async function syncPaths(
   sourceType: SyncSourceType,
@@ -1735,18 +1881,30 @@ export async function syncPaths(
 ): Promise<SyncResult> {
   const opts = options ?? {};
   const totalResult = createSyncResult();
+  const relationshipsByChild: CodexRelationshipsByChild = new Map();
 
   try {
     const candidates = await collectPathFileCandidates(sourceType, paths);
     for (const candidate of candidates) {
       try {
-        await parseAndWriteCandidate(sourceType, candidate, opts, totalResult);
+        await parseAndWriteCandidate(sourceType, candidate, opts, totalResult, relationshipsByChild);
       } catch (err) {
         totalResult.errors.push(`Failed to sync changed ${sourceType} path ${candidate.filePath}: ${err}`);
       }
     }
   } catch (err) {
     totalResult.errors.push(`Failed to collect changed ${sourceType} paths: ${err}`);
+  }
+
+  if (sourceType === 'codex') {
+    try {
+      collectCodexRelationshipsFromStoredLinks(getDatabase(), relationshipsByChild);
+      if (relationshipsByChild.size > 0) {
+        backfillCodexRelationships(getDatabase(), relationshipsByChild);
+      }
+    } catch (err) {
+      totalResult.errors.push(`Codex relationship backfill failed: ${err}`);
+    }
   }
 
   upsertSyncStatus(sourceType, totalResult);
@@ -1879,9 +2037,12 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   const { getConfig } = await import('../config');
   const toolDirs = getConfig().toolDirs;
   const sources = await discoverCodexSources(toolDirs.get('codex'));
-  const relationshipsByChild = typeof opts.limit === 'number'
-    ? new Map<string, { parentSessionId: string; rootSessionId?: string }>()
-    : await collectCodexRelationships(sources);
+  // Regular full sync is a directory consistency check plus per-file
+  // skip/incremental parsing. Do not pre-scan every Codex JSONL file for
+  // relationships here; relationships are collected from files parsed in this
+  // run and `collectCodexRelationships()` remains available for explicit
+  // maintenance/backfill callers.
+  const relationshipsByChild: CodexRelationshipsByChild = new Map();
   const totalResult = createSyncResult();
 
   try {
@@ -1900,12 +2061,13 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
     totalResult.errors.push(`Failed to collect Codex session files: ${err}`);
   }
 
-  if (relationshipsByChild.size > 0) {
-    try {
+  try {
+    collectCodexRelationshipsFromStoredLinks(getDatabase(), relationshipsByChild);
+    if (relationshipsByChild.size > 0) {
       backfillCodexRelationships(getDatabase(), relationshipsByChild);
-    } catch (err) {
-      totalResult.errors.push(`Codex relationship backfill failed: ${err}`);
     }
+  } catch (err) {
+    totalResult.errors.push(`Codex relationship backfill failed: ${err}`);
   }
 
   sseManager.emit('sync_complete', {
@@ -1931,7 +2093,7 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
  */
 export function backfillCodexRelationships(
   database: Database.Database,
-  relationships: Map<string, { parentSessionId: string; rootSessionId?: string }>
+  relationships: CodexRelationshipsByChild
 ): number {
   let totalUpdated = 0;
 
@@ -1961,8 +2123,8 @@ export function backfillCodexRelationships(
 
 export async function collectCodexRelationships(
   sources: Array<{ path: string; error?: string; sessionCount: number }>
-): Promise<Map<string, { parentSessionId: string; rootSessionId?: string }>> {
-  const relationships = new Map<string, { parentSessionId: string; rootSessionId?: string }>();
+): Promise<CodexRelationshipsByChild> {
+  const relationships: CodexRelationshipsByChild = new Map();
   const fsp = await import('fs/promises');
   const readline = await import('readline');
 

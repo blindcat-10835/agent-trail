@@ -2,7 +2,7 @@
  * File Watcher Service
  *
  * Uses chokidar for cross-platform file watching on source directories.
- * Provides debounce (500ms default), periodic resync fallback (5 min default),
+ * Provides debounce (500ms default), periodic resync fallback (15 min default),
  * temp file filtering, and graceful error handling.
  *
  * @module ingest/src/watcher
@@ -21,7 +21,7 @@ export interface WatcherConfig {
   sourceDirs: Map<SyncSourceType, string[]>;
   /** Debounce window in milliseconds (default 500) */
   debounceMs: number;
-  /** Periodic resync interval in milliseconds (default 300000 = 5 min) */
+  /** Periodic resync interval in milliseconds (default 900000 = 15 min) */
   resyncIntervalMs: number;
   /** File extensions to watch (default ['.jsonl', '.json', '.md']) */
   fileExtensions: string[];
@@ -79,7 +79,7 @@ function isValidExtension(filePath: string, extensions: string[]): boolean {
  *
  * Uses chokidar to watch directories for add/change/unlink events on configured
  * file extensions, with temp file filtering and debounce. Falls back to periodic
- * full resync at the configured interval.
+ * directory-consistency resync at the configured interval.
  *
  * @param config - Watcher configuration
  * @returns WatcherInstance with start/stop/getStatus lifecycle
