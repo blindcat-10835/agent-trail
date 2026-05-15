@@ -16,6 +16,7 @@ interface OverviewAgentsProps {
     capabilities: Record<string, SourceCapabilitySet>
   } | null
   toolId: AgentToolId
+  capsLoading?: boolean
 }
 
 // ============================================================================
@@ -41,18 +42,9 @@ function AgentCardSkeleton() {
 // Component
 // ============================================================================
 
-export function OverviewAgents({ capabilities, toolId }: OverviewAgentsProps) {
-  // Determine if agents are available for this source
-  const sourceCaps = capabilities?.capabilities?.[toolId]
-  const agentsEnabled = sourceCaps?.agents === true
-  const isAll = toolId === 'all'
-
-  // Hide for 'all' or when capability is disabled
-  if (!agentsEnabled || isAll) {
-    return null
-  }
-
-  const { agents, loading, error } = useToolAgents(toolId)
+export function OverviewAgents({ capabilities, toolId, capsLoading }: OverviewAgentsProps) {
+  // Always call hook — React hooks must not be conditional
+  const { agents, loading: agentsLoading, error: agentsError } = useToolAgents(toolId)
 
   const heading = (
     <div className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
@@ -60,7 +52,8 @@ export function OverviewAgents({ capabilities, toolId }: OverviewAgentsProps) {
     </div>
   )
 
-  if (loading) {
+  // Show skeleton while capabilities are loading
+  if (capsLoading) {
     return (
       <div className="flex flex-col gap-2">
         {heading}
@@ -72,11 +65,38 @@ export function OverviewAgents({ capabilities, toolId }: OverviewAgentsProps) {
     )
   }
 
-  if (error) {
+  // Determine if agents are available for this source
+  const sourceCaps = capabilities?.capabilities?.[toolId]
+  const agentsEnabled = sourceCaps?.agents === true
+  const isAll = toolId === 'all'
+
+  // Hide for 'all' or when capability is disabled — return placeholder for grid stability
+  if (!agentsEnabled || isAll) {
     return (
       <div className="flex flex-col gap-2">
         {heading}
-        <EmptyState heading="LOAD ERROR" body={error} />
+        <EmptyState heading="N/A" body="AGENTS NOT AVAILABLE FOR THIS SOURCE." />
+      </div>
+    )
+  }
+
+  if (agentsLoading) {
+    return (
+      <div className="flex flex-col gap-2">
+        {heading}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+          <AgentCardSkeleton />
+          <AgentCardSkeleton />
+        </div>
+      </div>
+    )
+  }
+
+  if (agentsError) {
+    return (
+      <div className="flex flex-col gap-2">
+        {heading}
+        <EmptyState heading="LOAD ERROR" body={agentsError} />
       </div>
     )
   }

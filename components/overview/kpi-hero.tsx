@@ -71,13 +71,14 @@ function KpiSkeleton() {
 interface KpiHeroProps {
   aggregates: OverviewAggregates | null
   loading: boolean
+  error?: string | null
 }
 
 // ============================================================================
 // Component
 // ============================================================================
 
-export function KpiHero({ aggregates, loading }: KpiHeroProps) {
+export function KpiHero({ aggregates, loading, error }: KpiHeroProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-4 bg-card border border-border">
@@ -85,6 +86,19 @@ export function KpiHero({ aggregates, loading }: KpiHeroProps) {
         <KpiSkeleton />
         <KpiSkeleton />
         <KpiSkeleton />
+      </div>
+    )
+  }
+
+  // Connection error with no data — show terse HUD error
+  if (error && !aggregates) {
+    return (
+      <div className="grid grid-cols-4 bg-card border border-destructive">
+        <div className="col-span-4 px-4 py-3.5 flex items-center justify-center">
+          <span className="text-[10.5px] font-bold tracking-[0.15em] text-destructive uppercase">
+            INGEST OFFLINE
+          </span>
+        </div>
       </div>
     )
   }

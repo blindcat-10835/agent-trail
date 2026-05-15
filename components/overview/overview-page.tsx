@@ -40,28 +40,31 @@ export function OverviewPage() {
 
   // Window-dependent data hooks
   const { aggregates, loading: aggLoading, error: aggError } = useOverviewAggregates(toolId, window)
-  const { models, loading: modelsLoading } = useTopModels(toolId, window)
-  const { projects, loading: projectsLoading } = useTopProjects(toolId, window)
+  const { models, loading: modelsLoading, error: modelsError } = useTopModels(toolId, window)
+  const { projects, loading: projectsLoading, error: projectsError } = useTopProjects(toolId, window)
 
   // Non-window-dependent data hooks
-  const { starred, loading: starredLoading } = useStarredSessions(toolId)
-  const { timeline, loading: timelineLoading } = useTimeline(toolId)
+  const { starred, loading: starredLoading, error: starredError } = useStarredSessions(toolId)
+  const { timeline, loading: timelineLoading, error: timelineError } = useTimeline(toolId)
   const { capabilities, loading: capsLoading } = useOverviewCapabilities(toolId)
 
-  // Full-page error if aggregates fails (ingest likely offline)
-  if (aggError && !aggLoading) {
+  // Full-page error only on very first load when no data was ever fetched
+  if (aggError && !aggLoading && !aggregates) {
     return (
-      <EmptyState
-        heading="INGEST OFFLINE"
-        body={aggError}
-      />
+      <div className="p-4 space-y-6 min-h-0 overflow-y-auto">
+        <KpiHero aggregates={null} loading={false} error={aggError} />
+        <EmptyState
+          heading="INGEST OFFLINE"
+          body="UNABLE TO REACH INGEST SERVICE. CHECK THAT THE INGEST SERVER IS RUNNING."
+        />
+      </div>
     )
   }
 
   return (
     <div className="p-4 space-y-6 min-h-0 overflow-y-auto">
       {/* 1. KPI Hero bar */}
-      <KpiHero aggregates={aggregates} loading={aggLoading} />
+      <KpiHero aggregates={aggregates} loading={aggLoading} error={aggError} />
 
       {/* 2. Time Window Selector (right-aligned) */}
       <div className="flex justify-end">
@@ -74,25 +77,23 @@ export function OverviewPage() {
           <div className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground uppercase">
             TOP MODELS
           </div>
-          <TopModelsTable models={models} loading={modelsLoading} />
+          <TopModelsTable models={models} loading={modelsLoading} error={modelsError} />
         </div>
         <div className="flex flex-col gap-2">
           <div className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground uppercase">
             TOP PROJECTS
           </div>
-          <TopProjectsTable projects={projects} loading={projectsLoading} />
+          <TopProjectsTable projects={projects} loading={projectsLoading} error={projectsError} />
         </div>
       </div>
 
       {/* 4. Starred Sessions (full width) */}
-      <StarredSessions starred={starred} loading={starredLoading} />
+      <StarredSessions starred={starred} loading={starredLoading} error={starredError} />
 
       {/* 5. Two-column: Activity Timeline | Agents */}
       <div className="grid grid-cols-2 gap-4">
-        <ActivityTimeline timeline={timeline} loading={timelineLoading} />
-        {!capsLoading && (
-          <OverviewAgents capabilities={capabilities} toolId={toolId} />
-        )}
+        <ActivityTimeline timeline={timeline} loading={timelineLoading} error={timelineError} />
+        <OverviewAgents capabilities={capabilities} toolId={toolId} capsLoading={capsLoading} />
       </div>
     </div>
   )
