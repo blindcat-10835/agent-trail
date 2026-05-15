@@ -40,6 +40,8 @@ import type {
   StarredResponse,
   TimelineResponse,
   CapabilitiesResponse,
+  AutomationsResponse,
+  AutomationSummary,
   TimeWindow,
 } from '@/types/overview'
 
@@ -1061,6 +1063,37 @@ export function useOverviewCapabilities(toolId: AgentToolId) {
   }, [toolId])
 
   return { capabilities, loading, error }
+}
+
+/**
+ * Hook: Fetch automation summaries for a tool via BFF proxy.
+ *
+ * Returns automation sessions (agent-named sessions with no user input)
+ * grouped by agent_name with session count, last active, and status.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @returns { automations, loading, error }
+ */
+export function useOverviewAutomations(toolId: AgentToolId) {
+  const [automations, setAutomations] = useState<AutomationSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    fetchToolApi<AutomationsResponse>(toolId, '/overview/automations')
+      .then((data) => {
+        setAutomations(data.automations)
+        setError(null)
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Failed to load automations'),
+      )
+      .finally(() => setLoading(false))
+  }, [toolId])
+
+  return { automations, loading, error }
 }
 
 // ============================================================================

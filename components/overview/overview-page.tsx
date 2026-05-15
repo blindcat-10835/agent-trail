@@ -17,6 +17,7 @@ import { TopProjectsTable } from '@/components/overview/top-projects-table'
 import { StarredSessions } from '@/components/overview/starred-sessions'
 import { ActivityTimeline } from '@/components/overview/activity-timeline'
 import { OverviewAgents } from '@/components/overview/overview-agents'
+import { OverviewAutomations } from '@/components/overview/overview-automations'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import type { TimeWindow } from '@/types/overview'
 
@@ -90,10 +91,13 @@ export function OverviewPage() {
       {/* 4. Starred Sessions (full width) */}
       <StarredSessions starred={starred} loading={starredLoading} error={starredError} />
 
-      {/* 5. Two-column: Activity Timeline | Agents */}
+      {/* 5. Two-column: Activity Timeline | Agents + Automations */}
       <div className="grid grid-cols-2 gap-4">
         <ActivityTimeline timeline={timeline} loading={timelineLoading} error={timelineError} />
-        <OverviewAgents capabilities={capabilities} toolId={toolId} capsLoading={capsLoading} />
+        <div className="flex flex-col gap-6">
+          <OverviewAgents capabilities={capabilities} toolId={toolId} capsLoading={capsLoading} />
+          <OverviewAutomations capabilities={capabilities} toolId={toolId} capsLoading={capsLoading} />
+        </div>
       </div>
     </div>
   )
