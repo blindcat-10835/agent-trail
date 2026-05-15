@@ -38,10 +38,11 @@ import type { TimeWindow } from '@/types/overview'
 export function OverviewPage() {
   const { toolId } = useAgentTool()
   const [window, setWindow] = useState<TimeWindow>('7d')
+  const [modelSortBy, setModelSortBy] = useState<string>('tokens')
 
   // Window-dependent data hooks
   const { aggregates, loading: aggLoading, error: aggError } = useOverviewAggregates(toolId, window)
-  const { models, loading: modelsLoading, error: modelsError } = useTopModels(toolId, window)
+  const { models, loading: modelsLoading, error: modelsError } = useTopModels(toolId, window, modelSortBy)
   const { projects, loading: projectsLoading, error: projectsError } = useTopProjects(toolId, window)
 
   // Non-window-dependent data hooks
@@ -78,7 +79,7 @@ export function OverviewPage() {
           <div className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground uppercase">
             TOP MODELS
           </div>
-          <TopModelsTable models={models} loading={modelsLoading} error={modelsError} />
+          <TopModelsTable models={models} loading={modelsLoading} error={modelsError} sortBy={modelSortBy} onSortChange={setModelSortBy} />
         </div>
         <div className="flex flex-col gap-2">
           <div className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground uppercase">
