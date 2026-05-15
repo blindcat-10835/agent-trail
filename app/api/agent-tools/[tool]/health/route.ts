@@ -2,13 +2,15 @@
  * BFF API Proxy — GET /api/agent-tools/[tool]/health
  *
  * Proxies health check to the ingest service.
- * All 3 tools share the same ingest health endpoint.
+ * All source tools and the synthetic "all" shell scope share the same ingest
+ * health endpoint.
  *
  * Per D-07: BFF proxy — frontend never calls ingest directly.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { assertSourceToolId } from '@/lib/agent-tools/registry'
+import { assertAgentToolId } from '@/lib/agent-tools/registry'
+import { allAdapter } from '@/lib/agent-tools/all/server-adapter'
 import { openclawAdapter } from '@/lib/agent-tools/openclaw/server-adapter'
 import { claudeCodeAdapter } from '@/lib/agent-tools/claude-code/server-adapter'
 import { codexAdapter } from '@/lib/agent-tools/codex/server-adapter'
@@ -16,6 +18,7 @@ import { sanitizeError } from '@/lib/agent-tools/server-adapter'
 import type { AgentToolServerAdapter } from '@/lib/agent-tools/server-adapter'
 
 const adapters: Record<string, AgentToolServerAdapter> = {
+  all: allAdapter,
   openclaw: openclawAdapter,
   'claude-code': claudeCodeAdapter,
   codex: codexAdapter,
@@ -28,7 +31,7 @@ export async function GET(
   const { tool } = await params
 
   try {
-    const toolId = assertSourceToolId(tool)
+    const toolId = assertAgentToolId(tool)
     const adapter = adapters[toolId]
 
     const result = await adapter.health()
