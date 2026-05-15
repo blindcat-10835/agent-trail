@@ -175,6 +175,66 @@ describe('sync performance behavior', () => {
     expect(functionBody).toContain('relationshipsByChild: CodexRelationshipsByChild = new Map()');
   });
 
+  it('session display name extraction avoids full-message string transforms', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'ingest', 'sync', 'index.ts'), 'utf-8');
+    const start = source.indexOf('function deriveDisplayNameFromUserMessage');
+    const end = source.indexOf('/**\n * Extract project path', start);
+    const functionSection = source.slice(start, end);
+
+    expect(functionSection).toContain('boundedTrimmedPreview(content)');
+    expect(functionSection).not.toContain('content.trim()');
+    expect(functionSection).not.toContain('[\\s\\S]');
+    expect(functionSection).not.toContain(".split('\\n')");
+  });
+
+  it('derives a session name from a bounded preview of a large user message', async () => {
+    const filePath = await createCodexFile(codexRoot, 'large-user-message.jsonl');
+    parseCodexSession.mockResolvedValueOnce({
+      session: {
+        id: 'large-user-message-session',
+        source: 'codex',
+        project: 'test',
+        startedAt: '2026-05-14T00:00:00.000Z',
+        endedAt: null,
+        status: 'idle',
+        metrics: {
+          messageCount: 1,
+          userMessageCount: 1,
+          totalTokens: 0,
+          hasToolCalls: false,
+          parserMalformedLines: 0,
+          isTruncated: false,
+        },
+        turns: [],
+      },
+      messages: [
+        {
+          id: 'msg-1',
+          ordinal: 0,
+          role: 'user',
+          content: `## My request for Codex:\n请总结这个项目\n${'x'.repeat(1024 * 1024)}`,
+          timestamp: '2026-05-14T00:00:00.000Z',
+          sourceMetadata: {},
+        },
+      ],
+      activities: [],
+      errors: [],
+      warnings: [],
+    });
+    const { openDatabase, initSchema, getDatabase } = await import('@/ingest/db');
+    const { syncPaths } = await import('@/ingest/sync/index');
+    openDatabase({ path: dbPath });
+    initSchema();
+
+    const result = await syncPaths('codex', [filePath]);
+
+    expect(result.errors).toEqual([]);
+    const row = getDatabase().prepare('SELECT name FROM sessions WHERE id = ?').get('large-user-message-session') as {
+      name: string;
+    };
+    expect(row.name).toBe('请总结这个项目');
+  });
+
   it('regular Codex full sync can repair stored relationship links without parsing unchanged files', async () => {
     const childFilePath = await createCodexFile(codexRoot, 'child.jsonl', '{"stable":true}\n');
     const childStats = fs.statSync(childFilePath);

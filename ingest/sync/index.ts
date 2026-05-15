@@ -149,6 +149,9 @@ export interface WriteSessionOptions {
 // Session Name & Project Extraction
 // ============================================================================
 
+const SESSION_NAME_SCAN_LIMIT = 16 * 1024;
+const SESSION_NAME_METADATA_HEADER_LIMIT = 128;
+
 /**
  * Extract a display name from the first user message in the parse result.
  */
@@ -164,17 +167,21 @@ function extractSessionName(parseResult: ParseResult): string {
 }
 
 function deriveDisplayNameFromUserMessage(content: string): string {
-  const normalized = content.trim()
-  if (!normalized) return ''
+  const preview = boundedTrimmedPreview(content)
+  if (!preview) return ''
 
-  const commandArgs = normalized.match(/<command-args>([\s\S]*?)<\/command-args>/i)?.[1]?.trim()
+  const lower = preview.toLowerCase()
+
+  const commandArgs = extractTagContent(preview, lower, 'command-args')
   if (commandArgs) return truncateDisplayName(commandArgs)
 
   // Slash command with no args (e.g. /effort, /model) — skip, let loop find real user message
-  if (/<command-name>/i.test(normalized)) return ''
+  if (lower.includes('<command-name>')) return ''
 
-  const codexRequest = normalized.match(/## My request for Codex:\s*([\s\S]*)/i)?.[1]?.trim()
-  if (codexRequest) {
+  const codexRequestMarker = '## my request for codex:'
+  const codexRequestIdx = lower.indexOf(codexRequestMarker)
+  if (codexRequestIdx >= 0) {
+    const codexRequest = preview.slice(codexRequestIdx + codexRequestMarker.length)
     const line = firstMeaningfulLine(codexRequest)
     if (line) return truncateDisplayName(line)
   }
@@ -183,24 +190,18 @@ function deriveDisplayNameFromUserMessage(content: string): string {
   // Headers include "Conversation info (untrusted metadata):", "Sender (untrusted metadata):", etc.
   // The actual message follows all the ```json ... ``` code blocks, optionally with a
   // gateway-injected date prefix like "[Wed 2026-04-29 00:58 GMT+8] ".
-  if (/^.{0,100}\(untrusted metadata\):/i.test(normalized)) {
-    const codeBlockEndRe = /```\s*\n/g
-    let lastIdx = 0
-    let m: RegExpExecArray | null
-    while ((m = codeBlockEndRe.exec(normalized)) !== null) {
-      lastIdx = m.index + m[0].length
-    }
-    const afterBlocks = normalized.slice(lastIdx).trim()
+  if (lower.slice(0, SESSION_NAME_METADATA_HEADER_LIMIT).includes('(untrusted metadata):')) {
+    const lastIdx = findLastFenceLineEnd(preview)
+    const afterBlocks = trimSlice(preview, lastIdx, preview.length)
     if (afterBlocks) {
       // Strip gateway-injected date prefix: "[Wed 2026-04-29 00:58 GMT+8] "
-      const stripped = afterBlocks.replace(/^\[[^\]]{1,60}\]\s*/, '')
+      const stripped = stripBracketDatePrefix(afterBlocks)
       const line = firstMeaningfulLine(stripped || afterBlocks)
       if (line) return truncateDisplayName(line)
     }
     return ''
   }
 
-  const lower = normalized.toLowerCase()
   const metadataPrefixes = [
     '<environment_context',
     '<security_context',
@@ -212,15 +213,107 @@ function deriveDisplayNameFromUserMessage(content: string): string {
   ]
   if (metadataPrefixes.some(prefix => lower.startsWith(prefix))) return ''
 
-  const line = firstMeaningfulLine(normalized)
+  const line = firstMeaningfulLine(preview)
   return line ? truncateDisplayName(line) : ''
 }
 
 function firstMeaningfulLine(content: string): string {
-  return content
-    .split('\n')
-    .map(line => line.trim())
-    .find(line => line.length > 0) || ''
+  const scanEnd = Math.min(content.length, SESSION_NAME_SCAN_LIMIT)
+  let lineStart = 0
+
+  for (let i = 0; i <= scanEnd; i++) {
+    const isScanEnd = i === scanEnd
+    const code = isScanEnd ? 10 : content.charCodeAt(i)
+    if (!isScanEnd && code !== 10 && code !== 13) continue
+
+    const line = trimSlice(content, lineStart, i)
+    if (line) return line
+
+    if (code === 13 && i + 1 < scanEnd && content.charCodeAt(i + 1) === 10) {
+      i++
+    }
+    lineStart = i + 1
+  }
+
+  return ''
+}
+
+function boundedTrimmedPreview(content: string): string {
+  const scanEnd = Math.min(content.length, SESSION_NAME_SCAN_LIMIT)
+  let start = 0
+
+  while (start < scanEnd && isWhitespaceCode(content.charCodeAt(start))) {
+    start++
+  }
+  if (start >= scanEnd) return ''
+
+  return trimSlice(content, start, scanEnd)
+}
+
+function extractTagContent(preview: string, lowerPreview: string, tag: string): string {
+  const openTag = `<${tag}>`
+  const closeTag = `</${tag}>`
+  const openIdx = lowerPreview.indexOf(openTag)
+  if (openIdx < 0) return ''
+
+  const contentStart = openIdx + openTag.length
+  const closeIdx = lowerPreview.indexOf(closeTag, contentStart)
+  if (closeIdx < 0) return ''
+
+  return trimSlice(preview, contentStart, closeIdx)
+}
+
+function findLastFenceLineEnd(content: string): number {
+  let lastIdx = 0
+  let searchFrom = 0
+
+  while (searchFrom < content.length) {
+    const fenceIdx = content.indexOf('```', searchFrom)
+    if (fenceIdx < 0) break
+
+    let lineEnd = fenceIdx + 3
+    while (lineEnd < content.length) {
+      const code = content.charCodeAt(lineEnd)
+      if (code === 10) {
+        lastIdx = lineEnd + 1
+        break
+      }
+      if (!isHorizontalWhitespaceCode(code) && code !== 13) break
+      lineEnd++
+    }
+
+    searchFrom = fenceIdx + 3
+  }
+
+  return lastIdx
+}
+
+function stripBracketDatePrefix(content: string): string {
+  if (!content.startsWith('[')) return content
+
+  const closeIdx = content.indexOf(']', 1)
+  if (closeIdx < 2 || closeIdx > 61) return content
+
+  return trimSlice(content, closeIdx + 1, content.length) || content
+}
+
+function trimSlice(content: string, start: number, end: number): string {
+  while (start < end && isWhitespaceCode(content.charCodeAt(start))) {
+    start++
+  }
+  while (end > start && isWhitespaceCode(content.charCodeAt(end - 1))) {
+    end--
+  }
+
+  return content.slice(start, end)
+}
+
+function isWhitespaceCode(code: number): boolean {
+  return isHorizontalWhitespaceCode(code) || code === 10 || code === 13
+}
+
+function isHorizontalWhitespaceCode(code: number): boolean {
+  return code === 32 || code === 9 || code === 11 || code === 12 || code === 160
 }
 
 function truncateDisplayName(line: string): string {
