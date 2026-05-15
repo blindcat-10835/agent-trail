@@ -35,6 +35,15 @@ function relativeTime(iso: string | null): string {
   return `${Math.floor(days / 30)}mo ago`
 }
 
+function getTimelineEventKey(event: TimelineEvent): string {
+  return [
+    event.source,
+    event.id,
+    event.eventType,
+    event.eventTime || 'unknown',
+  ].join(':')
+}
+
 // ============================================================================
 // Props
 // ============================================================================
@@ -112,7 +121,7 @@ export function ActivityTimeline({ timeline, loading, error }: ActivityTimelineP
 
           return (
             <div
-              key={event.id}
+              key={getTimelineEventKey(event)}
               className="px-3 py-2 border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
             >
               <div className="flex items-center gap-3">

@@ -522,6 +522,15 @@ describe('overview endpoints', () => {
       // cc-2 has status=error
       expect(errorEvents.length).toBeGreaterThan(0);
     });
+
+    it('returns unique event ids even when one session contributes multiple timeline events', async () => {
+      const res = await app.request('/api/v1/overview/timeline');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const ids = body.timeline.map((event: { id: string }) => event.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
   });
 
   // ==========================================================================

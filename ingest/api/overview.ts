@@ -447,7 +447,7 @@ overviewRoutes.get('/api/v1/overview/timeline', (c) => {
 
   return c.json({
     timeline: timeline.map((row) => ({
-      id: row.id,
+      id: buildTimelineEventId(row),
       source: row.source,
       eventType: row.event_type,
       eventTime: row.event_time,
@@ -458,6 +458,20 @@ overviewRoutes.get('/api/v1/overview/timeline', (c) => {
     })),
   });
 });
+
+function buildTimelineEventId(row: {
+  id: string;
+  source: string;
+  event_type: string;
+  event_time: string | null;
+}): string {
+  return [
+    row.source,
+    row.id,
+    row.event_type,
+    row.event_time || 'unknown',
+  ].join(':');
+}
 
 // ============================================================================
 // 6. GET /api/v1/overview/capabilities (DATA-106)
