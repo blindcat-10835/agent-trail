@@ -921,7 +921,7 @@ export function useOverviewAggregates(toolId: AgentToolId, window: TimeWindow) {
  * @param window - Time window for filtering
  * @returns { models, loading, error }
  */
-export function useTopModels(toolId: AgentToolId, window: TimeWindow) {
+export function useTopModels(toolId: AgentToolId, window: TimeWindow, sortBy: string = 'tokens') {
   const [models, setModels] = useState<TopModelsResponse['models']>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -929,7 +929,7 @@ export function useTopModels(toolId: AgentToolId, window: TimeWindow) {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetchToolApi<TopModelsResponse>(toolId, '/overview/top-models', { window, limit: '10' })
+    fetchToolApi<TopModelsResponse>(toolId, '/overview/top-models', { window, limit: '10', sortBy })
       .then((data) => {
         setModels(data.models)
         setError(null)
@@ -938,7 +938,7 @@ export function useTopModels(toolId: AgentToolId, window: TimeWindow) {
         setError(err instanceof Error ? err.message : 'Failed to load models'),
       )
       .finally(() => setLoading(false))
-  }, [toolId, window])
+  }, [toolId, window, sortBy])
 
   return { models, loading, error }
 }

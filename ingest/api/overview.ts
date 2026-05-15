@@ -126,6 +126,12 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
     return c.json({ error: 'Invalid source parameter' }, 400);
   }
 
+  // Validate sortBy
+  const validSortBy = ['tokens', 'cost'];
+  if (sortBy && !validSortBy.includes(sortBy)) {
+    return c.json({ error: 'Invalid sortBy parameter. Must be "tokens" or "cost"' }, 400);
+  }
+
   // Validate and cap limit
   const limit = Math.min(Math.max(isNaN(rawLimit) ? 10 : rawLimit, 1), 50);
 
@@ -176,7 +182,7 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
     total_tokens: number;
   }>;
 
-  const result = models.map((m) => ({
+  const mapped = models.map((m) => ({
     name: m.name,
     sessionCount: m.session_count,
     inputTokens: m.input_tokens,
@@ -188,6 +194,11 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
         : 0,
     cost: null as number | null,
   }));
+
+  // Sort by cost when requested (nulls last; currently all costs are null so order is unchanged)
+  const result = sortBy === 'cost'
+    ? [...mapped].sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1))
+    : mapped;
 
   return c.json({ models: result });
 });
