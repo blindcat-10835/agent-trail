@@ -34,7 +34,7 @@
 |---|-------|------|--------------|
 | 10 | Rich Ingest Metrics & Data Contracts | 扩展 schema、聚合查询、BFF contract 和 migration，为 Overview/Session Detail 提供真实数据。 | DATA-101..106, TURN-101..105, OPEN-101..103, TEST-101, TEST-104 |
 | 11 | HUD Shell & Design System Foundation | 建立 production HUD shell、status bar、right rail scope tabs、source-aware shared chrome 和视觉 token。 | UI-101..104 |
-| 12 | Overview v2 Real Data | 用真实 BFF-backed data 实现新版 Overview：KPI、usage/cost、ranking、timeline、stars、agents、automations。 | OVR-101..105 |
+| 12 | 3/3 | Complete | 2026-05-15 |
 | 13 | Sessions Table & Trace Detail v2 | 改造 Sessions indexed table 和 Session Detail trace thread，同时保留 v1.0 replay 能力。 | SES-101..105 |
 | 14 | Visual QA & Integration Hardening | 完成 light/dark、source switching、a11y、长 session、回归测试和视觉验证。 | SES-106, TEST-102, TEST-103 |
 | 15 | Ingest Sync Performance Hardening | 修复 ingest watcher/background/periodic sync 重叠导致的高内存、高 CPU、大 JSONL 重复解析问题。 | PERF-101..106, TEST-103, OPEN-103 |
@@ -85,8 +85,14 @@ Plans:
 
 **Requirements:** OVR-101, OVR-102, OVR-103, OVR-104, OVR-105
 
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 12-01-PLAN.md — Data Layer + KPI Hero + Rankings (Wave 1)
+- [x] 12-02-PLAN.md — Starred, Timeline, Agents Modules (Wave 2)
+- [x] 12-03-PLAN.md — States Polish + Source Switch + Integration Verify (Wave 3)
+
 **Success criteria:**
-1. Overview renders KPI hero, usage/cost rows, top models, starred sessions, activity timeline, top projects, and source-specific modules from BFF data.
 2. Source switching updates every overview panel consistently for `all`, OpenClaw, Claude Code, and Codex.
 3. Token-vs-cost ranking mode works where exposed by the UI.
 4. OpenClaw agents and automation modules appear only when capability metadata supports them.
@@ -189,7 +195,7 @@ Plans:
 | 9. Batch 2 Fixes | v1.0 | 5/5 | Complete | 2026-05-10 |
 | 10. Rich Ingest Metrics | v1.1 | 4/4 | Complete | 2026-05-12 |
 | 11. HUD Shell Foundation | v1.1 | 2/2 | Complete | 2026-05-12 |
-| 12. Overview v2 | v1.1 | 0/3 | Planned | — |
+| 12. Overview v2 | v1.1 | 3/3 | Complete | 2026-05-15 |
 | 13. Sessions & Trace Detail v2 | v1.1 | 0/TBD | Planned | — |
 | 14. Visual QA & Hardening | v1.1 | 0/TBD | Planned | — |
 | 15. Ingest Sync Performance | v1.1 | 3/3 | Complete | 2026-05-14 |
