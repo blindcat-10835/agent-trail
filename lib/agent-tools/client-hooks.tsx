@@ -33,6 +33,15 @@ import type {
 import { getDefinition, TOOL_IDS } from './registry'
 import type { TraceSession } from '@/types/trace'
 import type { TraceTurn, AgentInfo } from '@/types/trace'
+import type {
+  OverviewAggregates,
+  TopModelsResponse,
+  TopProjectsResponse,
+  StarredResponse,
+  TimelineResponse,
+  CapabilitiesResponse,
+  TimeWindow,
+} from '@/types/overview'
 
 export const SESSION_REFRESH_EVENT = 'agent-tracing-dashboard:sessions-refresh'
 
@@ -862,6 +871,196 @@ export function useSessionTurns(
   }, [toolId, sessionId, query?.offset, query?.limit])
 
   return { turns, pagination, loading, error, refetch }
+}
+
+// ============================================================================
+// Overview Data Hooks
+// ============================================================================
+
+/**
+ * Hook: Fetch overview aggregates for a tool via BFF proxy.
+ *
+ * Returns session/turn/project counts and token totals filtered by time window.
+ * Re-fetches when toolId or window changes.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @param window - Time window for filtering (today, 7d, 30d)
+ * @returns { aggregates, loading, error }
+ */
+export function useOverviewAggregates(toolId: AgentToolId, window: TimeWindow) {
+  const [aggregates, setAggregates] = useState<OverviewAggregates | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    fetchToolApi<OverviewAggregates>(toolId, '/overview/aggregates', { window })
+      .then((data) => {
+        setAggregates(data)
+        setError(null)
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Failed to load aggregates'),
+      )
+      .finally(() => setLoading(false))
+  }, [toolId, window])
+
+  return { aggregates, loading, error }
+}
+
+/**
+ * Hook: Fetch top models ranking for a tool via BFF proxy.
+ *
+ * Returns models sorted by token usage with share percentages.
+ * Re-fetches when toolId or window changes.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @param window - Time window for filtering
+ * @returns { models, loading, error }
+ */
+export function useTopModels(toolId: AgentToolId, window: TimeWindow) {
+  const [models, setModels] = useState<TopModelsResponse['models']>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    fetchToolApi<TopModelsResponse>(toolId, '/overview/top-models', { window, limit: '10' })
+      .then((data) => {
+        setModels(data.models)
+        setError(null)
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Failed to load models'),
+      )
+      .finally(() => setLoading(false))
+  }, [toolId, window])
+
+  return { models, loading, error }
+}
+
+/**
+ * Hook: Fetch top projects ranking for a tool via BFF proxy.
+ *
+ * Returns projects sorted by token usage with rank weights.
+ * Re-fetches when toolId or window changes.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @param window - Time window for filtering
+ * @returns { projects, loading, error }
+ */
+export function useTopProjects(toolId: AgentToolId, window: TimeWindow) {
+  const [projects, setProjects] = useState<TopProjectsResponse['projects']>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    fetchToolApi<TopProjectsResponse>(toolId, '/overview/top-projects', { window, limit: '10' })
+      .then((data) => {
+        setProjects(data.projects)
+        setError(null)
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Failed to load projects'),
+      )
+      .finally(() => setLoading(false))
+  }, [toolId, window])
+
+  return { projects, loading, error }
+}
+
+/**
+ * Hook: Fetch starred sessions for a tool via BFF proxy.
+ *
+ * Returns recently starred sessions ordered by star time.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @returns { starred, loading, error }
+ */
+export function useStarredSessions(toolId: AgentToolId) {
+  const [starred, setStarred] = useState<StarredResponse['starred']>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    fetchToolApi<StarredResponse>(toolId, '/overview/starred', { limit: '20' })
+      .then((data) => {
+        setStarred(data.starred)
+        setError(null)
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Failed to load starred sessions'),
+      )
+      .finally(() => setLoading(false))
+  }, [toolId])
+
+  return { starred, loading, error }
+}
+
+/**
+ * Hook: Fetch activity timeline for a tool via BFF proxy.
+ *
+ * Returns mixed timeline events (session started/completed/error, sync errors).
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @returns { timeline, loading, error }
+ */
+export function useTimeline(toolId: AgentToolId) {
+  const [timeline, setTimeline] = useState<TimelineResponse['timeline']>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    fetchToolApi<TimelineResponse>(toolId, '/overview/timeline', { limit: '50' })
+      .then((data) => {
+        setTimeline(data.timeline)
+        setError(null)
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Failed to load timeline'),
+      )
+      .finally(() => setLoading(false))
+  }, [toolId])
+
+  return { timeline, loading, error }
+}
+
+/**
+ * Hook: Fetch source capabilities metadata via BFF proxy.
+ *
+ * Returns per-source capability flags and available source list.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @returns { capabilities, loading, error }
+ */
+export function useOverviewCapabilities(toolId: AgentToolId) {
+  const [capabilities, setCapabilities] = useState<CapabilitiesResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    fetchToolApi<CapabilitiesResponse>(toolId, '/overview/capabilities')
+      .then((data) => {
+        setCapabilities(data)
+        setError(null)
+      })
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Failed to load capabilities'),
+      )
+      .finally(() => setLoading(false))
+  }, [toolId])
+
+  return { capabilities, loading, error }
 }
 
 // ============================================================================
