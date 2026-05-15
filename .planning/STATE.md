@@ -169,6 +169,7 @@ v1.1 has two explicit workstreams:
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260515-tn5 | Codex full sync relationship scope and 15-minute periodic resync | 2026-05-15 | 24df3f4 | [260515-tn5-codex-full-sync-regular-full-sync-relati](./quick/260515-tn5-codex-full-sync-regular-full-sync-relati/) |
+| 260515-xa7 | Ingest session display name bounded extraction | 2026-05-15 | 559df1d | [260515-xa7-ingest-session-display-name-extractsessi](./quick/260515-xa7-ingest-session-display-name-extractsessi/) |
 
 ### Watchpoints
 
@@ -200,4 +201,4 @@ v1.1 has two explicit workstreams:
 
 *State created: 2026-05-06*
 *Last updated: 2026-05-15*
-*Last activity: 2026-05-15 - Completed quick task 260515-tn5: Codex full sync relationship scope and 15-minute periodic resync*
+*Last activity: 2026-05-15 - Completed quick task 260515-xa7: Ingest session display name bounded extraction*
