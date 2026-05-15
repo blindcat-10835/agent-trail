@@ -520,6 +520,71 @@ overviewRoutes.get('/api/v1/overview/agents', (c) => {
 });
 
 // ============================================================================
+// 8b. GET /api/v1/overview/automations (OVR-104)
+// ============================================================================
+
+overviewRoutes.get('/api/v1/overview/automations', (c) => {
+  const source = c.req.query('source');
+
+  // Source is required for automations endpoint
+  if (!source) {
+    return c.json({ error: 'source query parameter is required' }, 400);
+  }
+
+  if (!isValidSource(source)) {
+    return c.json({ error: 'Invalid source parameter' }, 400);
+  }
+
+  const db = getDatabase();
+
+  // Automations: agent-named sessions with no user input (user_message_count = 0)
+  const rows = db.prepare(`
+    SELECT
+      s.agent_name AS name,
+      COUNT(DISTINCT s.id) AS session_count,
+      MAX(s.started_at) AS last_active_at,
+      (
+        SELECT s2.status
+        FROM sessions s2
+        WHERE s2.source = s.source
+          AND s2.agent_name = s.agent_name
+          AND s2.user_message_count = 0
+        ORDER BY COALESCE(s2.ended_at, s2.started_at) DESC
+        LIMIT 1
+      ) AS latest_status,
+      COALESCE(
+        (SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id IN (
+          SELECT s3.id FROM sessions s3
+          WHERE s3.source = s.source
+            AND s3.agent_name = s.agent_name
+            AND s3.user_message_count = 0
+        )),
+        0
+      ) AS tool_call_count
+    FROM sessions s
+    WHERE s.source = ? AND s.agent_name IS NOT NULL AND s.user_message_count = 0
+    GROUP BY s.agent_name
+    ORDER BY last_active_at DESC
+  `).all(source) as Array<{
+    name: string;
+    session_count: number;
+    last_active_at: string | null;
+    latest_status: string;
+    tool_call_count: number;
+  }>;
+
+  return c.json({
+    automations: rows.map((row) => ({
+      name: row.name,
+      sessionCount: row.session_count,
+      toolCallCount: row.tool_call_count,
+      lastActiveAt: row.last_active_at,
+      latestStatus: row.latest_status,
+    })),
+  });
+});
+
+// ============================================================================
 // 8. GET /api/v1/overview/status (OPEN-103)
 // ============================================================================
 

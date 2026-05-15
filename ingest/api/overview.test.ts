@@ -98,6 +98,30 @@ function insertFixtures(db: Database.Database): void {
     0, '/tmp/cx-1.jsonl', fortyDaysAgo,
   );
 
+  // Session 6: openclaw automation (agent_name set, user_message_count = 0)
+  insertSession.run(
+    'oc-auto-1', 'openclaw', 'project-alpha', 'Auto deploy', 'auto-deploy',
+    today, today, 'idle',
+    4, 0, 2000, 1000,
+    1, '/tmp/oc-auto-1.jsonl', today,
+  );
+
+  // Session 7: openclaw automation (same agent, different day)
+  insertSession.run(
+    'oc-auto-2', 'openclaw', 'project-beta', 'Auto deploy v2', 'auto-deploy',
+    fiveDaysAgo, fiveDaysAgo, 'idle',
+    3, 0, 1500, 800,
+    1, '/tmp/oc-auto-2.jsonl', fiveDaysAgo,
+  );
+
+  // Session 8: openclaw agent session WITH user messages (NOT an automation)
+  insertSession.run(
+    'oc-3', 'openclaw', 'project-alpha', 'Manual agent task', 'agent-blue',
+    fiveDaysAgo, fiveDaysAgo, 'idle',
+    10, 5, 3000, 2000,
+    1, '/tmp/oc-3.jsonl', fiveDaysAgo,
+  );
+
   // Insert messages with model info for top-models
   const insertMessage = db.prepare(`
     INSERT INTO messages (id, session_id, ordinal, role, content, model)
@@ -147,6 +171,8 @@ function insertFixtures(db: Database.Database): void {
   `);
   insertToolCall.run('oc-1', 2, 'tool-1', 'Bash', '{}', 'success');
   insertToolCall.run('oc-2', 2, 'tool-2', 'Read', '{}', 'success');
+  insertToolCall.run('oc-auto-1', 2, 'tool-3', 'Bash', '{}', 'success');
+  insertToolCall.run('oc-auto-2', 2, 'tool-4', 'Write', '{}', 'success');
 }
 
 // ============================================================================
@@ -182,14 +208,14 @@ describe('overview endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Sessions: oc-1 (today), oc-2 (5d ago), cc-1 (5d ago) = 3
+      // Sessions: oc-1 (today), oc-2 (5d ago), cc-1 (5d ago), oc-3 (5d ago), oc-auto-1 (today), oc-auto-2 (5d ago) = 6
       // Projects: alpha, beta = 2
-      // user_message_count sum: 5+4+10 = 19
-      expect(body.sessionCount).toBe(3);
+      // user_message_count sum: 5+4+10+5+0+0 = 24
+      expect(body.sessionCount).toBe(6);
       expect(body.projectCount).toBe(2);
-      expect(body.turnCount).toBe(19);
-      expect(body.inputTokens).toBe(13000);
-      expect(body.outputTokens).toBe(18000);
+      expect(body.turnCount).toBe(24);
+      expect(body.inputTokens).toBe(16800);
+      expect(body.outputTokens).toBe(24500);
       expect(body.totalTokens).toBe(body.inputTokens + body.outputTokens);
     });
 
@@ -198,11 +224,11 @@ describe('overview endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Only oc-1 is today
-      expect(body.sessionCount).toBe(1);
+      // oc-1 + oc-auto-1 are today
+      expect(body.sessionCount).toBe(2);
       expect(body.projectCount).toBe(1);
-      expect(body.inputTokens).toBe(3000);
-      expect(body.outputTokens).toBe(5000);
+      expect(body.inputTokens).toBe(4000);
+      expect(body.outputTokens).toBe(7000);
     });
 
     it('returns correct counts for 30d window', async () => {
@@ -210,8 +236,8 @@ describe('overview endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Sessions within 30d: oc-1, oc-2, cc-1, cc-2 = 4
-      expect(body.sessionCount).toBe(4);
+      // Sessions within 30d: oc-1, oc-2, cc-1, cc-2, oc-3, oc-auto-1, oc-auto-2 = 7
+      expect(body.sessionCount).toBe(7);
       expect(body.projectCount).toBe(3); // alpha, beta, gamma
     });
 
@@ -220,8 +246,8 @@ describe('overview endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // oc-1 + oc-2 = 2 openclaw sessions within 30d
-      expect(body.sessionCount).toBe(2);
+      // oc-1 + oc-2 + oc-3 + oc-auto-1 + oc-auto-2 = 5 openclaw sessions within 30d
+      expect(body.sessionCount).toBe(5);
       expect(body.projectCount).toBe(2);
     });
 
@@ -229,7 +255,7 @@ describe('overview endpoints', () => {
       const res = await app.request('/api/v1/overview/aggregates?window=30d');
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.sessionCount).toBe(4);
+      expect(body.sessionCount).toBe(7);
     });
 
     it('returns 400 for invalid source', async () => {
@@ -258,8 +284,9 @@ describe('overview endpoints', () => {
         (sum: number, m: { sharePercent: number }) => sum + m.sharePercent,
         0,
       );
-      // Share should sum close to 100 (within rounding tolerance)
-      expect(totalShare).toBeGreaterThanOrEqual(99);
+      // Share may not sum to 100% because sessions without model-tagged
+      // messages (e.g. automations) still contribute to total tokens
+      expect(totalShare).toBeGreaterThan(0);
       expect(totalShare).toBeLessThanOrEqual(101);
     });
 
@@ -538,10 +565,12 @@ describe('overview endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      expect(body.agents).toHaveLength(1);
-      expect(body.agents[0].name).toBe('agent-blue');
-      expect(body.agents[0].sessionCount).toBe(2);
-      expect(body.agents[0].toolCallCount).toBe(2);
+      // agent-blue (oc-1, oc-2, oc-3) + auto-deploy (oc-auto-1, oc-auto-2)
+      expect(body.agents).toHaveLength(2);
+      const agentBlue = body.agents.find((a: { name: string }) => a.name === 'agent-blue');
+      expect(agentBlue).toBeDefined();
+      expect(agentBlue.sessionCount).toBe(3);
+      expect(agentBlue.toolCallCount).toBe(2);
       expect(body.agents[0]).toHaveProperty('lastActiveAt');
       expect(body.agents[0]).toHaveProperty('latestStatus');
     });
@@ -562,6 +591,43 @@ describe('overview endpoints', () => {
       const body = await res.json();
       // claude-code sessions have no agent_name, so no agents
       expect(body.agents).toHaveLength(0);
+    });
+  });
+
+  // ==========================================================================
+  // 8b. Automations (OVR-104)
+  // ==========================================================================
+
+  describe('GET /api/v1/overview/automations', () => {
+    it('returns automation summaries for openclaw source', async () => {
+      const res = await app.request('/api/v1/overview/automations?source=openclaw');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // Only auto-deploy sessions (user_message_count = 0), not agent-blue
+      expect(body.automations).toHaveLength(1);
+      expect(body.automations[0].name).toBe('auto-deploy');
+      expect(body.automations[0].sessionCount).toBe(2);
+      expect(body.automations[0].toolCallCount).toBe(2);
+      expect(body.automations[0]).toHaveProperty('lastActiveAt');
+      expect(body.automations[0]).toHaveProperty('latestStatus');
+    });
+
+    it('returns 400 when source is missing', async () => {
+      const res = await app.request('/api/v1/overview/automations');
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 for invalid source', async () => {
+      const res = await app.request('/api/v1/overview/automations?source=invalid');
+      expect(res.status).toBe(400);
+    });
+
+    it('returns empty automations for source without agent_name', async () => {
+      const res = await app.request('/api/v1/overview/automations?source=claude-code');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.automations).toHaveLength(0);
     });
   });
 

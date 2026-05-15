@@ -125,6 +125,22 @@ export interface OverviewStatus {
 }
 
 // ============================================================================
+// Automation Summary Types
+// ============================================================================
+
+export interface AutomationSummary {
+  name: string
+  sessionCount: number
+  lastActiveAt: string | null
+  latestStatus: string
+  toolCallCount: number
+}
+
+export interface AutomationsResponse {
+  automations: AutomationSummary[]
+}
+
+// ============================================================================
 // Shared Types
 // ============================================================================
 
