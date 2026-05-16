@@ -88,7 +88,7 @@ export interface StarredResponse {
 // Timeline Types
 // ============================================================================
 
-export type TimelineEventType = 'session_started' | 'session_completed' | 'session_error' | 'sync_error'
+export type TimelineEventType = 'session_started' | 'session_completed' | 'session_error' | 'sync_error' | 'automation_completed'
 
 export interface TimelineEvent {
   id: string

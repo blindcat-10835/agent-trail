@@ -1,108 +1,155 @@
 'use client'
 
+import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import { useOverviewAutomations } from '@/lib/agent-tools/client-hooks'
 import type { AgentToolId } from '@/lib/agent-tools/types'
-import type { SourceCapabilitySet } from '@/types/overview'
-import type { AutomationSummary } from '@/types/overview'
-
-// ============================================================================
-// Props
-// ============================================================================
-
-interface OverviewAutomationsProps {
-  capabilities: {
-    capabilities: Record<string, SourceCapabilitySet>
-  } | null
-  toolId: AgentToolId
-  capsLoading?: boolean
-}
+import type { SourceCapabilitySet, AutomationSummary } from '@/types/overview'
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
 function relativeTime(iso: string | null): string {
-  if (!iso) return '\u2014'
+  if (!iso) return '—'
   const ms = Date.now() - new Date(iso).getTime()
   if (ms < 0) return 'just now'
-
   const minutes = Math.floor(ms / 60000)
   if (minutes < 1) return 'just now'
   if (minutes < 60) return `${minutes}m ago`
-
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours}h ago`
-
   const days = Math.floor(hours / 24)
   if (days < 30) return `${days}d ago`
-
   return `${Math.floor(days / 30)}mo ago`
 }
 
+function runStatusColor(status: string): string {
+  const s = status?.toLowerCase()
+  if (s === 'running' || s === 'live') return 'var(--status-success)'
+  if (s === 'error' || s === 'aborted') return 'var(--destructive)'
+  return 'var(--muted-foreground)'
+}
+
+function runStatusLabel(status: string): string {
+  const s = status?.toLowerCase()
+  if (s === 'running' || s === 'live') return 'RUN'
+  if (s === 'error' || s === 'aborted') return 'ERR'
+  return 'OK'
+}
+
 // ============================================================================
-// Skeleton Card
+// Automations Table Row
 // ============================================================================
 
-function AutomationCardSkeleton() {
+function AutomRow({ automation }: { automation: AutomationSummary }) {
+  const color = runStatusColor(automation.latestStatus)
+  const label = runStatusLabel(automation.latestStatus)
+  const isRun = label === 'RUN'
+  const isErr = label === 'ERR'
+
   return (
-    <div className="bg-card border border-border px-4 py-3.5 grid gap-2">
-      <div className="flex items-center gap-2.5">
-        <Skeleton className="h-8 w-8 rounded-full" />
-        <div className="flex flex-col gap-1">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-3 w-16" />
-        </div>
-      </div>
-      <Skeleton className="h-3 w-20" />
+    <div
+      className="flex items-center gap-3 px-3.5 py-[5px] border-b last:border-b-0"
+      style={{ borderColor: 'color-mix(in oklch, var(--border) 35%, transparent)' }}
+    >
+      {/* Schedule placeholder (no cron expression in data) */}
+      <span
+        className="text-[9.5px] font-mono text-muted-foreground tabular-nums shrink-0 w-[52px]"
+      >
+        {automation.sessionCount}× run
+      </span>
+
+      {/* Name */}
+      <span
+        className="text-[11px] text-foreground truncate flex-1 min-w-0"
+        title={automation.name}
+      >
+        {automation.name}
+      </span>
+
+      {/* Status */}
+      <span
+        className="text-[8.5px] font-bold font-mono tracking-[0.14em] shrink-0"
+        style={{ color }}
+      >
+        {isRun && (
+          <span
+            className="inline-block w-1 h-1 rounded-full mr-1 align-middle animate-pulse"
+            style={{ background: color }}
+          />
+        )}
+        {label}
+        {!isErr && !isRun && <span className="text-muted-foreground ml-1">· {relativeTime(automation.lastActiveAt)}</span>}
+      </span>
     </div>
   )
 }
 
 // ============================================================================
-// Automation Card
+// Pixel Runner Empty State (no automations for this source)
 // ============================================================================
 
-function AutomationCard({ automation }: { automation: AutomationSummary }) {
+function PixelRunner() {
   return (
-    <div className="hud-clip-md bg-card px-4 py-3.5 grid gap-2 hover:bg-accent/5 transition-colors relative outline outline-1 outline-border outline-offset-[-1px]">
-      {/* Header: name + status */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0">
-            A
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm font-bold text-foreground truncate tracking-wide font-mono">
-              {automation.name}
-            </div>
-            <div className="text-[10px] text-muted-foreground tracking-wider">
-              {automation.sessionCount} session{automation.sessionCount !== 1 ? 's' : ''}
-            </div>
-          </div>
-        </div>
-        <span className="hud-clip-sm inline-flex items-center gap-1 px-2 py-0.5 border border-border text-[9px] tracking-[0.15em] uppercase font-bold text-muted-foreground shrink-0">
-          {automation.latestStatus}
-        </span>
+    <div className="flex flex-col items-center justify-center gap-3 py-6">
+      {/* Pixel art character */}
+      <div className="relative h-10 w-10">
+        <svg
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          className="w-full h-full"
+          style={{ fill: 'var(--muted-foreground)', opacity: 0.4 }}
+        >
+          <rect x="6" y="2" width="4" height="3" />
+          <rect x="5" y="5" width="6" height="4" />
+          <rect x="3" y="6" width="2" height="1" />
+          <rect x="11" y="6" width="2" height="1" />
+          <rect x="5" y="9" width="2" height="3" />
+          <rect x="9" y="9" width="2" height="3" />
+          <rect x="3" y="12" width="2" height="1" />
+          <rect x="11" y="12" width="2" height="1" />
+        </svg>
       </div>
-
-      {/* Footer: tool count + last active */}
-      <div className="text-[11px] text-foreground/65">
-        {automation.toolCallCount > 0 ? (
-          <>
-            <span className="text-accent mr-1">▸</span>
-            {automation.toolCallCount} tool call{automation.toolCallCount !== 1 ? 's' : ''}
-          </>
-        ) : (
-          <span className="text-muted-foreground">▸ standby</span>
-        )}
-        <span className="text-muted-foreground ml-3">
-          {relativeTime(automation.lastActiveAt)}
+      <div className="flex flex-col items-center gap-1 text-center">
+        <span className="text-[9px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
+          NO SCHEDULED TASKS HERE
+        </span>
+        <span className="text-[10px] text-muted-foreground/60 max-w-[200px] leading-relaxed">
+          This source has no automation. Cron jobs and recurring agents will surface here.
         </span>
       </div>
     </div>
   )
+}
+
+// ============================================================================
+// Skeleton
+// ============================================================================
+
+function AutomSkeleton() {
+  return (
+    <div className="flex flex-col">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-3 px-3.5 py-[5px] border-b border-border/35">
+          <Skeleton className="h-3 w-12 shrink-0" />
+          <Skeleton className="h-3 flex-1" />
+          <Skeleton className="h-3 w-10 shrink-0" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ============================================================================
+// Props
+// ============================================================================
+
+interface OverviewAutomationsProps {
+  capabilities: { capabilities: Record<string, SourceCapabilitySet> } | null
+  toolId: AgentToolId
+  capsLoading?: boolean
 }
 
 // ============================================================================
@@ -110,81 +157,70 @@ function AutomationCard({ automation }: { automation: AutomationSummary }) {
 // ============================================================================
 
 export function OverviewAutomations({ capabilities, toolId, capsLoading }: OverviewAutomationsProps) {
-  // Always call hook — React hooks must not be conditional
   const { automations, loading: automationsLoading, error: automationsError } = useOverviewAutomations(toolId)
 
-  const heading = (
-    <div className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
-      AUTOMATIONS
-    </div>
-  )
-
-  // Show skeleton while capabilities are loading
-  if (capsLoading) {
-    return (
-      <div className="flex flex-col gap-2">
-        {heading}
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
-          <AutomationCardSkeleton />
-          <AutomationCardSkeleton />
-        </div>
-      </div>
-    )
-  }
-
-  // Determine if automations are available for this source
   const sourceCaps = capabilities?.capabilities?.[toolId]
   const automationsEnabled = sourceCaps?.automations === true
   const isAll = toolId === 'all'
+  const hasAutomations = automationsEnabled && !isAll
 
-  // Hide for 'all' or when capability is disabled — return placeholder for grid stability
-  if (!automationsEnabled || isAll) {
-    return (
-      <div className="flex flex-col gap-2">
-        {heading}
-        <EmptyState heading="N/A" body="AUTOMATIONS NOT AVAILABLE FOR THIS SOURCE." />
-      </div>
-    )
-  }
+  const pill = hasAutomations && !automationsLoading && automations.length > 0 ? (
+    <span
+      className="inline-flex items-center gap-1 text-[8px] font-bold tracking-[0.14em] uppercase px-2 py-0.5 border"
+      style={{
+        color: 'var(--accent)',
+        borderColor: 'var(--accent)',
+        background: 'color-mix(in oklch, var(--accent) 10%, transparent)',
+      }}
+    >
+      <span
+        className="w-1 h-1 rounded-full animate-pulse"
+        style={{ background: 'var(--accent)' }}
+      />
+      {automations.length} SCHEDULED
+    </span>
+  ) : (
+    <span
+      className="inline-flex items-center gap-1 text-[8px] font-bold tracking-[0.14em] uppercase px-2 py-0.5 border"
+      style={{ color: 'var(--muted-foreground)', borderColor: 'var(--border)' }}
+    >
+      UNAVAILABLE
+    </span>
+  )
 
-  if (automationsLoading) {
+  const frameLabel = hasAutomations ? 'AUTOMATIONS' : 'AUTOMATIONS · OFF'
+
+  if (capsLoading || automationsLoading) {
     return (
-      <div className="flex flex-col gap-2">
-        {heading}
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
-          <AutomationCardSkeleton />
-          <AutomationCardSkeleton />
-        </div>
-      </div>
+      <HudFrame label={frameLabel} right={pill} bodyClassName="p-0">
+        <AutomSkeleton />
+      </HudFrame>
     )
   }
 
   if (automationsError) {
     return (
-      <div className="flex flex-col gap-2">
-        {heading}
+      <HudFrame label={frameLabel} right={pill}>
         <EmptyState heading="LOAD ERROR" body={automationsError} />
-      </div>
+      </HudFrame>
     )
   }
 
-  if (automations.length === 0) {
+  if (!hasAutomations || automations.length === 0) {
     return (
-      <div className="flex flex-col gap-2">
-        {heading}
-        <EmptyState heading="NO AUTOMATIONS" body="No automations found for this source." />
-      </div>
+      <HudFrame label={frameLabel} right={pill} bodyClassName="p-0">
+        <PixelRunner />
+      </HudFrame>
     )
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {heading}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
-        {automations.map((automation) => (
-          <AutomationCard key={automation.name} automation={automation} />
+    <HudFrame label={frameLabel} right={pill} bodyClassName="p-0">
+      <div className="flex flex-col">
+        {automations.map((autom) => (
+          <AutomRow key={autom.name} automation={autom} />
         ))}
       </div>
-    </div>
+    </HudFrame>
   )
 }

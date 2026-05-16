@@ -430,38 +430,22 @@ overviewRoutes.get('/api/v1/overview/timeline', (c) => {
 
   const db = getDatabase();
 
-  // Build source filter for session events
-  const sourceFilterSession = source ? `AND source = ?` : '';
-  // For sync errors, filter by source_type
+  const sourceFilter = source ? `AND source = ?` : '';
   const sourceFilterSync = source ? `AND source_type = ?` : '';
 
-  // Build params: sessions get source filter applied per event type
-  // UNION ALL: (a) session started events, (b) session completed events,
-  //            (c) sync errors
-  const params: any[] = [];
-
-  // Session started events
-  const sessionStartedParams: any[] = [];
-  if (source) sessionStartedParams.push(source);
-
-  // Session completed events (ended_at is not null)
-  const sessionCompletedParams: any[] = [];
-  if (source) sessionCompletedParams.push(source);
-
-  // Session error events
-  const sessionErrorParams: any[] = [];
-  if (source) sessionErrorParams.push(source);
-
-  // Sync error events
-  const syncErrorParams: any[] = [];
-  if (source) syncErrorParams.push(source);
+  // Each UNION branch has its own params array for clarity
+  const p1: any[] = source ? [source] : [];
+  const p2: any[] = source ? [source] : [];
+  const p3: any[] = source ? [source] : [];
+  const p4: any[] = source ? [source] : [];
+  const p5: any[] = source ? [source] : [];
 
   const timeline = db.prepare(`
     SELECT * FROM (
       SELECT id, source, project, name, 'session_started' as event_type,
              started_at as event_time, status, NULL as error_message
       FROM sessions
-      WHERE started_at IS NOT NULL ${sourceFilterSession}
+      WHERE started_at IS NOT NULL ${sourceFilter}
 
       UNION ALL
 
@@ -477,7 +461,19 @@ overviewRoutes.get('/api/v1/overview/timeline', (c) => {
              COALESCE(ended_at, started_at) as event_time, status,
              termination_status as error_message
       FROM sessions
-      WHERE status = 'error' ${sourceFilterSession}
+      WHERE status = 'error' ${sourceFilter}
+
+      UNION ALL
+
+      SELECT id, source, project, agent_name as name,
+             'automation_completed' as event_type,
+             ended_at as event_time, status, NULL as error_message
+      FROM sessions
+      WHERE agent_name IS NOT NULL
+        AND user_message_count = 0
+        AND ended_at IS NOT NULL
+        AND status IN ('idle', 'aborted')
+      ${source ? 'AND source = ?' : ''}
 
       UNION ALL
 
@@ -490,10 +486,11 @@ overviewRoutes.get('/api/v1/overview/timeline', (c) => {
     ORDER BY event_time DESC
     LIMIT ?
   `).all(
-    ...sessionStartedParams,
-    ...sessionCompletedParams,
-    ...sessionErrorParams,
-    ...syncErrorParams,
+    ...p1,
+    ...p2,
+    ...p3,
+    ...p4,
+    ...p5,
     limit,
   ) as Array<{
     id: string;

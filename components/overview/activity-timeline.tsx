@@ -1,47 +1,152 @@
 'use client'
 
+import { shortPath } from '@/lib/utils'
+import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import type { TimelineEvent, TimelineEventType } from '@/types/overview'
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/** Event type → visual treatment */
-const EVENT_META: Record<TimelineEventType, { label: string; color: string }> = {
-  session_started: { label: 'STARTED', color: 'var(--accent)' },
-  session_completed: { label: 'COMPLETED', color: 'var(--muted-foreground)' },
-  session_error: { label: 'ERROR', color: 'var(--destructive)' },
-  sync_error: { label: 'SYNC ERROR', color: 'var(--destructive)' },
+const EVENT_COLOR: Record<TimelineEventType, string> = {
+  session_started: 'oklch(0.78 0.12 220)',
+  session_completed: 'var(--muted-foreground)',
+  session_error: 'var(--destructive)',
+  sync_error: 'var(--destructive)',
+  automation_completed: 'oklch(0.78 0.15 45)',
 }
 
-/** Convert ISO string to relative time label */
 function relativeTime(iso: string | null): string {
-  if (!iso) return '\u2014'
+  if (!iso) return '—'
   const ms = Date.now() - new Date(iso).getTime()
   if (ms < 0) return 'just now'
-
   const minutes = Math.floor(ms / 60000)
   if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
-
+  if (minutes < 60) return `${minutes}m`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-
+  if (hours < 24) return `${hours}h`
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-
-  return `${Math.floor(days / 30)}mo ago`
+  if (days < 30) return `${days}d`
+  return `${Math.floor(days / 30)}mo`
 }
 
 function getTimelineEventKey(event: TimelineEvent): string {
-  return [
-    event.source,
-    event.id,
-    event.eventType,
-    event.eventTime || 'unknown',
-  ].join(':')
+  return [event.source, event.id, event.eventType, event.eventTime || 'unknown'].join(':')
+}
+
+function sourceTag(source: string): string {
+  switch (source) {
+    case 'openclaw': return 'OPENCLAW'
+    case 'claude-code': return 'CLAUDE:CODE'
+    case 'codex': return 'CODEX'
+    default: return (source ?? '').toUpperCase()
+  }
+}
+
+function eventBody(event: TimelineEvent): string {
+  const prefix =
+    event.eventType === 'session_started'
+      ? 'Session started'
+      : event.eventType === 'session_completed'
+        ? 'Session completed'
+        : event.eventType === 'session_error'
+          ? event.errorMessage ?? 'Session error'
+          : event.eventType === 'automation_completed'
+            ? 'Automation finished'
+            : event.errorMessage ?? 'Sync error'
+
+  if (event.name) return `${prefix}: ${event.name}`
+  if (event.project) return `${prefix} in ${shortPath(event.project)}`
+  return prefix
+}
+
+// ============================================================================
+// Stream Feed
+// ============================================================================
+
+function StreamFeed({ items }: { items: TimelineEvent[] }) {
+  return (
+    <div className="flex flex-col">
+      {items.map((event, i) => {
+        const color = EVENT_COLOR[event.eventType] ?? 'var(--muted-foreground)'
+        const isFirst = i === 0
+        const isLast = i === items.length - 1
+
+        return (
+          <div
+            key={getTimelineEventKey(event)}
+            className="grid items-stretch py-[7px]"
+            style={{ gridTemplateColumns: '42px 16px 1fr', gap: 8, position: 'relative' }}
+          >
+            {/* Time */}
+            <span className="text-[10.5px] font-mono tabular-nums text-muted-foreground self-center">
+              {relativeTime(event.eventTime)}
+            </span>
+
+            {/* Rail */}
+            <span className="relative flex items-center justify-center">
+              {/* Stem */}
+              <span
+                className="absolute left-1/2 -translate-x-1/2"
+                style={{
+                  top: isFirst ? '50%' : -7,
+                  bottom: isLast ? '50%' : -7,
+                  width: 1,
+                  background: color,
+                  opacity: 0.35,
+                }}
+              />
+              {/* Diamond pip */}
+              <span
+                className="relative z-[1] w-[7px] h-[7px] rotate-45"
+                style={{ background: color, boxShadow: `0 0 8px ${color}` }}
+              />
+            </span>
+
+            {/* Body */}
+            <div className="flex flex-col gap-1 min-w-0 self-center">
+              <span
+                className="text-[12px] leading-[1.4] truncate"
+                style={{ color: 'var(--foreground)' }}
+                title={eventBody(event)}
+              >
+                {eventBody(event)}
+              </span>
+              <span
+                className="text-[8.5px] font-bold tracking-[0.16em] uppercase w-fit px-1.5 py-0.5 border"
+                style={{
+                  color: 'var(--muted-foreground)',
+                  borderColor: 'var(--border)',
+                  background: 'color-mix(in oklch, var(--background) 50%, transparent)',
+                }}
+              >
+                {sourceTag(event.source)}
+              </span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ============================================================================
+// Skeleton
+// ============================================================================
+
+function FeedSkeleton() {
+  return (
+    <div className="flex flex-col">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="grid py-2" style={{ gridTemplateColumns: '42px 16px 1fr', gap: 8 }}>
+          <Skeleton className="h-3 w-8 self-center" />
+          <Skeleton className="h-2 w-2 self-center mx-auto rotate-45" />
+          <div className="flex flex-col gap-1 self-center">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-2 w-14" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // ============================================================================
@@ -55,114 +160,50 @@ interface ActivityTimelineProps {
 }
 
 // ============================================================================
-// Row Skeleton
-// ============================================================================
-
-function RowSkeleton() {
-  return (
-    <div className="flex items-start gap-3 px-3 py-2 border-b border-border last:border-b-0">
-      <Skeleton className="h-2 w-2 rounded-full shrink-0 mt-1" />
-      <Skeleton className="h-4 w-20" />
-      <Skeleton className="h-4 w-28" />
-      <Skeleton className="h-3 w-10 ml-auto" />
-    </div>
-  )
-}
-
-// ============================================================================
 // Component
 // ============================================================================
 
 export function ActivityTimeline({ timeline, loading, error }: ActivityTimelineProps) {
-  const heading = (
-    <div className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
-      ACTIVITY
-    </div>
+  const liveIndicator = (
+    <span
+      className="inline-flex items-center gap-1.5 text-[9.5px] font-bold tracking-[0.18em]"
+      style={{ color: 'var(--status-success)' }}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full animate-pulse"
+        style={{ background: 'var(--status-success)', boxShadow: '0 0 6px var(--status-success)' }}
+      />
+      STREAMING
+    </span>
   )
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-2">
-        {heading}
-        <div className="bg-card border border-border">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <RowSkeleton key={i} />
-          ))}
-        </div>
-      </div>
+      <HudFrame label="LIVE ACTIVITY" right={liveIndicator} bodyClassName="p-0 px-3.5">
+        <FeedSkeleton />
+      </HudFrame>
     )
   }
 
   if (error) {
     return (
-      <div className="flex flex-col gap-2">
-        {heading}
+      <HudFrame label="LIVE ACTIVITY" right={liveIndicator}>
         <EmptyState heading="LOAD ERROR" body={error} />
-      </div>
+      </HudFrame>
     )
   }
 
   if (timeline.length === 0) {
     return (
-      <div className="flex flex-col gap-2">
-        {heading}
+      <HudFrame label="LIVE ACTIVITY" right={liveIndicator}>
         <EmptyState heading="NO RECENT ACTIVITY" body="No timeline events found for this source." />
-      </div>
+      </HudFrame>
     )
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {heading}
-      <div className="bg-card border border-border">
-        {timeline.map((event) => {
-          const meta = EVENT_META[event.eventType] ?? { label: event.eventType.toUpperCase(), color: 'var(--muted-foreground)' }
-          const isErroneous = event.eventType === 'session_error' || event.eventType === 'sync_error'
-
-          return (
-            <div
-              key={getTimelineEventKey(event)}
-              className="px-3 py-2 border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                {/* Status dot */}
-                <span
-                  className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{ background: meta.color }}
-                />
-
-                {/* Event label */}
-                <span
-                  className="text-[10px] font-bold tracking-[0.15em] uppercase shrink-0"
-                  style={{ color: isErroneous ? 'var(--destructive)' : 'var(--foreground)' }}
-                >
-                  {meta.label}
-                </span>
-
-                {/* Separator */}
-                <span className="text-muted-foreground text-[10px]">·</span>
-
-                {/* Session/project name */}
-                <span className="text-[11px] font-mono truncate min-w-0" title={event.name || event.project}>
-                  {event.name || event.project || '\u2014'}
-                </span>
-
-                {/* Relative time */}
-                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 ml-auto">
-                  {relativeTime(event.eventTime)}
-                </span>
-              </div>
-
-              {/* Error message on second line */}
-              {isErroneous && event.errorMessage && (
-                <div className="mt-1 ml-[18px] text-[10px] text-destructive truncate" title={event.errorMessage}>
-                  {event.errorMessage}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <HudFrame label="LIVE ACTIVITY" right={liveIndicator} bodyClassName="p-0 px-3.5">
+      <StreamFeed items={timeline.slice(0, 8)} />
+    </HudFrame>
   )
 }

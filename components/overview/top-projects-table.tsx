@@ -1,17 +1,191 @@
 'use client'
 
+import { shortPath } from '@/lib/utils'
+import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import type { ProjectRanking } from '@/types/overview'
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+const PROJECT_COLORS = [
+  'var(--accent)',
+  'oklch(0.78 0.12 220)',
+  'oklch(0.78 0.15 45)',
+  'oklch(0.75 0.17 340)',
+  'oklch(0.78 0.15 165)',
+  'oklch(0.72 0.18 290)',
+  'oklch(0.76 0.14 25)',
+  'oklch(0.78 0.10 250)',
+]
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
-function fmtNum(n: number): string {
+function fmtTokens(n: number): string {
   if (n < 1000) return String(n)
-  if (n < 1e6) return (n / 1000).toFixed(1) + 'k'
-  return (n / 1e6).toFixed(2) + 'm'
+  if (n < 1e6) return (n / 1000).toFixed(1) + 'K'
+  return (n / 1e6).toFixed(2) + 'M'
+}
+
+// ============================================================================
+// Winner Component
+// ============================================================================
+
+function Winner({ items }: { items: ProjectRanking[] }) {
+  if (!items.length) return null
+
+  const [winner, ...rest] = items
+  const winnerColor = PROJECT_COLORS[0]
+
+  return (
+    <div className="flex flex-col">
+      {/* #01 Leader Hero */}
+      <div
+        className="relative overflow-hidden"
+        style={{
+          padding: '14px 14px 13px',
+          background: `linear-gradient(180deg, color-mix(in oklch, ${winnerColor} 14%, var(--card)) 0%, color-mix(in oklch, ${winnerColor} 4%, var(--card)) 100%)`,
+          borderLeft: `2px solid ${winnerColor}`,
+          boxShadow: `inset 0 0 28px color-mix(in oklch, ${winnerColor} 6%, transparent)`,
+        }}
+      >
+        {/* Ghost rank number */}
+        <span
+          className="absolute top-2 right-3.5 font-bold font-mono leading-none pointer-events-none select-none"
+          style={{
+            fontSize: 30,
+            letterSpacing: '-0.04em',
+            color: winnerColor,
+            opacity: 0.5,
+            textShadow: `0 0 12px ${winnerColor}`,
+          }}
+        >
+          01
+        </span>
+        {/* Decorative circle */}
+        <span
+          className="absolute -right-5 -bottom-8 w-[90px] h-[90px] rounded-full pointer-events-none"
+          style={{ border: `1px solid color-mix(in oklch, ${winnerColor} 22%, transparent)` }}
+        />
+
+        <div
+          className="text-[8.5px] font-bold tracking-[0.22em] uppercase mb-1.5"
+          style={{ color: winnerColor, opacity: 0.85 }}
+        >
+          CURRENT LEADER
+        </div>
+        <div
+          className="font-mono leading-tight mb-2 truncate"
+          style={{ fontSize: 15, color: 'var(--foreground)', letterSpacing: '-0.01em' }}
+          title={winner.project}
+        >
+          {shortPath(winner.project)}
+        </div>
+        <div className="flex items-baseline gap-2.5 mb-2.5">
+          <span
+            className="font-bold font-mono tabular-nums leading-none"
+            style={{
+              fontSize: 22,
+              color: winnerColor,
+              textShadow: `0 0 10px color-mix(in oklch, ${winnerColor} 35%, transparent)`,
+            }}
+          >
+            {winner.rankWeight.toFixed(1)}%
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            {fmtTokens(winner.totalTokens)}
+          </span>
+        </div>
+        {/* Progress bar */}
+        <div
+          className="h-1 overflow-hidden"
+          style={{ background: 'color-mix(in oklch, var(--muted) 60%, transparent)' }}
+        >
+          <div
+            className="h-full"
+            style={{
+              width: `${winner.rankWeight}%`,
+              background: `linear-gradient(90deg, color-mix(in oklch, ${winnerColor} 40%, transparent), ${winnerColor})`,
+              boxShadow: `0 0 8px color-mix(in oklch, ${winnerColor} 50%, transparent)`,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Ranked Rows */}
+      <div className="flex flex-col py-2">
+        {rest.map((proj, i) => {
+          const color = PROJECT_COLORS[i + 1] ?? 'var(--accent-dim)'
+          return (
+            <div
+              key={proj.project}
+              className="grid items-center px-3.5 py-[5px] border-t first:border-t-0"
+              style={{
+                gridTemplateColumns: '24px 8px minmax(0,1fr) 50px 34px',
+                gap: 8,
+                fontSize: 11,
+                borderColor: 'color-mix(in oklch, var(--border) 35%, transparent)',
+              }}
+            >
+              <span className="text-[10px] font-mono text-muted-foreground tracking-[0.04em]">
+                {String(i + 2).padStart(2, '0')}
+              </span>
+              <span
+                className="w-[7px] h-[7px] shrink-0"
+                style={{ background: color, boxShadow: `0 0 5px ${color}` }}
+              />
+              <span
+                className="text-[10.5px] font-mono text-card-foreground truncate"
+                title={proj.project}
+              >
+                {shortPath(proj.project)}
+              </span>
+              <div
+                className="h-[3px] overflow-hidden"
+                style={{ background: 'color-mix(in oklch, var(--muted) 50%, transparent)' }}
+              >
+                <div
+                  className="h-full"
+                  style={{ width: `${proj.rankWeight}%`, background: color }}
+                />
+              </div>
+              <span className="text-[10.5px] font-mono tabular-nums text-muted-foreground text-right">
+                {proj.rankWeight.toFixed(1)}%
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Skeleton
+// ============================================================================
+
+function WinnerSkeleton() {
+  return (
+    <div className="flex flex-col gap-0">
+      <div className="p-3.5">
+        <Skeleton className="h-3 w-20 mb-2" />
+        <Skeleton className="h-5 w-32 mb-3" />
+        <Skeleton className="h-8 w-16 mb-2" />
+        <Skeleton className="h-1 w-full" />
+      </div>
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-2 px-3.5 py-1.5 border-t border-border/35">
+          <Skeleton className="h-3 w-5 shrink-0" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-2 w-8 shrink-0" />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // ============================================================================
@@ -25,91 +199,43 @@ interface TopProjectsTableProps {
 }
 
 // ============================================================================
-// Row Skeleton
-// ============================================================================
-
-function RowSkeleton() {
-  return (
-    <div className="flex items-center gap-3 px-3 py-2 border-b border-border last:border-b-0">
-      <Skeleton className="h-4 w-4 shrink-0" />
-      <Skeleton className="h-4 w-24" />
-      <Skeleton className="h-4 w-10 ml-auto" />
-      <Skeleton className="h-4 w-10" />
-      <Skeleton className="h-4 w-12" />
-      <Skeleton className="h-3 w-16" />
-    </div>
-  )
-}
-
-// ============================================================================
 // Component
 // ============================================================================
 
 export function TopProjectsTable({ projects, loading, error }: TopProjectsTableProps) {
-  // Column header
-  const header = (
-    <div className="flex items-center gap-3 px-3 py-2 border-b border-border text-[9px] text-muted-foreground tracking-[0.15em] uppercase font-bold">
-      <span className="w-5 shrink-0 text-center">#</span>
-      <span className="flex-1 min-w-0">PROJECT</span>
-      <span className="w-14 text-right font-mono tabular-nums">SESSIONS</span>
-      <span className="w-12 text-right font-mono tabular-nums">TURNS</span>
-      <span className="w-16 text-right font-mono tabular-nums">TOKENS</span>
-      <span className="w-20 text-right font-mono tabular-nums">WEIGHT</span>
-    </div>
+  const rightSlot = (
+    <span className="text-[9px] font-mono text-muted-foreground tracking-[0.04em]">
+      BY TOKENS · 30D
+    </span>
   )
 
   if (loading) {
     return (
-      <div className="bg-card border border-border">
-        {header}
-        {Array.from({ length: 5 }).map((_, i) => (
-          <RowSkeleton key={i} />
-        ))}
-      </div>
+      <HudFrame label="TOP PROJECTS" right={rightSlot} bodyClassName="p-0">
+        <WinnerSkeleton />
+      </HudFrame>
     )
   }
 
   if (error) {
     return (
-      <EmptyState heading="LOAD ERROR" body={error} />
+      <HudFrame label="TOP PROJECTS" right={rightSlot}>
+        <EmptyState heading="LOAD ERROR" body={error} />
+      </HudFrame>
     )
   }
 
   if (projects.length === 0) {
     return (
-      <EmptyState heading="NO PROJECT DATA" body="No projects found for the selected time window" />
+      <HudFrame label="TOP PROJECTS" right={rightSlot}>
+        <EmptyState heading="NO PROJECT DATA" body="No projects found for the selected time window." />
+      </HudFrame>
     )
   }
 
   return (
-    <div className="bg-card border border-border">
-      {header}
-      {projects.map((project, i) => (
-        <div
-          key={project.project}
-          className="flex items-center gap-3 px-3 py-2 border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
-        >
-          <span className="w-5 shrink-0 text-center text-[10px] text-muted-foreground font-mono tabular-nums">
-            {i + 1}
-          </span>
-          <span className="flex-1 min-w-0 text-xs font-mono truncate" title={project.project}>
-            {project.project}
-          </span>
-          <span className="w-14 text-right text-[11px] font-mono tabular-nums">
-            {fmtNum(project.sessionCount)}
-          </span>
-          <span className="w-12 text-right text-[11px] font-mono tabular-nums">
-            {fmtNum(project.turnCount)}
-          </span>
-          <span className="w-16 text-right text-[11px] font-mono tabular-nums">
-            {fmtNum(project.totalTokens)}
-          </span>
-          <span className="w-20 flex items-center justify-end gap-1.5">
-            <span className="text-[10px] font-mono tabular-nums">{project.rankWeight.toFixed(1)}%</span>
-            <span className="inline-block h-1.5 rounded-full bg-accent" style={{ width: `${Math.max(project.rankWeight, 1)}%`, maxWidth: '40px' }} />
-          </span>
-        </div>
-      ))}
-    </div>
+    <HudFrame label="TOP PROJECTS" right={rightSlot} bodyClassName="p-0">
+      <Winner items={projects} />
+    </HudFrame>
   )
 }
