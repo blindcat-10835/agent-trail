@@ -425,6 +425,48 @@ function parseMessageRow(row: MessageRow): TraceMessage {
   };
 }
 
+function tokenUsageTotal(usage: TokenUsage): number {
+  if (typeof usage.totalTokens === 'number') return usage.totalTokens;
+
+  const cacheTokens = usage.usageSemantics === 'overlap'
+    ? 0
+    : (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0) + (usage.reasoningTokens ?? 0);
+  return usage.inputTokens + usage.outputTokens + cacheTokens;
+}
+
+function combineTokenUsage(messages: Array<TraceMessage | null | undefined>): TokenUsage | undefined {
+  let combined: TokenUsage | undefined;
+
+  for (const message of messages) {
+    const usage = message?.tokenUsage;
+    if (!usage) continue;
+
+    if (!combined) {
+      combined = {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0,
+        usageSemantics: usage.usageSemantics,
+      };
+    }
+
+    combined.inputTokens += usage.inputTokens;
+    combined.outputTokens += usage.outputTokens;
+    combined.cacheReadTokens = (combined.cacheReadTokens ?? 0) + (usage.cacheReadTokens ?? 0);
+    combined.cacheWriteTokens = (combined.cacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
+    combined.reasoningTokens = (combined.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0);
+    combined.totalTokens = (combined.totalTokens ?? 0) + tokenUsageTotal(usage);
+    if (combined.usageSemantics !== usage.usageSemantics) {
+      combined.usageSemantics = undefined;
+    }
+  }
+
+  return combined;
+}
+
 function assembleTurnsFromStoredBoundaries(
   rows: MessageRow[],
   sessionId: string
@@ -472,7 +514,7 @@ function assembleTurnsFromStoredBoundaries(
         startedAt,
         endedAt,
         durationMs: calculateDuration(startedAt, endedAt),
-        tokenUsage: userMessage?.tokenUsage,
+        tokenUsage: combineTokenUsage(messagesForTurn),
         isTruncated: systemActivities.some((activity) => activity.subtype === 'compact') || undefined,
       };
     });
@@ -586,17 +628,18 @@ function finalizeTurn(
   sessionId: string,
   index: number
 ): TraceTurn {
+  const assistantMessages = partial.assistantMessages || [];
   return {
     id: partial.id!,
     sessionId,
     index: partial.index!,
     userMessage: partial.userMessage || null,
-    assistantMessages: partial.assistantMessages || [],
+    assistantMessages,
     activities: partial.activities || [],
     startedAt: partial.startedAt ?? null,
     endedAt: partial.endedAt ?? null,
     durationMs: partial.durationMs ?? null,
-    tokenUsage: partial.tokenUsage,
+    tokenUsage: combineTokenUsage([partial.userMessage, ...assistantMessages]),
     isTruncated: partial.isTruncated || undefined,
   };
 }

@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_message_count INTEGER NOT NULL DEFAULT 0,
   total_output_tokens INTEGER,
   total_input_tokens INTEGER NOT NULL DEFAULT 0,
+  total_cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  total_cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  total_reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
 
   -- Tool/activity indicators
   has_tool_calls INTEGER NOT NULL DEFAULT 0 CHECK(has_tool_calls IN (0, 1)),

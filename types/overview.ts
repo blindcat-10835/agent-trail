@@ -17,6 +17,9 @@ export interface OverviewAggregates {
   projectCount: number
   inputTokens: number
   outputTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
   totalTokens: number
 }
 
@@ -29,6 +32,9 @@ export interface ModelRanking {
   sessionCount: number
   inputTokens: number
   outputTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
   totalTokens: number
   sharePercent: number
   cost: number | null
@@ -48,6 +54,9 @@ export interface ProjectRanking {
   turnCount: number
   inputTokens: number
   outputTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
   totalTokens: number
   rankWeight: number
 }

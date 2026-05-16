@@ -54,6 +54,85 @@ interface JsonlRangeRead {
   cursorLine: number;
 }
 
+type ClaudeUsageRecord = NonNullable<ClaudeJsonlLine['message']>['usage'];
+
+interface TokenAccumulator {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
+
+function createTokenAccumulator(): TokenAccumulator {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+  };
+}
+
+function coerceTokenCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : 0;
+}
+
+function normalizeClaudeTokenUsage(usage?: ClaudeUsageRecord): TokenUsage | undefined {
+  if (!usage) return undefined;
+
+  const inputTokens = coerceTokenCount(usage.input_tokens);
+  const outputTokens = coerceTokenCount(usage.output_tokens);
+  const cacheWriteTokens = coerceTokenCount(usage.cache_creation_input_tokens);
+  const cacheReadTokens = coerceTokenCount(usage.cache_read_input_tokens);
+  const totalTokens = inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens;
+
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    totalTokens,
+    usageSemantics: 'additive',
+  };
+}
+
+function addTokenUsage(accumulator: TokenAccumulator, usage?: TokenUsage): void {
+  if (!usage) return;
+
+  accumulator.inputTokens += usage.inputTokens;
+  accumulator.outputTokens += usage.outputTokens;
+  accumulator.cacheReadTokens += usage.cacheReadTokens ?? 0;
+  accumulator.cacheWriteTokens += usage.cacheWriteTokens ?? 0;
+  accumulator.reasoningTokens += usage.reasoningTokens ?? 0;
+  accumulator.totalTokens += usage.totalTokens
+    ?? usage.inputTokens
+      + usage.outputTokens
+      + (usage.cacheReadTokens ?? 0)
+      + (usage.cacheWriteTokens ?? 0)
+      + (usage.reasoningTokens ?? 0);
+}
+
+function addUsageToDelta(delta: IncrementalParseDelta, usage?: TokenUsage): void {
+  if (!usage) return;
+
+  delta.metricsDelta.totalInputTokens += usage.inputTokens;
+  delta.metricsDelta.totalOutputTokens += usage.outputTokens;
+  delta.metricsDelta.totalCacheReadTokens = (delta.metricsDelta.totalCacheReadTokens ?? 0) + (usage.cacheReadTokens ?? 0);
+  delta.metricsDelta.totalCacheWriteTokens = (delta.metricsDelta.totalCacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
+  delta.metricsDelta.totalReasoningTokens = (delta.metricsDelta.totalReasoningTokens ?? 0) + (usage.reasoningTokens ?? 0);
+  delta.metricsDelta.totalTokens = (delta.metricsDelta.totalTokens ?? 0) + (usage.totalTokens
+    ?? usage.inputTokens
+      + usage.outputTokens
+      + (usage.cacheReadTokens ?? 0)
+      + (usage.cacheWriteTokens ?? 0)
+      + (usage.reasoningTokens ?? 0));
+}
+
 // ============================================================================
 // Main Parser Entry Point
 // ============================================================================
@@ -114,8 +193,7 @@ export async function parseClaudeSession(
   let lineNum = 0;
   let startedAt: string | null = null;
   let endedAt: string | null = null;
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
+  const tokenTotals = createTokenAccumulator();
   let hasToolCalls = false;
   let sessionCwd: string | undefined;
   let sessionGitBranch: string | undefined;
@@ -345,6 +423,7 @@ export async function parseClaudeSession(
         // If there are no non-tool_result blocks, this is a tool-result-only record
         // — produce a tool_result role message rather than a user turn message
         if (nonToolResultBlocks.length === 0 && toolResultBlocks.length > 0) {
+          const tokenUsage = normalizeClaudeTokenUsage(parsed.message.usage);
           const toolResultMsg: TraceMessage = {
             id: `${context.uuid}-${ordinal}`,
             ordinal,
@@ -364,14 +443,11 @@ export async function parseClaudeSession(
             turnId: currentTurnId,
             turnIndex: currentTurnIndex >= 0 ? currentTurnIndex : undefined,
             isRealUserInput: false,
+            tokenUsage,
           };
           messages.push(toolResultMsg);
           ordinal++;
-          // Accumulate token usage
-          if (parsed.message.usage) {
-            totalInputTokens += parsed.message.usage.input_tokens || 0;
-            totalOutputTokens += parsed.message.usage.output_tokens || 0;
-          }
+          addTokenUsage(tokenTotals, tokenUsage);
           continue;
         }
         // Fall through to normal message parsing for mixed user messages
@@ -401,11 +477,7 @@ export async function parseClaudeSession(
         if (toolCalls.length > 0) hasToolCalls = true;
       }
 
-      // Accumulate token usage
-      if (parsed.message.usage) {
-        totalInputTokens += parsed.message.usage.input_tokens || 0;
-        totalOutputTokens += parsed.message.usage.output_tokens || 0;
-      }
+      addTokenUsage(tokenTotals, message.tokenUsage);
 
       ordinal++;
     } catch (err) {
@@ -474,9 +546,12 @@ export async function parseClaudeSession(
     metrics: {
       messageCount: messages.length,
       userMessageCount: messages.filter((m) => m.role === 'user').length,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-      totalTokens: totalInputTokens + totalOutputTokens,
+      inputTokens: tokenTotals.inputTokens,
+      outputTokens: tokenTotals.outputTokens,
+      cacheReadTokens: tokenTotals.cacheReadTokens,
+      cacheWriteTokens: tokenTotals.cacheWriteTokens,
+      reasoningTokens: tokenTotals.reasoningTokens,
+      totalTokens: tokenTotals.totalTokens,
       hasToolCalls,
       terminationStatus: undefined,
       parserMalformedLines: errors.length,
@@ -706,6 +781,7 @@ export async function parseClaudeSessionAppend(
           if (!currentTurnId && currentTurnIndex >= 0) {
             return markFallback('missing_turn_context', record.lineNumber, line);
           }
+          const tokenUsage = normalizeClaudeTokenUsage(parsed.message.usage);
           delta.messages.push({
             id: `${context.uuid}-${ordinal}`,
             ordinal,
@@ -725,7 +801,9 @@ export async function parseClaudeSessionAppend(
             turnId: currentTurnId,
             turnIndex: currentTurnIndex >= 0 ? currentTurnIndex : undefined,
             isRealUserInput: false,
+            tokenUsage,
           });
+          addUsageToDelta(delta, tokenUsage);
           ordinal++;
           continue;
         }
@@ -762,10 +840,7 @@ export async function parseClaudeSessionAppend(
         }
       }
 
-      if (parsed.message.usage) {
-        delta.metricsDelta.totalInputTokens += parsed.message.usage.input_tokens || 0;
-        delta.metricsDelta.totalOutputTokens += parsed.message.usage.output_tokens || 0;
-      }
+      addUsageToDelta(delta, message.tokenUsage);
 
       ordinal++;
     } catch (err) {
@@ -804,6 +879,10 @@ function createClaudeIncrementalDelta(
       userMessageCount: 0,
       totalInputTokens: 0,
       totalOutputTokens: 0,
+      totalCacheReadTokens: 0,
+      totalCacheWriteTokens: 0,
+      totalReasoningTokens: 0,
+      totalTokens: 0,
       hasToolCalls: false,
       parserMalformedLines: 0,
     },
@@ -1131,12 +1210,7 @@ function parseMessage(
     content,
     timestamp: parsed.timestamp,
     model: msg.model,
-    tokenUsage: msg.usage
-      ? {
-          inputTokens: msg.usage.input_tokens || 0,
-          outputTokens: msg.usage.output_tokens || 0,
-        }
-      : undefined,
+    tokenUsage: normalizeClaudeTokenUsage(msg.usage),
     sourceMetadata,
   };
 }

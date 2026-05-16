@@ -173,6 +173,8 @@ describe('Codex incremental parser', () => {
 
     expect(delta.metricsDelta.totalInputTokens).toBe(1200);
     expect(delta.metricsDelta.totalOutputTokens).toBe(34);
+    expect(delta.metricsDelta.totalReasoningTokens).toBe(21);
+    expect(delta.metricsDelta.totalTokens).toBe(1234);
   });
 
   function writeJsonl(name: string, content: string): string {

@@ -46,6 +46,51 @@ describe('incremental sync append writer', () => {
     expect(rowCount('subagent_links')).toBe(1);
     expect(cursorRow().last_indexed_offset).toBe(delta.cursorUpdate.lastIndexedOffset);
     expect(sessionRow().message_count).toBe(3);
+    expect(sessionRow().total_input_tokens).toBe(2);
+    expect(sessionRow().total_output_tokens).toBe(4);
+    expect(sessionRow().total_tokens).toBe(6);
+  });
+
+  it('applies parser token deltas that are not attached to inserted messages idempotently', () => {
+    const size = statSync(filePath).size;
+    const delta = makeDelta({
+      messages: [],
+      toolCalls: [],
+      toolResultEvents: [],
+      subagentLinks: [],
+      metricsDelta: {
+        messageCount: 0,
+        userMessageCount: 0,
+        totalInputTokens: 1200,
+        totalOutputTokens: 34,
+        totalCacheReadTokens: 300,
+        totalCacheWriteTokens: 0,
+        totalReasoningTokens: 21,
+        totalTokens: 1234,
+        hasToolCalls: false,
+        parserMalformedLines: 0,
+      },
+      cursorUpdate: {
+        lastIndexedOffset: size,
+        lastIndexedLine: 2,
+        lastMessageOrdinal: 0,
+        lastTurnIndex: 0,
+      },
+    });
+
+    const first = appendSessionDeltaToDatabase(delta, db, filePath, makeDecision(delta));
+    const second = appendSessionDeltaToDatabase(delta, db, filePath, makeDecision(delta));
+
+    expect(first.errors).toEqual([]);
+    expect(second.errors).toEqual([]);
+    expect(sessionRow()).toMatchObject({
+      message_count: 1,
+      total_input_tokens: 1200,
+      total_output_tokens: 34,
+      total_cache_read_tokens: 300,
+      total_reasoning_tokens: 21,
+      total_tokens: 1234,
+    });
   });
 
   it('inserts a result event under an existing tool call', () => {
@@ -310,7 +355,25 @@ describe('incremental sync append writer', () => {
   }
 
   function sessionRow() {
-    return db.prepare('SELECT message_count FROM sessions WHERE id = ?')
-      .get('append-session') as { message_count: number };
+    return db.prepare(`
+      SELECT
+        message_count,
+        total_input_tokens,
+        total_output_tokens,
+        total_cache_read_tokens,
+        total_cache_write_tokens,
+        total_reasoning_tokens,
+        total_tokens
+      FROM sessions
+      WHERE id = ?
+    `).get('append-session') as {
+      message_count: number;
+      total_input_tokens: number;
+      total_output_tokens: number;
+      total_cache_read_tokens: number;
+      total_cache_write_tokens: number;
+      total_reasoning_tokens: number;
+      total_tokens: number;
+    };
   }
 });

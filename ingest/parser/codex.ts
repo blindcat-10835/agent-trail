@@ -112,19 +112,103 @@ function getCodexEventMsg(parsed: CodexJsonlLine): CodexPayload | undefined {
   return getCodexPayload(parsed);
 }
 
+interface TokenAccumulator {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
+
+function createTokenAccumulator(): TokenAccumulator {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+  };
+}
+
+function coerceTokenCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : 0;
+}
+
+function getCodexUsageTotal(usage: TokenUsage): number {
+  return usage.totalTokens ?? usage.inputTokens + usage.outputTokens;
+}
+
+function addUsageToAccumulator(accumulator: TokenAccumulator, usage?: TokenUsage): void {
+  if (!usage) return;
+
+  accumulator.inputTokens += usage.inputTokens;
+  accumulator.outputTokens += usage.outputTokens;
+  accumulator.cacheReadTokens += usage.cacheReadTokens ?? 0;
+  accumulator.cacheWriteTokens += usage.cacheWriteTokens ?? 0;
+  accumulator.reasoningTokens += usage.reasoningTokens ?? 0;
+  accumulator.totalTokens += getCodexUsageTotal(usage);
+}
+
+function addUsageToDelta(delta: IncrementalParseDelta, usage?: TokenUsage): void {
+  if (!usage) return;
+
+  delta.metricsDelta.totalInputTokens += usage.inputTokens;
+  delta.metricsDelta.totalOutputTokens += usage.outputTokens;
+  delta.metricsDelta.totalCacheReadTokens = (delta.metricsDelta.totalCacheReadTokens ?? 0) + (usage.cacheReadTokens ?? 0);
+  delta.metricsDelta.totalCacheWriteTokens = (delta.metricsDelta.totalCacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
+  delta.metricsDelta.totalReasoningTokens = (delta.metricsDelta.totalReasoningTokens ?? 0) + (usage.reasoningTokens ?? 0);
+  delta.metricsDelta.totalTokens = (delta.metricsDelta.totalTokens ?? 0) + getCodexUsageTotal(usage);
+}
+
+function codexUsageSnapshotKey(usage: TokenUsage): string {
+  return [
+    usage.inputTokens,
+    usage.cacheReadTokens ?? 0,
+    usage.outputTokens,
+    usage.reasoningTokens ?? 0,
+    getCodexUsageTotal(usage),
+  ].join(':');
+}
+
 function parseCodexUsageRecord(value: unknown): TokenUsage | undefined {
   if (!value || typeof value !== 'object') return undefined;
 
   const record = value as {
     input_tokens?: unknown;
+    cached_input_tokens?: unknown;
     output_tokens?: unknown;
+    reasoning_output_tokens?: unknown;
+    total_tokens?: unknown;
   };
 
-  const inputTokens = typeof record.input_tokens === 'number' ? record.input_tokens : 0;
-  const outputTokens = typeof record.output_tokens === 'number' ? record.output_tokens : 0;
+  const inputTokens = coerceTokenCount(record.input_tokens);
+  const cacheReadTokens = coerceTokenCount(record.cached_input_tokens);
+  const outputTokens = coerceTokenCount(record.output_tokens);
+  const reasoningTokens = coerceTokenCount(record.reasoning_output_tokens);
+  const totalTokens = coerceTokenCount(record.total_tokens);
 
-  if (inputTokens === 0 && outputTokens === 0) return undefined;
-  return { inputTokens, outputTokens };
+  if (
+    inputTokens === 0 &&
+    cacheReadTokens === 0 &&
+    outputTokens === 0 &&
+    reasoningTokens === 0 &&
+    totalTokens === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    reasoningTokens,
+    totalTokens: totalTokens || inputTokens + outputTokens,
+    usageSemantics: 'overlap',
+  };
 }
 
 function extractCodexTokenUsage(eventMsg: CodexPayload): {
@@ -258,8 +342,7 @@ export async function parseCodexSession(
   let lineNum = 0;
   let startedAt: string | null = null;
   let endedAt: string | null = null;
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
+  const tokenTotals = createTokenAccumulator();
   let hasToolCalls = false;
 
   // Turn context tracking (D-06)
@@ -674,8 +757,14 @@ export async function parseCodexSession(
 
         const tokenUsage = extractCodexTokenUsage(ev);
         if (tokenUsage?.total) {
-          totalInputTokens = tokenUsage.total.inputTokens;
-          totalOutputTokens = tokenUsage.total.outputTokens;
+          tokenTotals.inputTokens = tokenUsage.total.inputTokens;
+          tokenTotals.outputTokens = tokenUsage.total.outputTokens;
+          tokenTotals.cacheReadTokens = tokenUsage.total.cacheReadTokens ?? 0;
+          tokenTotals.cacheWriteTokens = tokenUsage.total.cacheWriteTokens ?? 0;
+          tokenTotals.reasoningTokens = tokenUsage.total.reasoningTokens ?? 0;
+          tokenTotals.totalTokens = getCodexUsageTotal(tokenUsage.total);
+        } else if (tokenUsage?.last) {
+          addUsageToAccumulator(tokenTotals, tokenUsage.last);
         }
 
         if (ev.type === 'user_message') {
@@ -838,9 +927,12 @@ export async function parseCodexSession(
     metrics: {
       messageCount: messages.length,
       userMessageCount: messages.filter((m) => m.role === 'user').length,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-      totalTokens: totalInputTokens + totalOutputTokens || undefined,
+      inputTokens: tokenTotals.inputTokens,
+      outputTokens: tokenTotals.outputTokens,
+      cacheReadTokens: tokenTotals.cacheReadTokens,
+      cacheWriteTokens: tokenTotals.cacheWriteTokens,
+      reasoningTokens: tokenTotals.reasoningTokens,
+      totalTokens: tokenTotals.totalTokens || tokenTotals.inputTokens + tokenTotals.outputTokens || undefined,
       hasToolCalls,
       terminationStatus: undefined,
       parserMalformedLines: errors.length,
@@ -1216,14 +1308,11 @@ export async function parseCodexSessionAppend(
         if (tokenUsage) {
           const snapshot = tokenUsage.total ?? tokenUsage.last;
           if (snapshot) {
-            const snapshotKey = `${snapshot.inputTokens}:${snapshot.outputTokens}`;
+            const snapshotKey = codexUsageSnapshotKey(snapshot);
             if (snapshotKey !== lastTokenSnapshotKey) {
               lastTokenSnapshotKey = snapshotKey;
               const deltaUsage = tokenUsage.last ?? tokenUsage.total;
-              if (deltaUsage) {
-                delta.metricsDelta.totalInputTokens += deltaUsage.inputTokens;
-                delta.metricsDelta.totalOutputTokens += deltaUsage.outputTokens;
-              }
+              addUsageToDelta(delta, deltaUsage);
             }
           }
         }
@@ -1322,10 +1411,7 @@ export async function parseCodexSessionAppend(
     .sort((a, b) => a.ordinal - b.ordinal)
     .forEach((message) => {
       delta.messages.push(message);
-      if (message.tokenUsage) {
-        delta.metricsDelta.totalInputTokens += message.tokenUsage.inputTokens;
-        delta.metricsDelta.totalOutputTokens += message.tokenUsage.outputTokens;
-      }
+      addUsageToDelta(delta, message.tokenUsage);
     });
 
   finalizeCodexDelta(delta, range, ordinal, currentTurnIndex);
@@ -1355,6 +1441,10 @@ function createCodexIncrementalDelta(
       userMessageCount: 0,
       totalInputTokens: 0,
       totalOutputTokens: 0,
+      totalCacheReadTokens: 0,
+      totalCacheWriteTokens: 0,
+      totalReasoningTokens: 0,
+      totalTokens: 0,
       hasToolCalls: false,
       parserMalformedLines: 0,
     },

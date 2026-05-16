@@ -85,6 +85,43 @@ describe('parseClaudeSession', () => {
     expect(result.errors).toEqual([]);
   });
 
+  it('preserves Claude cache creation and cache read token channels', async () => {
+    const lines = [
+      JSON.stringify(claudeLine({
+        uuid: 'cache-1',
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: 'Cached response.',
+          model: 'claude-sonnet-4-20250514',
+          usage: {
+            input_tokens: 250,
+            output_tokens: 125,
+            cache_creation_input_tokens: 200,
+            cache_read_input_tokens: 800,
+          },
+        },
+      })),
+    ];
+    const filePath = writeFixture('cache-usage.jsonl', lines);
+
+    const result = await parseClaudeSession(filePath, 'test-project');
+
+    expect(result.session.metrics.inputTokens).toBe(250);
+    expect(result.session.metrics.outputTokens).toBe(125);
+    expect(result.session.metrics.cacheWriteTokens).toBe(200);
+    expect(result.session.metrics.cacheReadTokens).toBe(800);
+    expect(result.session.metrics.totalTokens).toBe(1375);
+    expect(result.messages[0].tokenUsage).toMatchObject({
+      inputTokens: 250,
+      outputTokens: 125,
+      cacheWriteTokens: 200,
+      cacheReadTokens: 800,
+      totalTokens: 1375,
+      usageSemantics: 'additive',
+    });
+  });
+
   // --- Test 2: Duplicate UUID deduplication (D-03) ---
 
   it('should deduplicate messages by UUID — only first occurrence retained (D-03)', async () => {

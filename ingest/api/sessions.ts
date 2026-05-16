@@ -54,6 +54,7 @@ sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
       id, source, project, name, started_at, ended_at, status,
       root_session_id, parent_session_id, relationship_type, source_session_id,
       message_count, user_message_count, total_output_tokens, total_input_tokens,
+      total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, total_tokens,
       has_tool_calls, parser_malformed_lines, is_truncated, termination_status,
       last_sync_at, file_mtime, cwd, git_branch, agent_name,
       ${UPDATED_AT_EXPR} as updated_at
@@ -171,6 +172,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
       id, source, project, name, started_at, ended_at, status,
       root_session_id, parent_session_id, relationship_type, source_session_id,
       message_count, user_message_count, total_output_tokens, total_input_tokens,
+      total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, total_tokens,
       has_tool_calls, parser_malformed_lines, is_truncated, termination_status,
       last_sync_at, file_mtime, cwd, git_branch, agent_name,
       ${UPDATED_AT_EXPR} as updated_at
@@ -244,6 +246,7 @@ sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
       id, source, project, name, started_at, ended_at, status,
       root_session_id, parent_session_id, relationship_type, source_session_id,
       message_count, user_message_count, total_output_tokens, total_input_tokens,
+      total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, total_tokens,
       has_tool_calls, parser_malformed_lines, is_truncated, termination_status,
       last_sync_at, file_mtime, cwd, git_branch, agent_name,
       ${UPDATED_AT_EXPR} as updated_at
@@ -281,6 +284,10 @@ interface SessionRow {
   user_message_count: number;
   total_output_tokens: number;
   total_input_tokens: number;
+  total_cache_read_tokens?: number;
+  total_cache_write_tokens?: number;
+  total_reasoning_tokens?: number;
+  total_tokens?: number;
   has_tool_calls: number;
   parser_malformed_lines: number;
   is_truncated: number;
@@ -300,6 +307,10 @@ interface SessionRow {
 function parseSessionRow(row: SessionRow): TraceSession {
   const inputTokens = row.total_input_tokens || 0;
   const outputTokens = row.total_output_tokens || 0;
+  const cacheReadTokens = row.total_cache_read_tokens || 0;
+  const cacheWriteTokens = row.total_cache_write_tokens || 0;
+  const reasoningTokens = row.total_reasoning_tokens || 0;
+  const totalTokens = row.total_tokens || inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
 
   return {
     id: row.id,
@@ -321,7 +332,12 @@ function parseSessionRow(row: SessionRow): TraceSession {
     metrics: {
       messageCount: row.message_count,
       userMessageCount: row.user_message_count,
-      totalTokens: inputTokens + outputTokens,
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      reasoningTokens,
+      totalTokens,
       hasToolCalls: row.has_tool_calls === 1,
       terminationStatus: row.termination_status || undefined,
       parserMalformedLines: row.parser_malformed_lines,

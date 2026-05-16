@@ -20,6 +20,11 @@ const VALID_SOURCES = ['openclaw', 'claude-code', 'codex'] as const;
 const UPDATED_AT_EXPR =
   "MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, ''))";
 
+function sessionTotalTokensExpr(alias?: string): string {
+  const prefix = alias ? `${alias}.` : '';
+  return `CASE WHEN COALESCE(${prefix}total_tokens, 0) > 0 THEN ${prefix}total_tokens ELSE COALESCE(${prefix}total_input_tokens, 0) + COALESCE(${prefix}total_output_tokens, 0) END`;
+}
+
 // ============================================================================
 // Shared Helpers
 // ============================================================================
@@ -89,7 +94,10 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
       COALESCE(SUM(user_message_count), 0) as turn_count,
       COALESCE(SUM(total_input_tokens), 0) as input_tokens,
       COALESCE(SUM(total_output_tokens), 0) as output_tokens,
-      COALESCE(SUM(total_input_tokens), 0) + COALESCE(SUM(total_output_tokens), 0) as total_tokens
+      COALESCE(SUM(total_cache_read_tokens), 0) as cache_read_tokens,
+      COALESCE(SUM(total_cache_write_tokens), 0) as cache_write_tokens,
+      COALESCE(SUM(total_reasoning_tokens), 0) as reasoning_tokens,
+      COALESCE(SUM(${sessionTotalTokensExpr()}), 0) as total_tokens
     FROM sessions
     ${whereClause}
   `).get(...params) as {
@@ -98,6 +106,9 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
     turn_count: number;
     input_tokens: number;
     output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    reasoning_tokens: number;
     total_tokens: number;
   };
 
@@ -107,6 +118,9 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
     projectCount: result.project_count,
     inputTokens: result.input_tokens,
     outputTokens: result.output_tokens,
+    cacheReadTokens: result.cache_read_tokens,
+    cacheWriteTokens: result.cache_write_tokens,
+    reasoningTokens: result.reasoning_tokens,
     totalTokens: result.total_tokens,
   });
 });
@@ -155,7 +169,7 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
 
   // Get total tokens across all models for share percentage
   const totalRow = db.prepare(`
-    SELECT COALESCE(SUM(total_output_tokens), 0) + COALESCE(SUM(total_input_tokens), 0) as total_tokens
+    SELECT COALESCE(SUM(${sessionTotalTokensExpr('s')}), 0) as total_tokens
     FROM sessions s
     ${whereClause}
   `).get(...params) as { total_tokens: number };
@@ -169,7 +183,11 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
       SELECT
         s.id,
         s.total_output_tokens,
-        s.total_input_tokens
+        s.total_input_tokens,
+        s.total_cache_read_tokens,
+        s.total_cache_write_tokens,
+        s.total_reasoning_tokens,
+        ${sessionTotalTokensExpr('s')} AS total_tokens
       FROM sessions s
       ${whereClause}
     ),
@@ -192,7 +210,10 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
       COUNT(*) AS session_count,
       COALESCE(SUM(fs.total_output_tokens), 0) AS output_tokens,
       COALESCE(SUM(fs.total_input_tokens), 0) AS input_tokens,
-      COALESCE(SUM(fs.total_output_tokens), 0) + COALESCE(SUM(fs.total_input_tokens), 0) AS total_tokens
+      COALESCE(SUM(fs.total_cache_read_tokens), 0) AS cache_read_tokens,
+      COALESCE(SUM(fs.total_cache_write_tokens), 0) AS cache_write_tokens,
+      COALESCE(SUM(fs.total_reasoning_tokens), 0) AS reasoning_tokens,
+      COALESCE(SUM(fs.total_tokens), 0) AS total_tokens
     FROM filtered_sessions fs
     JOIN modeled_sessions ms ON ms.session_id = fs.id
     WHERE ms.model IS NOT NULL
@@ -204,6 +225,9 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
     session_count: number;
     output_tokens: number;
     input_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    reasoning_tokens: number;
     total_tokens: number;
   }>;
 
@@ -212,6 +236,9 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
     sessionCount: m.session_count,
     inputTokens: m.input_tokens,
     outputTokens: m.output_tokens,
+    cacheReadTokens: m.cache_read_tokens,
+    cacheWriteTokens: m.cache_write_tokens,
+    reasoningTokens: m.reasoning_tokens,
     totalTokens: m.total_tokens,
     sharePercent:
       totalRow.total_tokens > 0
@@ -265,7 +292,7 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
 
   // Get total tokens across all projects for rank weight
   const totalRow = db.prepare(`
-    SELECT COALESCE(SUM(total_output_tokens), 0) + COALESCE(SUM(total_input_tokens), 0) as total_tokens
+    SELECT COALESCE(SUM(${sessionTotalTokensExpr()}), 0) as total_tokens
     FROM sessions
     ${whereClause}
   `).get(...params) as { total_tokens: number };
@@ -277,7 +304,10 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
       COALESCE(SUM(user_message_count), 0) as turn_count,
       COALESCE(SUM(total_input_tokens), 0) as input_tokens,
       COALESCE(SUM(total_output_tokens), 0) as output_tokens,
-      COALESCE(SUM(total_input_tokens), 0) + COALESCE(SUM(total_output_tokens), 0) as total_tokens
+      COALESCE(SUM(total_cache_read_tokens), 0) as cache_read_tokens,
+      COALESCE(SUM(total_cache_write_tokens), 0) as cache_write_tokens,
+      COALESCE(SUM(total_reasoning_tokens), 0) as reasoning_tokens,
+      COALESCE(SUM(${sessionTotalTokensExpr()}), 0) as total_tokens
     FROM sessions
     ${whereClause}
     GROUP BY project
@@ -289,6 +319,9 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
     turn_count: number;
     input_tokens: number;
     output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    reasoning_tokens: number;
     total_tokens: number;
   }>;
 
@@ -298,6 +331,9 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
     turnCount: p.turn_count,
     inputTokens: p.input_tokens,
     outputTokens: p.output_tokens,
+    cacheReadTokens: p.cache_read_tokens,
+    cacheWriteTokens: p.cache_write_tokens,
+    reasoningTokens: p.reasoning_tokens,
     totalTokens: p.total_tokens,
     rankWeight:
       totalRow.total_tokens > 0

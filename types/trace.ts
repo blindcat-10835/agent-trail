@@ -86,6 +86,9 @@ export interface SessionMetrics {
   userMessageCount: number;
   inputTokens?: number;
   outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
   totalTokens?: number;
   hasToolCalls: boolean;
   terminationStatus?: string;
@@ -339,6 +342,9 @@ export interface TokenUsage {
   outputTokens: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  totalTokens?: number;
+  usageSemantics?: 'additive' | 'overlap';
 }
 
 // ============================================================================

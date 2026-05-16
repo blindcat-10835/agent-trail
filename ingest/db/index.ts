@@ -143,7 +143,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 12;
+  const targetVersion = 13;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -349,6 +349,38 @@ export function runMigrations(): void {
           relationship,
           COALESCE(message_ordinal, -1)
         )
+      `,
+    },
+    {
+      desc: 'Add cache read token totals to sessions',
+      sql: 'ALTER TABLE sessions ADD COLUMN total_cache_read_tokens INTEGER NOT NULL DEFAULT 0',
+    },
+    {
+      desc: 'Add cache write token totals to sessions',
+      sql: 'ALTER TABLE sessions ADD COLUMN total_cache_write_tokens INTEGER NOT NULL DEFAULT 0',
+    },
+    {
+      desc: 'Add reasoning token totals to sessions',
+      sql: 'ALTER TABLE sessions ADD COLUMN total_reasoning_tokens INTEGER NOT NULL DEFAULT 0',
+    },
+    {
+      desc: 'Add authoritative total token totals to sessions',
+      sql: 'ALTER TABLE sessions ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0',
+    },
+    {
+      desc: 'Backfill authoritative totals from legacy input/output tokens',
+      sql: `
+        UPDATE sessions
+        SET total_tokens = COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0)
+        WHERE total_tokens IS NULL OR total_tokens = 0
+      `,
+    },
+    {
+      desc: 'Invalidate parser cache to backfill source-specific token channels',
+      sql: `
+        UPDATE sessions
+        SET file_hash = NULL
+        WHERE source IN ('claude-code', 'codex')
       `,
     },
   ];

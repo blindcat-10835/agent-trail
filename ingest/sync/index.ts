@@ -17,7 +17,7 @@ import { getDatabase } from '../db';
 import { IncrementalParseDelta, ParseResult } from '../parser/types';
 import { sseManager } from '../src/sse';
 
-export const PARSER_CACHE_VERSION = 'parser-v8-model-token-accounting';
+export const PARSER_CACHE_VERSION = 'parser-v9-token-channel-accounting';
 
 // ============================================================================
 // Types
@@ -148,34 +148,86 @@ export interface WriteSessionOptions {
 function getSessionTokenTotals(parseResult: ParseResult): {
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
 } {
   const metrics = parseResult.session.metrics;
 
   if (
     typeof metrics.inputTokens === 'number' ||
-    typeof metrics.outputTokens === 'number'
+    typeof metrics.outputTokens === 'number' ||
+    typeof metrics.cacheReadTokens === 'number' ||
+    typeof metrics.cacheWriteTokens === 'number' ||
+    typeof metrics.reasoningTokens === 'number' ||
+    typeof metrics.totalTokens === 'number'
   ) {
+    const inputTokens = metrics.inputTokens ?? 0;
+    const outputTokens = metrics.outputTokens ?? 0;
+    const cacheReadTokens = metrics.cacheReadTokens ?? 0;
+    const cacheWriteTokens = metrics.cacheWriteTokens ?? 0;
+    const reasoningTokens = metrics.reasoningTokens ?? 0;
     return {
-      inputTokens: metrics.inputTokens ?? 0,
-      outputTokens: metrics.outputTokens ?? 0,
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      reasoningTokens,
+      totalTokens: metrics.totalTokens
+        ?? inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens,
     };
   }
 
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
+  let reasoningTokens = 0;
+  let totalTokens = 0;
   for (const message of parseResult.messages) {
-    inputTokens += message.tokenUsage?.inputTokens ?? 0;
-    outputTokens += message.tokenUsage?.outputTokens ?? 0;
+    const usage = message.tokenUsage;
+    if (!usage) continue;
+
+    inputTokens += usage.inputTokens;
+    outputTokens += usage.outputTokens;
+    cacheReadTokens += usage.cacheReadTokens ?? 0;
+    cacheWriteTokens += usage.cacheWriteTokens ?? 0;
+    reasoningTokens += usage.reasoningTokens ?? 0;
+    totalTokens += usage.totalTokens
+      ?? usage.inputTokens
+        + usage.outputTokens
+        + (usage.cacheReadTokens ?? 0)
+        + (usage.cacheWriteTokens ?? 0)
+        + (usage.reasoningTokens ?? 0);
   }
 
-  if (inputTokens === 0 && outputTokens === 0) {
+  if (
+    inputTokens === 0 &&
+    outputTokens === 0 &&
+    cacheReadTokens === 0 &&
+    cacheWriteTokens === 0 &&
+    reasoningTokens === 0 &&
+    totalTokens === 0
+  ) {
     return {
       inputTokens: 0,
       outputTokens: metrics.totalTokens ?? 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: metrics.totalTokens ?? 0,
     };
   }
 
-  return { inputTokens, outputTokens };
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    reasoningTokens,
+    totalTokens,
+  };
 }
 
 // ============================================================================
@@ -936,7 +988,14 @@ export function writeSessionToDatabase(
       }
     }
 
-    const { inputTokens, outputTokens } = getSessionTokenTotals(parseResult);
+    const {
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      reasoningTokens,
+      totalTokens,
+    } = getSessionTokenTotals(parseResult);
 
     // -------------------------------------------------------------------------
     // Transactional write: all inserts/deletes in a single SQLite transaction
@@ -966,6 +1025,10 @@ export function writeSessionToDatabase(
             user_message_count = ?,
             total_output_tokens = ?,
             total_input_tokens = ?,
+            total_cache_read_tokens = ?,
+            total_cache_write_tokens = ?,
+            total_reasoning_tokens = ?,
+            total_tokens = ?,
             has_tool_calls = ?,
             parser_malformed_lines = ?,
             is_truncated = ?,
@@ -994,6 +1057,10 @@ export function writeSessionToDatabase(
           parseResult.session.metrics.userMessageCount,
           outputTokens,
           inputTokens,
+          cacheReadTokens,
+          cacheWriteTokens,
+          reasoningTokens,
+          totalTokens,
           parseResult.session.metrics.hasToolCalls ? 1 : 0,
           parseResult.session.metrics.parserMalformedLines,
           parseResult.session.metrics.isTruncated ? 1 : 0,
@@ -1022,11 +1089,13 @@ export function writeSessionToDatabase(
           INSERT INTO sessions (
             id, source, project, name, started_at, ended_at, status,
             root_session_id, parent_session_id, relationship_type,
-            message_count, user_message_count, total_output_tokens, total_input_tokens, has_tool_calls,
+            message_count, user_message_count, total_output_tokens, total_input_tokens,
+            total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, total_tokens,
+            has_tool_calls,
             parser_malformed_lines, is_truncated, termination_status,
             file_path, file_size, file_mtime, file_hash, last_sync_at,
             cwd, git_branch, source_session_id, source_version, agent_name
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           parseResult.session.id,
           parseResult.session.source,
@@ -1042,6 +1111,10 @@ export function writeSessionToDatabase(
           parseResult.session.metrics.userMessageCount,
           outputTokens,
           inputTokens,
+          cacheReadTokens,
+          cacheWriteTokens,
+          reasoningTokens,
+          totalTokens,
           parseResult.session.metrics.hasToolCalls ? 1 : 0,
           parseResult.session.metrics.parserMalformedLines,
           parseResult.session.metrics.isTruncated ? 1 : 0,
@@ -1222,6 +1295,10 @@ export function appendSessionDeltaToDatabase(
     let insertedUserMessages = 0;
     let insertedInputTokens = 0;
     let insertedOutputTokens = 0;
+    let insertedCacheReadTokens = 0;
+    let insertedCacheWriteTokens = 0;
+    let insertedReasoningTokens = 0;
+    let insertedTotalTokens = 0;
 
     const writeTransaction = db.transaction(() => {
       if (existingSession) {
@@ -1320,8 +1397,20 @@ export function appendSessionDeltaToDatabase(
         messagesInserted += result.changes;
         if (result.changes > 0) {
           if (message.role === 'user') insertedUserMessages++;
-          insertedInputTokens += message.tokenUsage?.inputTokens ?? 0;
-          insertedOutputTokens += message.tokenUsage?.outputTokens ?? 0;
+          const usage = message.tokenUsage;
+          if (usage) {
+            insertedInputTokens += usage.inputTokens;
+            insertedOutputTokens += usage.outputTokens;
+            insertedCacheReadTokens += usage.cacheReadTokens ?? 0;
+            insertedCacheWriteTokens += usage.cacheWriteTokens ?? 0;
+            insertedReasoningTokens += usage.reasoningTokens ?? 0;
+            insertedTotalTokens += usage.totalTokens
+              ?? usage.inputTokens
+                + usage.outputTokens
+                + (usage.cacheReadTokens ?? 0)
+                + (usage.cacheWriteTokens ?? 0)
+                + (usage.reasoningTokens ?? 0);
+          }
         }
       }
 
@@ -1403,22 +1492,57 @@ export function appendSessionDeltaToDatabase(
         );
       }
 
+      const existingCursor = db.prepare(`
+        SELECT last_indexed_offset, last_indexed_line
+        FROM ingest_file_cursors
+        WHERE source_type = ? AND file_path = ?
+      `).get(delta.sourceType, sourceFile) as
+        | { last_indexed_offset: number; last_indexed_line: number }
+        | undefined;
+      const cursorAdvanced =
+        !existingCursor ||
+        delta.cursorUpdate.lastIndexedOffset > existingCursor.last_indexed_offset ||
+        (
+          delta.cursorUpdate.lastIndexedOffset === existingCursor.last_indexed_offset &&
+          delta.cursorUpdate.lastIndexedLine > existingCursor.last_indexed_line
+        );
+      const parserTotalDelta = delta.metricsDelta.totalTokens
+        ?? delta.metricsDelta.totalInputTokens
+          + delta.metricsDelta.totalOutputTokens
+          + (delta.metricsDelta.totalCacheReadTokens ?? 0)
+          + (delta.metricsDelta.totalCacheWriteTokens ?? 0)
+          + (delta.metricsDelta.totalReasoningTokens ?? 0);
+      const tokenInputDelta = cursorAdvanced ? delta.metricsDelta.totalInputTokens : insertedInputTokens;
+      const tokenOutputDelta = cursorAdvanced ? delta.metricsDelta.totalOutputTokens : insertedOutputTokens;
+      const tokenCacheReadDelta = cursorAdvanced ? (delta.metricsDelta.totalCacheReadTokens ?? 0) : insertedCacheReadTokens;
+      const tokenCacheWriteDelta = cursorAdvanced ? (delta.metricsDelta.totalCacheWriteTokens ?? 0) : insertedCacheWriteTokens;
+      const tokenReasoningDelta = cursorAdvanced ? (delta.metricsDelta.totalReasoningTokens ?? 0) : insertedReasoningTokens;
+      const tokenTotalDelta = cursorAdvanced ? parserTotalDelta : insertedTotalTokens;
+
       db.prepare(`
         UPDATE sessions SET
           message_count = message_count + ?,
           user_message_count = user_message_count + ?,
           total_output_tokens = COALESCE(total_output_tokens, 0) + ?,
           total_input_tokens = COALESCE(total_input_tokens, 0) + ?,
+          total_cache_read_tokens = COALESCE(total_cache_read_tokens, 0) + ?,
+          total_cache_write_tokens = COALESCE(total_cache_write_tokens, 0) + ?,
+          total_reasoning_tokens = COALESCE(total_reasoning_tokens, 0) + ?,
+          total_tokens = COALESCE(total_tokens, 0) + ?,
           has_tool_calls = CASE WHEN ? THEN 1 ELSE has_tool_calls END,
           parser_malformed_lines = parser_malformed_lines + ?
         WHERE id = ?
       `).run(
         messagesInserted,
         insertedUserMessages,
-        insertedOutputTokens,
-        insertedInputTokens,
+        tokenOutputDelta,
+        tokenInputDelta,
+        tokenCacheReadDelta,
+        tokenCacheWriteDelta,
+        tokenReasoningDelta,
+        tokenTotalDelta,
         toolCallsInserted > 0 || toolResultEventsInserted > 0 || delta.toolResultEvents.length > 0 ? 1 : 0,
-        messagesInserted > 0 ? delta.metricsDelta.parserMalformedLines : 0,
+        cursorAdvanced ? delta.metricsDelta.parserMalformedLines : 0,
         sessionId
       );
 

@@ -129,6 +129,10 @@ export interface IncrementalParseDelta {
     userMessageCount: number;
     totalInputTokens: number;
     totalOutputTokens: number;
+    totalCacheReadTokens?: number;
+    totalCacheWriteTokens?: number;
+    totalReasoningTokens?: number;
+    totalTokens?: number;
     hasToolCalls: boolean;
     parserMalformedLines: number;
   };
@@ -209,7 +213,12 @@ export interface ClaudeJsonlLine {
           is_error?: boolean;
         }>;
     model?: string;
-    usage?: { input_tokens?: number; output_tokens?: number };
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
   };
   session?: {
     id: string;
