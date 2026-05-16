@@ -474,6 +474,8 @@ export async function parseClaudeSession(
     metrics: {
       messageCount: messages.length,
       userMessageCount: messages.filter((m) => m.role === 'user').length,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
       totalTokens: totalInputTokens + totalOutputTokens,
       hasToolCalls,
       terminationStatus: undefined,

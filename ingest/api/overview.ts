@@ -160,18 +160,43 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
     ${whereClause}
   `).get(...params) as { total_tokens: number };
 
-  // Get per-model breakdown
+  // Get per-model breakdown without duplicating session totals across messages.
+  // A session can contain many message rows, empty-string model placeholders, and
+  // synthetic control responses; choose the latest real model per session first,
+  // then aggregate session-level token totals by that canonical model.
   const models = db.prepare(`
+    WITH filtered_sessions AS (
+      SELECT
+        s.id,
+        s.total_output_tokens,
+        s.total_input_tokens
+      FROM sessions s
+      ${whereClause}
+    ),
+    modeled_sessions AS (
+      SELECT
+        fs.id AS session_id,
+        (
+          SELECT m.model
+          FROM messages m
+          WHERE m.session_id = fs.id
+            AND TRIM(COALESCE(m.model, '')) <> ''
+            AND m.model <> '<synthetic>'
+          ORDER BY m.ordinal DESC
+          LIMIT 1
+        ) AS model
+      FROM filtered_sessions fs
+    )
     SELECT
-      m.model as name,
-      COUNT(DISTINCT s.id) as session_count,
-      COALESCE(SUM(s.total_output_tokens), 0) as output_tokens,
-      COALESCE(SUM(s.total_input_tokens), 0) as input_tokens,
-      COALESCE(SUM(s.total_output_tokens), 0) + COALESCE(SUM(s.total_input_tokens), 0) as total_tokens
-    FROM sessions s
-    JOIN messages m ON m.session_id = s.id AND m.model IS NOT NULL
-    ${whereClause}
-    GROUP BY m.model
+      ms.model AS name,
+      COUNT(*) AS session_count,
+      COALESCE(SUM(fs.total_output_tokens), 0) AS output_tokens,
+      COALESCE(SUM(fs.total_input_tokens), 0) AS input_tokens,
+      COALESCE(SUM(fs.total_output_tokens), 0) + COALESCE(SUM(fs.total_input_tokens), 0) AS total_tokens
+    FROM filtered_sessions fs
+    JOIN modeled_sessions ms ON ms.session_id = fs.id
+    WHERE ms.model IS NOT NULL
+    GROUP BY ms.model
     ORDER BY total_tokens DESC
     LIMIT ?
   `).all(...params, limit) as Array<{

@@ -131,6 +131,7 @@ function insertFixtures(db: Database.Database): void {
   // Messages for oc-1 (model: gpt-4o)
   insertMessage.run('msg-oc1-1', 'oc-1', 1, 'user', 'Hello', null);
   insertMessage.run('msg-oc1-2', 'oc-1', 2, 'assistant', 'Hi there', 'gpt-4o');
+  insertMessage.run('msg-oc1-3', 'oc-1', 3, 'assistant', 'Second reply', 'gpt-4o');
 
   // Messages for oc-2 (model: gpt-4o)
   insertMessage.run('msg-oc2-1', 'oc-2', 1, 'user', 'Analyze this', null);
@@ -139,6 +140,7 @@ function insertFixtures(db: Database.Database): void {
   // Messages for cc-1 (model: claude-sonnet-4-20250514)
   insertMessage.run('msg-cc1-1', 'cc-1', 1, 'user', 'Review code', null);
   insertMessage.run('msg-cc1-2', 'cc-1', 2, 'assistant', 'Code looks good', 'claude-sonnet-4-20250514');
+  insertMessage.run('msg-cc1-3', 'cc-1', 3, 'assistant', 'Synthetic control', '<synthetic>');
 
   // Messages for cc-2 (model: claude-sonnet-4-20250514)
   insertMessage.run('msg-cc2-1', 'cc-2', 1, 'user', 'Deploy this', null);
@@ -147,6 +149,7 @@ function insertFixtures(db: Database.Database): void {
   // Messages for cx-1 (model: codex-mini)
   insertMessage.run('msg-cx1-1', 'cx-1', 1, 'user', 'Run task', null);
   insertMessage.run('msg-cx1-2', 'cx-1', 2, 'assistant', 'Task done', 'codex-mini');
+  insertMessage.run('msg-oc3-2', 'oc-3', 2, 'assistant', 'No model resolved', '');
 
   // Star 2 sessions
   const starSession = db.prepare(`
@@ -311,6 +314,39 @@ describe('overview endpoints', () => {
       }
     });
 
+    it('does not duplicate session totals across repeated model-tagged messages', async () => {
+      const res = await app.request('/api/v1/overview/top-models');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const byName = new Map(
+        body.models.map((model: {
+          name: string;
+          sessionCount: number;
+          totalTokens: number;
+        }) => [model.name, model]),
+      );
+
+      expect(byName.get('gpt-4o')).toMatchObject({
+        sessionCount: 2,
+        totalTokens: 13000,
+      });
+      expect(byName.get('claude-sonnet-4-20250514')).toMatchObject({
+        sessionCount: 1,
+        totalTokens: 18000,
+      });
+    });
+
+    it('filters blank and synthetic model placeholders from the ranking', async () => {
+      const res = await app.request('/api/v1/overview/top-models');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const modelNames = body.models.map((model: { name: string }) => model.name);
+      expect(modelNames).not.toContain('');
+      expect(modelNames).not.toContain('<synthetic>');
+    });
+
     it('filters by source', async () => {
       const res = await app.request('/api/v1/overview/top-models?source=openclaw');
       expect(res.status).toBe(200);
@@ -319,6 +355,7 @@ describe('overview endpoints', () => {
       // Only gpt-4o for openclaw
       expect(body.models).toHaveLength(1);
       expect(body.models[0].name).toBe('gpt-4o');
+      expect(body.models[0].totalTokens).toBe(13000);
     });
 
     it('respects limit parameter', async () => {

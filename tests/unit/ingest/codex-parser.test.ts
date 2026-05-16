@@ -118,6 +118,23 @@ describe('Codex parser — parseCodexSession()', () => {
       expect(result.messages.map((message) => message.content).join('\n')).not.toContain('subagent_notification');
     });
 
+    it('captures session token totals from token_count event messages', async () => {
+      const jsonl = [
+        '{"timestamp":"2026-05-08T14:52:18.211Z","type":"session_meta","payload":{"id":"codex-token-001","cwd":"/repo","model_provider":"openai"}}',
+        '{"timestamp":"2026-05-08T14:52:18.219Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}',
+        '{"timestamp":"2026-05-08T14:52:18.221Z","type":"turn_context","payload":{"turn_id":"turn-a","cwd":"/repo","model":"gpt-5.5"}}',
+        '{"timestamp":"2026-05-08T14:52:19.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Investigating."}]}}',
+        '{"timestamp":"2026-05-08T14:52:19.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1200,"cached_input_tokens":0,"output_tokens":34,"reasoning_output_tokens":21,"total_tokens":1234},"last_token_usage":{"input_tokens":1200,"cached_input_tokens":0,"output_tokens":34,"reasoning_output_tokens":21,"total_tokens":1234},"model_context_window":258400}}}',
+      ].join('\n');
+
+      const filePath = writeFixture('payload-token-usage.jsonl', jsonl);
+      const result = await parseCodexSession(filePath, 'fallback');
+
+      expect(result.session.metrics.inputTokens).toBe(1200);
+      expect(result.session.metrics.outputTokens).toBe(34);
+      expect(result.session.metrics.totalTokens).toBe(1234);
+    });
+
     it('should deduplicate image-wrapper response_item users against canonical event user messages', async () => {
       const jsonl = [
         '{"timestamp":"2026-05-08T14:52:18.211Z","type":"session_meta","payload":{"id":"codex-image-user-001","cwd":"/repo","model_provider":"openai"}}',

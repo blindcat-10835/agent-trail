@@ -119,6 +119,27 @@ describe('tool persistence — writeSessionToDatabase', () => {
     db = createTestDb();
   });
 
+  describe('session token persistence', () => {
+    it('writes input and output token totals into separate session columns', () => {
+      const parseResult = makeParseResult();
+      parseResult.session.metrics.inputTokens = 40;
+      parseResult.session.metrics.outputTokens = 60;
+      parseResult.session.metrics.totalTokens = 100;
+
+      writeSessionToDatabase(parseResult, db);
+
+      const row = db.prepare(
+        'SELECT total_input_tokens, total_output_tokens FROM sessions WHERE id = ?'
+      ).get(parseResult.session.id) as {
+        total_input_tokens: number;
+        total_output_tokens: number;
+      };
+
+      expect(row.total_input_tokens).toBe(40);
+      expect(row.total_output_tokens).toBe(60);
+    });
+  });
+
   // Task 3: Stable message ids
   describe('message id stability', () => {
     it('messages.id is never NULL after write', () => {

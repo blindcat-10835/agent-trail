@@ -112,6 +112,42 @@ function getCodexEventMsg(parsed: CodexJsonlLine): CodexPayload | undefined {
   return getCodexPayload(parsed);
 }
 
+function parseCodexUsageRecord(value: unknown): TokenUsage | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+
+  const record = value as {
+    input_tokens?: unknown;
+    output_tokens?: unknown;
+  };
+
+  const inputTokens = typeof record.input_tokens === 'number' ? record.input_tokens : 0;
+  const outputTokens = typeof record.output_tokens === 'number' ? record.output_tokens : 0;
+
+  if (inputTokens === 0 && outputTokens === 0) return undefined;
+  return { inputTokens, outputTokens };
+}
+
+function extractCodexTokenUsage(eventMsg: CodexPayload): {
+  total?: TokenUsage;
+  last?: TokenUsage;
+} | undefined {
+  if (eventMsg.type !== 'token_count') return undefined;
+
+  const info = eventMsg.info;
+  if (!info || typeof info !== 'object') return undefined;
+
+  const tokenInfo = info as {
+    total_token_usage?: unknown;
+    last_token_usage?: unknown;
+  };
+
+  const total = parseCodexUsageRecord(tokenInfo.total_token_usage);
+  const last = parseCodexUsageRecord(tokenInfo.last_token_usage);
+
+  if (!total && !last) return undefined;
+  return { total, last };
+}
+
 function extractCodexMessageContent(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
@@ -636,6 +672,12 @@ export async function parseCodexSession(
       if (parsed.type === 'event_msg' && eventMsg) {
         const ev = eventMsg;
 
+        const tokenUsage = extractCodexTokenUsage(ev);
+        if (tokenUsage?.total) {
+          totalInputTokens = tokenUsage.total.inputTokens;
+          totalOutputTokens = tokenUsage.total.outputTokens;
+        }
+
         if (ev.type === 'user_message') {
           const content = extractCodexUserEventContent(ev);
           if (content && !isCodexMetadataUserMessage(content)) {
@@ -796,6 +838,8 @@ export async function parseCodexSession(
     metrics: {
       messageCount: messages.length,
       userMessageCount: messages.filter((m) => m.role === 'user').length,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
       totalTokens: totalInputTokens + totalOutputTokens || undefined,
       hasToolCalls,
       terminationStatus: undefined,
@@ -859,6 +903,7 @@ export async function parseCodexSessionAppend(
   let sessionGitBranch: string | undefined;
   let sessionModel: string | undefined;
   let sessionId = options.sessionId || context.uuid;
+  let lastTokenSnapshotKey: string | undefined;
 
   const markFallback = (reason: string, lineNumber: number, raw: string): IncrementalParseDelta => {
     delta.requiresFullReparse = true;
@@ -1166,6 +1211,22 @@ export async function parseCodexSessionAppend(
       const eventMsg = getCodexEventMsg(parsed);
       if (parsed.type === 'event_msg' && eventMsg) {
         const ev = eventMsg;
+
+        const tokenUsage = extractCodexTokenUsage(ev);
+        if (tokenUsage) {
+          const snapshot = tokenUsage.total ?? tokenUsage.last;
+          if (snapshot) {
+            const snapshotKey = `${snapshot.inputTokens}:${snapshot.outputTokens}`;
+            if (snapshotKey !== lastTokenSnapshotKey) {
+              lastTokenSnapshotKey = snapshotKey;
+              const deltaUsage = tokenUsage.last ?? tokenUsage.total;
+              if (deltaUsage) {
+                delta.metricsDelta.totalInputTokens += deltaUsage.inputTokens;
+                delta.metricsDelta.totalOutputTokens += deltaUsage.outputTokens;
+              }
+            }
+          }
+        }
 
         if (ev.type === 'user_message') {
           const content = extractCodexUserEventContent(ev);

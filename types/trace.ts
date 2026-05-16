@@ -84,6 +84,8 @@ export type SessionStatus =
 export interface SessionMetrics {
   messageCount: number;
   userMessageCount: number;
+  inputTokens?: number;
+  outputTokens?: number;
   totalTokens?: number;
   hasToolCalls: boolean;
   terminationStatus?: string;

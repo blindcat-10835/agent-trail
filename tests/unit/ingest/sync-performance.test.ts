@@ -114,7 +114,7 @@ describe('sync performance behavior', () => {
       filePath,
       stats.size,
       new Date(stats.mtimeMs).toISOString(),
-      'parser-v7-turn-activity-placement:codex:anyhash',
+      'parser-v8-model-token-accounting:codex:anyhash',
       '2026-05-14T00:00:01.000Z'
     );
 
@@ -150,7 +150,7 @@ describe('sync performance behavior', () => {
       filePath,
       stats.size,
       new Date(stats.mtimeMs).toISOString(),
-      'parser-v7-turn-activity-placement:codex:anyhash',
+      'parser-v8-model-token-accounting:codex:anyhash',
       '2026-05-14T00:00:01.000Z'
     );
 
@@ -264,7 +264,7 @@ describe('sync performance behavior', () => {
       path.join(codexRoot, '2026', '05', '14', 'parent.jsonl'),
       0,
       '2026-05-14T00:00:00.000Z',
-      'parser-v7-turn-activity-placement:codex:parent',
+      'parser-v8-model-token-accounting:codex:parent',
       0,
       0,
       'root'
@@ -280,7 +280,7 @@ describe('sync performance behavior', () => {
       childFilePath,
       childStats.size,
       new Date(childStats.mtimeMs).toISOString(),
-      'parser-v7-turn-activity-placement:codex:child',
+      'parser-v8-model-token-accounting:codex:child',
       0,
       0,
       'root'

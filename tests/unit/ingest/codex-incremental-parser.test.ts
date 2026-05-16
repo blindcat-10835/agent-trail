@@ -114,6 +114,67 @@ describe('Codex incremental parser', () => {
     expect(delta.cursorUpdate.lastIndexedOffset).toBe(Buffer.byteLength(complete));
   });
 
+  it('accumulates appended token_count deltas once per unique snapshot', async () => {
+    const jsonl = [
+      JSON.stringify({
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: {
+              input_tokens: 1200,
+              cached_input_tokens: 0,
+              output_tokens: 34,
+              reasoning_output_tokens: 21,
+              total_tokens: 1234,
+            },
+            last_token_usage: {
+              input_tokens: 1200,
+              cached_input_tokens: 0,
+              output_tokens: 34,
+              reasoning_output_tokens: 21,
+              total_tokens: 1234,
+            },
+          },
+        },
+        timestamp: '2026-05-15T00:00:01.000Z',
+      }),
+      JSON.stringify({
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: {
+              input_tokens: 1200,
+              cached_input_tokens: 0,
+              output_tokens: 34,
+              reasoning_output_tokens: 21,
+              total_tokens: 1234,
+            },
+            last_token_usage: {
+              input_tokens: 1200,
+              cached_input_tokens: 0,
+              output_tokens: 34,
+              reasoning_output_tokens: 21,
+              total_tokens: 1234,
+            },
+          },
+        },
+        timestamp: '2026-05-15T00:00:02.000Z',
+      }),
+      '',
+    ].join('\n');
+    const filePath = writeJsonl('token-count.jsonl', jsonl);
+
+    const delta = await parseCodexSessionAppend(filePath, 'project', {
+      ...baseOptions(),
+      endOffset: statSync(filePath).size,
+    });
+
+    expect(delta.metricsDelta.totalInputTokens).toBe(1200);
+    expect(delta.metricsDelta.totalOutputTokens).toBe(34);
+  });
+
   function writeJsonl(name: string, content: string): string {
     const filePath = join(tempDir, name);
     writeFileSync(filePath, content);

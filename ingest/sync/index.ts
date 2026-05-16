@@ -17,7 +17,7 @@ import { getDatabase } from '../db';
 import { IncrementalParseDelta, ParseResult } from '../parser/types';
 import { sseManager } from '../src/sse';
 
-export const PARSER_CACHE_VERSION = 'parser-v7-turn-activity-placement';
+export const PARSER_CACHE_VERSION = 'parser-v8-model-token-accounting';
 
 // ============================================================================
 // Types
@@ -143,6 +143,39 @@ export interface WriteSessionOptions {
    * Used when a parser fix has been applied and existing indexed sessions must be rebuilt.
    */
   force?: boolean;
+}
+
+function getSessionTokenTotals(parseResult: ParseResult): {
+  inputTokens: number;
+  outputTokens: number;
+} {
+  const metrics = parseResult.session.metrics;
+
+  if (
+    typeof metrics.inputTokens === 'number' ||
+    typeof metrics.outputTokens === 'number'
+  ) {
+    return {
+      inputTokens: metrics.inputTokens ?? 0,
+      outputTokens: metrics.outputTokens ?? 0,
+    };
+  }
+
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for (const message of parseResult.messages) {
+    inputTokens += message.tokenUsage?.inputTokens ?? 0;
+    outputTokens += message.tokenUsage?.outputTokens ?? 0;
+  }
+
+  if (inputTokens === 0 && outputTokens === 0) {
+    return {
+      inputTokens: 0,
+      outputTokens: metrics.totalTokens ?? 0,
+    };
+  }
+
+  return { inputTokens, outputTokens };
 }
 
 // ============================================================================
@@ -903,6 +936,8 @@ export function writeSessionToDatabase(
       }
     }
 
+    const { inputTokens, outputTokens } = getSessionTokenTotals(parseResult);
+
     // -------------------------------------------------------------------------
     // Transactional write: all inserts/deletes in a single SQLite transaction
     // -------------------------------------------------------------------------
@@ -930,6 +965,7 @@ export function writeSessionToDatabase(
             message_count = ?,
             user_message_count = ?,
             total_output_tokens = ?,
+            total_input_tokens = ?,
             has_tool_calls = ?,
             parser_malformed_lines = ?,
             is_truncated = ?,
@@ -956,7 +992,8 @@ export function writeSessionToDatabase(
           parseResult.session.status,
           parseResult.session.metrics.messageCount,
           parseResult.session.metrics.userMessageCount,
-          parseResult.session.metrics.totalTokens || 0,
+          outputTokens,
+          inputTokens,
           parseResult.session.metrics.hasToolCalls ? 1 : 0,
           parseResult.session.metrics.parserMalformedLines,
           parseResult.session.metrics.isTruncated ? 1 : 0,
@@ -985,11 +1022,11 @@ export function writeSessionToDatabase(
           INSERT INTO sessions (
             id, source, project, name, started_at, ended_at, status,
             root_session_id, parent_session_id, relationship_type,
-            message_count, user_message_count, total_output_tokens, has_tool_calls,
+            message_count, user_message_count, total_output_tokens, total_input_tokens, has_tool_calls,
             parser_malformed_lines, is_truncated, termination_status,
             file_path, file_size, file_mtime, file_hash, last_sync_at,
             cwd, git_branch, source_session_id, source_version, agent_name
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           parseResult.session.id,
           parseResult.session.source,
@@ -1003,7 +1040,8 @@ export function writeSessionToDatabase(
           parseResult.session.relationshipType || 'root',
           parseResult.session.metrics.messageCount,
           parseResult.session.metrics.userMessageCount,
-          parseResult.session.metrics.totalTokens || 0,
+          outputTokens,
+          inputTokens,
           parseResult.session.metrics.hasToolCalls ? 1 : 0,
           parseResult.session.metrics.parserMalformedLines,
           parseResult.session.metrics.isTruncated ? 1 : 0,
