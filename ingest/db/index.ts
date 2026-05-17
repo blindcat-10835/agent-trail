@@ -384,6 +384,10 @@ export function runMigrations(): void {
       `,
     },
     {
+      desc: 'Clean up stale rebuild tables from partial v14 migration',
+      sql: 'DROP TABLE IF EXISTS sessions_new; DROP TABLE IF EXISTS subagent_links_new; DROP TABLE IF EXISTS ingest_file_cursors_new',
+    },
+    {
       desc: 'Rebuild sessions table with opencode CHECK + cost columns',
       sql: `
         CREATE TABLE sessions_new (
