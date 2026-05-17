@@ -466,14 +466,14 @@ export function runMigrations(): void {
       desc: 'Recreate FTS triggers after sessions rebuild',
       sql: `
         CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
-          INSERT INTO fts_messages_content(rowid, content) VALUES (new.id, new.content);
+          INSERT INTO fts_messages_content(rowid, content) VALUES (new.rowid, new.content);
         END;
         CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
-          INSERT INTO fts_messages_content(fts_messages_content, rowid, content) VALUES('delete', old.id, old.content);
+          INSERT INTO fts_messages_content(fts_messages_content, rowid, content) VALUES('delete', old.rowid, old.content);
         END;
         CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE ON messages BEGIN
-          INSERT INTO fts_messages_content(fts_messages_content, rowid, content) VALUES('delete', old.id, old.content);
-          INSERT INTO fts_messages_content(rowid, content) VALUES (new.id, new.content);
+          INSERT INTO fts_messages_content(fts_messages_content, rowid, content) VALUES('delete', old.rowid, old.content);
+          INSERT INTO fts_messages_content(rowid, content) VALUES (new.rowid, new.content);
         END
       `,
     },
