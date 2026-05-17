@@ -121,7 +121,6 @@ function TurnCard({
 }) {
   const ref = useRef<HTMLElement>(null)
   const userContent = turn.userMessage?.content || ''
-  const isErr = turn.enrichment?.failureStatus === 'error'
   const tokenIn = turn.tokenUsage?.inputTokens ?? 0
   const tokenOut = turn.tokenUsage?.outputTokens ?? 0
 
@@ -139,7 +138,7 @@ function TurnCard({
   return (
     <article
       ref={ref}
-      className={`v2-turn ${focused ? 'focused' : ''} ${isErr ? 'err' : ''}`}
+      className={`v2-turn ${focused ? 'focused' : ''}`}
       data-turn={turn.index}
       onClick={onFocus}
     >
@@ -153,10 +152,9 @@ function TurnCard({
             {formatDuration(turn.durationMs)}{' '}
             {'\u00b7'} {formatTokens(tokenIn)}\u2191/{formatTokens(tokenOut)}\u2193
           </span>
-          {isErr && <HudPill color="var(--destructive)">FAILED</HudPill>}
         </header>
 
-        <div className="v2-bubble user">
+        <div className="v2-bubble user" data-turn-bubble={turn.index}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
             <span className="v2-role" style={{ marginBottom: 0 }}>USER</span>
             <span className="v2-time mono">{formatTime(turn.startedAt)}</span>
@@ -222,13 +220,12 @@ function Spine({ turns, focused, onPick }: { turns: TraceTurn[]; focused: number
           const tools = counts?.toolCalls ?? t.activities.filter((a) => a.type === 'tool_call').length
           const skills = counts?.skills ?? t.activities.filter((a) => a.type === 'skill_use').length
           const agents = counts?.subagents ?? t.activities.filter((a) => a.type === 'subagent_link').length
-          const isErr = t.enrichment?.failureStatus === 'error'
           const userPreview = t.userMessage?.content || ''
 
           return (
             <button
               key={t.index}
-              className={`v2-spine-node ${focused === t.index ? 'focused' : ''} ${isErr ? 'err' : ''}`}
+              className={`v2-spine-node ${focused === t.index ? 'focused' : ''}`}
               onClick={() => onPick(t.index)}
             >
               <span className="v2-spine-num mono">{String(t.index + 1).padStart(2, '0')}</span>
@@ -240,7 +237,6 @@ function Spine({ turns, focused, onPick }: { turns: TraceTurn[]; focused: number
                 {tools > 0 && <span className="v2-glyph t">{'\u25AA'}{tools}</span>}
                 {skills > 0 && <span className="v2-glyph s">{'\u25C7'}{skills}</span>}
                 {agents > 0 && <span className="v2-glyph a">{'\u25C6'}{agents}</span>}
-                {isErr && <span className="v2-glyph e">{'\u2715'}</span>}
               </span>
             </button>
           )
@@ -366,6 +362,8 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
   const [query, setQuery] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const isProgrammaticScroll = useRef(false)
+  const skipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const total = turns.length
 
   const filtered = useMemo(() => {
@@ -378,45 +376,63 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
     )
   }, [query, turns])
 
+  const scrollToTurn = useCallback((idx: number) => {
+    const container = scrollRef.current
+    if (!container) return
+    const el =
+      container.querySelector<HTMLElement>(`[data-turn-bubble="${idx}"]`) ??
+      container.querySelector<HTMLElement>(`[data-turn="${idx}"]`)
+    if (!el) return
+    const containerRect = container.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    container.scrollTo({
+      top: elRect.top - containerRect.top + container.scrollTop - 24,
+      behavior: 'smooth',
+    })
+  }, [])
+
   const focus = useCallback(
     (idx: number) => {
+      isProgrammaticScroll.current = true
+      clearTimeout(skipTimer.current)
+      skipTimer.current = setTimeout(() => { isProgrammaticScroll.current = false }, 800)
       setFocused(idx)
-      const el = scrollRef.current?.querySelector(`[data-turn="${idx}"]`)
-      if (el && scrollRef.current) {
-        const offset = (el as HTMLElement).offsetTop - 16
-        scrollRef.current.scrollTo({ top: offset, behavior: 'smooth' })
-      }
+      scrollToTurn(idx)
     },
-    []
+    [scrollToTurn]
   )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.key === 'j') {
-        e.preventDefault()
-        setFocused((prev) => Math.min(prev + 1, total - 1))
-      }
-      if (e.key === 'k') {
-        e.preventDefault()
-        setFocused((prev) => Math.max(prev - 1, 0))
-      }
-      if (e.key === '/') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-      }
+      if (e.key === 'j') { e.preventDefault(); focus(Math.min(focused + 1, total - 1)) }
+      if (e.key === 'k') { e.preventDefault(); focus(Math.max(focused - 1, 0)) }
+      if (e.key === '/') { e.preventDefault(); searchInputRef.current?.focus() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [total])
+  }, [focused, total, focus])
 
+  // Track which turn is in view while user scrolls manually
   useEffect(() => {
-    const el = scrollRef.current?.querySelector(`[data-turn="${focused}"]`)
-    if (el && scrollRef.current) {
-      const offset = (el as HTMLElement).offsetTop - 16
-      scrollRef.current.scrollTo({ top: offset, behavior: 'smooth' })
+    const container = scrollRef.current
+    if (!container) return
+    const onScroll = () => {
+      if (isProgrammaticScroll.current) return
+      const turnEls = container.querySelectorAll<HTMLElement>('[data-turn]')
+      const containerTop = container.getBoundingClientRect().top
+      let best: { idx: number; top: number } | null = null
+      for (const el of turnEls) {
+        const top = el.getBoundingClientRect().top - containerTop
+        if (top <= 60 && (best === null || top > best.top)) {
+          best = { idx: Number(el.dataset.turn), top }
+        }
+      }
+      if (best !== null && !isNaN(best.idx)) setFocused(best.idx)
     }
-  }, [focused])
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [])
 
   const displayStatus = deriveDisplayStatus(session)
   const model = extractModel(turns)
