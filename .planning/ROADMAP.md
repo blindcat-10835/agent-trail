@@ -6,7 +6,7 @@
 ## Milestones
 
 - **v1.0 MVP** — Phases 1-9, shipped 2026-05-12
-- **v1.1 Data-Rich HUD Redesign** — Phases 10-16, active
+- **v1.1 Data-Rich HUD Redesign** — Phases 10-17, active
 
 ## Phases
 
@@ -39,6 +39,7 @@
 | 14 | Visual QA & Integration Hardening | 完成 light/dark、source switching、a11y、长 session、回归测试和视觉验证。 | SES-106, TEST-102, TEST-103 |
 | 15 | Ingest Sync Performance Hardening | 修复 ingest watcher/background/periodic sync 重叠导致的高内存、高 CPU、大 JSONL 重复解析问题。 | PERF-101..106, TEST-103, OPEN-103 |
 | 16 | Ingest Incremental JSONL and Sync Observability Hardening | 完成 Phase 15 剩余 P2/P3：append-only JSONL 增量解析、cursor 安全回退、append/upsert 写入、sync run 历史与生产级 debug 指标。 | PERF-107..112 |
+| 17 | OpenCode Source Integration | 将 opencode CLI 的 SQLite session 数据作为第四个正式 source 纳入 dashboard，支持 session browsing、turn replay、tool activity、token usage、cost display。 | OPN-101..110 |
 
 #### Phase 10: Rich Ingest Metrics & Data Contracts
 
@@ -113,7 +114,7 @@ Plans:
 4. v1.0 replay behaviors remain available: copy actions, safe markdown, subagent lazy navigation, keyboard navigation, and activity visibility controls.
 5. Long sessions stay usable through pagination or virtualization without layout collapse.
 
-**Current code-backed status:** Partial. Session Detail v2 baseline and replay continuity are implemented. Remaining Phase 13 work is limited to the Sessions indexed table backend/search/filter/sort path, missing row fields, activity sort, and routed long-session pagination/virtualization.
+**Current code-backed status:** Complete as of 2026-05-17. Sessions list now uses backend-backed pagination/search/filter/sort, ACTIVITY sort is implemented, rows expose the required enriched fields, and routed Session Detail supports paginated long-session loading with virtualized TraceThread rendering.
 
 #### Phase 14: Visual QA & Integration Hardening
 
@@ -200,14 +201,32 @@ Plans:
 | 10. Rich Ingest Metrics | v1.1 | 4/4 | Complete | 2026-05-12 |
 | 11. HUD Shell Foundation | v1.1 | 2/2 | Complete | 2026-05-12 |
 | 12. Overview v2 | v1.1 | 5/5 | Complete | 2026-05-15 |
-| 13. Sessions & Trace Detail v2 | v1.1 | 2/5 requirements | Partial | — |
+| 13. Sessions & Trace Detail v2 | v1.1 | 5/5 requirements | Complete | 2026-05-17 |
 | 14. Visual QA & Hardening | v1.1 | 0/TBD | Planned | — |
 | 15. Ingest Sync Performance | v1.1 | 3/3 | Complete | 2026-05-14 |
 | 16. Incremental Sync Observability | v1.1 | 4/4 | Complete | 2026-05-15 |
+| 17. OpenCode Source Integration | v1.1 | 0/TBD | Planned | — |
+
+#### Phase 17: OpenCode Source Integration
+
+**Goal:** Add OpenCode (opencode CLI v1.15+) as a fourth formal data source, enabling full-stack session browsing, turn replay, tool activity, reasoning blocks, token usage, cost display, and source switching.
+
+**Requirements:** OPN-101, OPN-102, OPN-103, OPN-104, OPN-105, OPN-106, OPN-107, OPN-108, OPN-109, OPN-110
+
+**Canonical refs:** `.planning/2026-05-17-opencode-source-integration-plan.md`, `.planning/phases/17-opencode-source-integration/17-SPEC.md`
+
+**Success criteria:**
+1. OpenCode sessions appear in `/opencode/sessions`, `/opencode/dashboard`, `/opencode/activity` with correct data.
+2. Source switcher includes opencode as fourth option.
+3. Turn replay renders user text, assistant text, reasoning blocks, tool calls, and step events.
+4. Overview aggregates include opencode data in both scoped and `all` queries.
+5. OpenCode source-reported cost displays correctly with `~` prefix convention for estimates.
+6. SQLite schema migrates cleanly, existing three sources unaffected.
+7. Parser handles WAL lock (SQLITE_BUSY) without crashing.
+8. Existing parser, API, BFF, replay, sync, and migration tests still pass.
 
 ## Future Enhancements
 
-- Add more agents from agentsview registry (Gemini, OpenCode, Cursor, Copilot)
 - Import Claude.ai / ChatGPT exports
 - Session comparison and diff views
 - Richer health/outcome/failure signal scoring
