@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToolSessions, useAggregateSessions, useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { useStarredStore } from '@/stores/starred-store'
+import { shortPath } from '@/lib/utils'
 import type { TraceSession } from '@/types/trace'
 
 const PROJECT_COLORS: Record<string, string> = {
@@ -178,7 +179,7 @@ export function SessionsListPage() {
           <span className="sl-search-icon">{'\u2315'}</span>
           <input
             className="sl-search-input"
-            placeholder="Search by label {'\u00b7'} project {'\u00b7'} id"
+            placeholder="Search by label \u00b7 project \u00b7 id"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -252,8 +253,10 @@ export function SessionsListPage() {
               >
                 <span className="sl-proj-rail" />
                 <span className="sl-cell sl-cell-label">
-                  {isStarred(s.id) && <span className="sl-star">{'\u2605'}</span>}
-                  <span className="sl-label">{label}</span>
+                  <span className="sl-label-row">
+                    {isStarred(s.id) && <span className="sl-star">{'\u2605'}</span>}
+                    <span className="sl-label">{label}</span>
+                  </span>
                   <span className="sl-id mono">{s.id}</span>
                 </span>
                 <span className="sl-cell">
@@ -267,13 +270,16 @@ export function SessionsListPage() {
                       borderColor: pc,
                       background: `color-mix(in oklch, ${pc} 12%, transparent)`,
                     }}
+                    title={s.project}
                   >
-                    {s.project}
+                    {shortPath(s.project)}
                   </span>
                 </span>
                 <span className="sl-cell mono sl-model">{'\u2014'}</span>
                 <span className="sl-cell mono sl-num">{turns}</span>
-                <span className="sl-cell mono sl-num">{fmtTok(tokens)}</span>
+                <span className="sl-cell sl-cell-tok">
+                  <span className="mono sl-num">{fmtTok(tokens)}</span>
+                </span>
                 <span className="sl-cell mono sl-num sl-cost">{cost}</span>
                 <span className="sl-cell mono sl-num sl-updated">{relativeTime(s.updatedAt || s.startedAt)}</span>
               </button>

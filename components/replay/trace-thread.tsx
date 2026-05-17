@@ -537,7 +537,7 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
             {String(focused + 1).padStart(2, '0')} <span className="v2-dim">of</span> {total}
           </span>
           <button className="v2-step" onClick={() => focus(Math.min(focused + 1, total - 1))} title="Next (j)">
-            {'\u2039'}
+            {'\u203a'}
           </button>
           <span className="v2-cmd-sep">{'\u2502'}</span>
           <button
