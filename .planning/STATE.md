@@ -26,21 +26,21 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Core value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
-**Current focus:** Phase 12 — Overview v2 Real Data
+**Current focus:** Phase 13 — Sessions Table & Trace Detail v2 residuals
 
 ---
 
 ## Current Position
 
-Phase: 12 (Overview v2 Real Data) — COMPLETE
-Plan: 3 of 3
+Phase: 13 (Sessions Table & Trace Detail v2) — PARTIAL
+Plan: residual gap closure
 **Milestone:** v1.1 Data-Rich HUD Redesign — ACTIVE
 
-**Phase:** 12 (Overview v2 Real Data)
+**Phase:** 13 (Sessions Table & Trace Detail v2)
 
-**Plan:** 12-03 complete
+**Plan:** complete remaining Sessions indexed table and long-session detail gaps
 
-**Status:** Phase 12 complete
+**Status:** Phase 12 complete; Phase 13 partially complete
 
 **Progress Bar:**
 
@@ -58,11 +58,18 @@ v1.1:                [▓▓▓▓▓▓▓▓▓░] 88% (16/16 plans complete,
 - Phase 11: HUD Shell & Design System Foundation — Complete (2/2 plans)
   - 11-01: Design tokens + status bar real data — ✓ Complete
   - 11-02: Right rail scope tabs + source-color spines — ✓ Complete
-- Phase 12: Overview v2 Real Data — ✓ Complete (3/3 plans)
+- Phase 12: Overview v2 Real Data — ✓ Complete (5/5 plans)
   - 12-01: Data KPI rankings — ✓ Complete
   - 12-02: Starred timeline agents — ✓ Complete
   - 12-03: States polish — ✓ Complete
-- Phase 13: Sessions Table & Trace Detail v2 — Planned
+  - 12-04: Automation module — ✓ Complete
+  - 12-05: Token/cost toggle and estimated cost — ✓ Complete
+- Phase 13: Sessions Table & Trace Detail v2 — Partial (2/5 requirements complete)
+  - SES-103: Session Detail v2 baseline — ✓ Complete
+  - SES-104: Replay continuity baseline — ✓ Complete
+  - SES-101: Sessions indexed table backend/search/filter/sort path — Pending
+  - SES-102: Complete session row fields — Pending
+  - SES-105: Routed long-session pagination/virtualization — Pending
 - Phase 14: Visual QA & Integration Hardening — Planned
 - Phase 15: Ingest Sync Performance Hardening — ✓ Complete (3/3 plans)
   - 15-01: Sync scheduler, watcher path handoff, periodic no-reentry — ✓ Complete
@@ -172,6 +179,7 @@ v1.1 has two explicit workstreams:
 | 260515-xa7 | Ingest session display name bounded extraction | 2026-05-15 | 559df1d | [260515-xa7-ingest-session-display-name-extractsessi](./quick/260515-xa7-ingest-session-display-name-extractsessi/) |
 | 260516-nvg | Token accounting repair for Claude Code and Codex channels | 2026-05-16 | a8f60fe | [260516-nvg-2026-05-16-reference-token-cost-investig](./quick/260516-nvg-2026-05-16-reference-token-cost-investig/) |
 | 260517-uks | Implement overview cost estimation from unified AI provider pricing table | 2026-05-17 | 1883e36 | [260517-uks-implement-overview-cost-estimation-from-](./quick/260517-uks-implement-overview-cost-estimation-from-/) |
+| 260517-fast | Mark Phase 12 complete and Phase 13 partial from code status | 2026-05-17 | this commit | — |
 
 ### Watchpoints
 
@@ -184,20 +192,20 @@ v1.1 has two explicit workstreams:
 
 ## Session Continuity
 
-**Last Session**: 2026-05-15 — Completed Phase 12 (Overview v2 Real Data)
+**Last Session**: 2026-05-17 — Marked Phase 12 complete and Phase 13 partial from code status
 
 **What Was Done:**
 
-- Executed Plan 12-01: Overview types, hooks, KPI hero, rankings
-- Executed Plan 12-02: Starred sessions, timeline, agents modules
-- Executed Plan 12-03: States polish, source switch verification, theme audit
+- Marked OVR-101..OVR-105 complete after overview cost, automation, source scoping, and state handling landed
+- Marked SES-103 and SES-104 complete for the current Session Detail v2/replay baseline
+- Left SES-101, SES-102, and SES-105 pending for the known Sessions table and long-session detail gaps
 
 **What's Next:**
 
-- Phase 13: Sessions Table & Trace Detail v2
+- Phase 13 residuals: backend-backed Sessions table filtering/sorting/search, missing row fields, activity sort, and routed long-session pagination/virtualization
 
 ---
 
 *State created: 2026-05-06*
 *Last updated: 2026-05-17*
-*Last activity: 2026-05-17 - Completed quick task 260517-uks: Implement overview cost estimation from unified AI provider pricing table*
+*Last activity: 2026-05-17 - Completed fast task 260517-fast: Mark Phase 12 complete and Phase 13 partial from code status*

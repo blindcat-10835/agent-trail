@@ -38,18 +38,18 @@
 
 ### Overview Redesign
 
-- [ ] **OVR-101**: User sees Overview v2 populated from real BFF-backed data, including KPI hero, usage/cost rows, top models, starred sessions, activity timeline, top projects, and source-specific modules.
-- [ ] **OVR-102**: User can scope Overview rankings, starred sessions, and activity timeline to the selected source or `all`.
-- [ ] **OVR-103**: User can switch ranking emphasis between token usage and cost where the design exposes that mode.
-- [ ] **OVR-104**: User sees OpenClaw-only agent modules and automation modules only when source capability metadata says the selected source supports them.
-- [ ] **OVR-105**: User sees loading, empty, partial-data, and error states that keep the HUD layout stable and use terse system-style copy.
+- [x] **OVR-101**: User sees Overview v2 populated from real BFF-backed data, including KPI hero, usage/cost rows, top models, starred sessions, activity timeline, top projects, and source-specific modules.
+- [x] **OVR-102**: User can scope Overview rankings, starred sessions, and activity timeline to the selected source or `all`.
+- [x] **OVR-103**: User can switch ranking emphasis between token usage and cost where the design exposes that mode.
+- [x] **OVR-104**: User sees OpenClaw-only agent modules and automation modules only when source capability metadata says the selected source supports them.
+- [x] **OVR-105**: User sees loading, empty, partial-data, and error states that keep the HUD layout stable and use terse system-style copy.
 
 ### Sessions And Trace Detail
 
 - [ ] **SES-101**: User can browse sessions in a dense indexed table with source, status, starred, and search filters plus sortable title, project, turns, tokens, and cost columns.
 - [ ] **SES-102**: User can read each session row with status, source, id, branch, title, summary, project, model, turns, input/output tokens, cost, duration, recency, and activity glyph counts.
-- [ ] **SES-103**: User can open Session Detail v2 with compact HUD header, command row, search box, turn previous/next controls, expand/collapse controls, turn spine, continuous trace thread, inline expandable activity rows, and collapsible inspector.
-- [ ] **SES-104**: User retains all v1.0 replay capabilities after the redesign: markdown-safe rendering, copy message/tool/turn, block filters or equivalent activity visibility controls, subagent lazy navigation, and keyboard shortcuts.
+- [x] **SES-103**: User can open Session Detail v2 with compact HUD header, command row, search box, turn previous/next controls, expand/collapse controls, turn spine, continuous trace thread, inline expandable activity rows, and collapsible inspector.
+- [x] **SES-104**: User retains all v1.0 replay capabilities after the redesign: markdown-safe rendering, copy message/tool/turn, block filters or equivalent activity visibility controls, subagent lazy navigation, and keyboard shortcuts.
 - [ ] **SES-105**: User can use Session Detail v2 on long sessions without layout collapse, text overflow, or major performance regression.
 - [ ] **SES-106**: User can use the redesigned shell, overview, sessions table, and detail page in light and dark themes with keyboard focus, accessible labels, and desktop-responsive widths.
 
@@ -127,16 +127,16 @@
 | UI-102 | Phase 11 | Pending |
 | UI-103 | Phase 11 | Pending |
 | UI-104 | Phase 11 | Complete |
-| OVR-101 | Phase 12 | Pending |
-| OVR-102 | Phase 12 | Pending |
-| OVR-103 | Phase 12 | Pending |
-| OVR-104 | Phase 12 | Pending |
-| OVR-105 | Phase 12 | Pending |
-| SES-101 | Phase 13 | Pending |
-| SES-102 | Phase 13 | Pending |
-| SES-103 | Phase 13 | Pending |
-| SES-104 | Phase 13 | Pending |
-| SES-105 | Phase 13 | Pending |
+| OVR-101 | Phase 12 | Complete |
+| OVR-102 | Phase 12 | Complete |
+| OVR-103 | Phase 12 | Complete |
+| OVR-104 | Phase 12 | Complete |
+| OVR-105 | Phase 12 | Complete |
+| SES-101 | Phase 13 | Pending - backend pagination/search/filter and activity sort remain |
+| SES-102 | Phase 13 | Pending - branch, summary, model, token split, and duration columns remain |
+| SES-103 | Phase 13 | Complete |
+| SES-104 | Phase 13 | Complete |
+| SES-105 | Phase 13 | Pending - routed long-session pagination/virtualization remains |
 | SES-106 | Phase 14 | Pending |
 | TEST-101 | Phase 10 | Done (10-02) |
 | TEST-102 | Phase 14 | Pending |
