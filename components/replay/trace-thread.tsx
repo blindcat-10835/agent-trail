@@ -23,7 +23,12 @@ interface TraceThreadProps {
 
 function formatTime(dateStr: string | null): string {
   if (!dateStr) return '\u2014'
-  return new Date(dateStr).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const d = new Date(dateStr)
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const time = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return `${y}/${mo}/${day} ${time}`
 }
 
 function formatDuration(ms: number | null): string {
@@ -73,9 +78,9 @@ function groupActivityEntriesByOrdinal(entries: ActivityEntry[]): Map<number, Ac
   return grouped
 }
 
-function ActivityBlock({ activity, turnIndex }: { activity: TraceActivity; turnIndex: number }) {
+function ActivityBlock({ activity, turnIndex, projectPath }: { activity: TraceActivity; turnIndex: number; projectPath?: string }) {
   switch (activity.type) {
-    case 'tool_call': return <ToolBlock tool={activity} />
+    case 'tool_call': return <ToolBlock tool={activity} projectPath={projectPath} />
     case 'skill_use': return <SkillBlock skill={activity} />
     case 'subagent_link': return <SubagentBlock subagent={activity} parentTurnIndex={turnIndex} />
     case 'thinking': return <ThinkingBlock thinking={activity} />
@@ -107,10 +112,12 @@ function TurnCard({
   turn,
   focused,
   onFocus,
+  projectPath,
 }: {
   turn: TraceTurn
   focused: boolean
   onFocus: () => void
+  projectPath?: string
 }) {
   const ref = useRef<HTMLElement>(null)
   const userContent = turn.userMessage?.content || ''
@@ -142,7 +149,6 @@ function TurnCard({
       </div>
       <div className="v2-content">
         <header className="v2-thead">
-          <span className="v2-time mono">{formatTime(turn.startedAt)}</span>
           <span className="v2-meta mono">
             {formatDuration(turn.durationMs)}{' '}
             {'\u00b7'} {formatTokens(tokenIn)}\u2191/{formatTokens(tokenOut)}\u2193
@@ -151,7 +157,10 @@ function TurnCard({
         </header>
 
         <div className="v2-bubble user">
-          <span className="v2-role">USER</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span className="v2-role" style={{ marginBottom: 0 }}>USER</span>
+            <span className="v2-time mono">{formatTime(turn.startedAt)}</span>
+          </div>
           <MarkdownContent content={userContent} className="v2-msg" />
         </div>
 
@@ -160,6 +169,7 @@ function TurnCard({
             key={getActivityKey(activity, idx, turn.index)}
             activity={activity}
             turnIndex={turn.index}
+            projectPath={projectPath}
           />
         ))}
 
@@ -179,6 +189,7 @@ function TurnCard({
                   key={getActivityKey(activity, idx, turn.index)}
                   activity={activity}
                   turnIndex={turn.index}
+                  projectPath={projectPath}
                 />
               ))}
             </div>
@@ -190,6 +201,7 @@ function TurnCard({
             key={getActivityKey(activity, idx, turn.index)}
             activity={activity}
             turnIndex={turn.index}
+            projectPath={projectPath}
           />
         ))}
       </div>
@@ -350,7 +362,7 @@ function Inspector({
 
 export function TraceThread({ session, turns, sessionId, onBackToSessions }: TraceThreadProps) {
   const [focused, setFocused] = useState(0)
-  const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
   const [query, setQuery] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -508,6 +520,7 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
                 turn={t}
                 focused={focused === t.index}
                 onFocus={() => setFocused(t.index)}
+                projectPath={session?.cwd ?? session?.project}
               />
             ))}
             <div className="v2-trace-end mono">{'\u2014'} END OF TRACE {'\u2014'} listening for new turns</div>

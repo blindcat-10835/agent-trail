@@ -3,11 +3,52 @@
 import { useState, useCallback, useMemo } from 'react'
 import { Wrench, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react'
 import type { TraceToolCall } from '@/types/trace'
-import { cn, shortPath } from '@/lib/utils'
-import { formatToolDisplay } from './tool-formatters'
+import { cn, relPath } from '@/lib/utils'
+import { formatToolDisplay, type ToolDisplay } from './tool-formatters'
+
+function DiffContent({ content }: { content: string }) {
+  return (
+    <pre className="act-pre" style={{ padding: 0 }}>
+      {content.split('\n').map((line, i) => {
+        const isAdd = line.startsWith('+') && !line.startsWith('+++')
+        const isDel = line.startsWith('-') && !line.startsWith('---')
+        const isHdr = line.startsWith('@@') || line.startsWith('***') || line.startsWith('file:')
+        return (
+          <span
+            key={i}
+            style={{
+              display: 'block',
+              padding: '0 12px',
+              lineHeight: 1.6,
+              background: isAdd
+                ? 'color-mix(in oklch, oklch(0.76 0.17 145) 14%, transparent)'
+                : isDel
+                  ? 'color-mix(in oklch, var(--destructive) 14%, transparent)'
+                  : 'transparent',
+              color: isAdd
+                ? 'oklch(0.82 0.17 145)'
+                : isDel
+                  ? 'oklch(0.78 0.19 25)'
+                  : isHdr
+                    ? 'var(--muted-foreground)'
+                    : 'inherit',
+            }}
+          >
+            {line || ' '}
+          </span>
+        )
+      })}
+    </pre>
+  )
+}
+
+function isDiffKind(display: ToolDisplay): boolean {
+  return display.kind === 'claude-edit' || display.kind === 'claude-multiedit' || display.kind === 'patch'
+}
 
 interface ToolBlockProps {
   tool: TraceToolCall
+  projectPath?: string
 }
 
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
@@ -31,7 +72,7 @@ function extractFilePath(tool: TraceToolCall, displayFilePath?: string): string 
   }
 }
 
-export function ToolBlock({ tool }: ToolBlockProps) {
+export function ToolBlock({ tool, projectPath }: ToolBlockProps) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const [inputCollapsed, setInputCollapsed] = useState(true)
@@ -41,7 +82,8 @@ export function ToolBlock({ tool }: ToolBlockProps) {
   const isLongInput = lineCount > 10
 
   const kindMeta = CATEGORY_META[tool.category] ?? CATEGORY_META.Other
-  const filePath = extractFilePath(tool, 'filePath' in display ? display.filePath : undefined)
+  const rawFilePath = extractFilePath(tool, 'filePath' in display ? display.filePath : undefined)
+  const filePath = relPath(rawFilePath, projectPath)
   const durationText = tool.durationMs != null
     ? (tool.durationMs < 1000 ? `${tool.durationMs}ms` : `${(tool.durationMs / 1000).toFixed(1)}s`)
     : ''
@@ -72,7 +114,7 @@ export function ToolBlock({ tool }: ToolBlockProps) {
           {kindMeta.label}
         </span>
         <span className="act-name">{tool.displayName || tool.name}</span>
-        <span className="act-path mono" title={filePath}>{shortPath(filePath)}</span>
+        <span className="act-path mono" title={rawFilePath}>{filePath}</span>
         <span className="act-time mono">{durationText}</span>
         <span
           className="act-dot"
@@ -113,9 +155,15 @@ export function ToolBlock({ tool }: ToolBlockProps) {
                   </button>
                 )}
               </div>
-              <pre className={cn('act-pre', isLongInput && inputCollapsed && 'max-h-[160px] overflow-hidden')}>
-                {display.content}
-              </pre>
+              {isDiffKind(display) ? (
+                <div className={cn(isLongInput && inputCollapsed && 'max-h-[360px] overflow-hidden')}>
+                  <DiffContent content={display.content} />
+                </div>
+              ) : (
+                <pre className={cn('act-pre', isLongInput && inputCollapsed && 'max-h-[160px] overflow-hidden')}>
+                  {display.content}
+                </pre>
+              )}
             </div>
           )}
 

@@ -1092,6 +1092,25 @@
 .v2-trace {
   overflow: auto;
   min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--border) 80%, transparent) transparent;
+}
+
+.v2-trace::-webkit-scrollbar {
+  width: 4px;
+}
+
+.v2-trace::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.v2-trace::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--border) 80%, transparent);
+  border-radius: 2px;
+}
+
+.v2-trace::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
 }
 
 .v2-trace-pad {
@@ -1185,8 +1204,9 @@
 }
 
 .v2-time {
-  color: var(--foreground);
-  font-weight: 600;
+  font: 600 9px/1 var(--font-mono);
+  color: var(--muted-foreground);
+  opacity: 0.7;
   letter-spacing: 0.04em;
 }
 
@@ -1226,7 +1246,8 @@
 }
 
 .v2-bubble.asst .v2-msg {
-  color: var(--card-foreground);
+  color: var(--foreground);
+  opacity: 0.88;
 }
 
 .v2-acts {
