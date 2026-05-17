@@ -12,6 +12,7 @@ import allDef from './all/definition'
 import openclawDef from './openclaw/definition'
 import claudeCodeDef from './claude-code/definition'
 import codexDef from './codex/definition'
+import opencodeDef from './opencode/definition'
 
 /**
  * Map of all tool definitions indexed by AgentToolId.
@@ -22,13 +23,14 @@ export const AGENT_TOOL_DEFINITIONS: Record<AgentToolId, AgentToolDefinition> = 
   'openclaw': openclawDef,
   'claude-code': claudeCodeDef,
   'codex': codexDef,
+  'opencode': opencodeDef,
 }
 
 /**
  * Ordered array of source tool IDs.
  * Kept source-only for aggregate queries.
  */
-export const TOOL_IDS: SourceToolId[] = ['openclaw', 'claude-code', 'codex']
+export const TOOL_IDS: SourceToolId[] = ['openclaw', 'claude-code', 'codex', 'opencode']
 
 /**
  * Ordered array of all shell scopes, including synthetic aggregate views.
@@ -48,7 +50,7 @@ export function getDefinition(toolId: AgentToolId): AgentToolDefinition {
  * Order: openclaw, claude-code, codex.
  */
 export function getAllDefinitions(): AgentToolDefinition[] {
-  return [allDef, openclawDef, claudeCodeDef, codexDef]
+  return [allDef, openclawDef, claudeCodeDef, codexDef, opencodeDef]
 }
 
 /**

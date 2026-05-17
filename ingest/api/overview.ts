@@ -24,7 +24,7 @@ import {
 
 export const overviewRoutes = new Hono();
 
-const VALID_SOURCES = ['openclaw', 'claude-code', 'codex'] as const;
+const VALID_SOURCES = ['openclaw', 'claude-code', 'codex', 'opencode'] as const;
 
 const UPDATED_AT_EXPR =
   "MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, ''))";
@@ -43,6 +43,9 @@ interface SessionCostRow extends TokenUsageForPricing {
   day: string | null;
   model: string | null;
   totalTokens: number;
+  source: string;
+  sourceCostUsd: number | null;
+  costPricingStatus: string | null;
 }
 
 // ============================================================================
@@ -80,6 +83,7 @@ function getSessionCostRows(
   const rows = db.prepare(`
     SELECT
       s.id,
+      s.source,
       s.project,
       date(s.started_at) AS day,
       (
@@ -96,11 +100,14 @@ function getSessionCostRows(
       COALESCE(s.total_cache_read_tokens, 0) AS cache_read_tokens,
       COALESCE(s.total_cache_write_tokens, 0) AS cache_write_tokens,
       COALESCE(s.total_reasoning_tokens, 0) AS reasoning_tokens,
-      ${sessionTotalTokensExpr('s')} AS total_tokens
+      ${sessionTotalTokensExpr('s')} AS total_tokens,
+      s.source_cost_usd,
+      s.cost_pricing_status
     FROM sessions s
     ${whereClause}
   `).all(...params) as Array<{
     id: string;
+    source: string;
     project: string;
     day: string | null;
     model: string | null;
@@ -110,10 +117,13 @@ function getSessionCostRows(
     cache_write_tokens: number;
     reasoning_tokens: number;
     total_tokens: number;
+    source_cost_usd: number | null;
+    cost_pricing_status: string | null;
   }>;
 
   return rows.map((row) => ({
     id: row.id,
+    source: row.source,
     project: row.project,
     day: row.day,
     model: row.model,
@@ -123,15 +133,24 @@ function getSessionCostRows(
     cacheWriteTokens: row.cache_write_tokens,
     reasoningTokens: row.reasoning_tokens,
     totalTokens: row.total_tokens,
+    sourceCostUsd: row.source_cost_usd,
+    costPricingStatus: row.cost_pricing_status,
   }));
 }
 
 function rollUpSessionCosts(rows: SessionCostRow[]): CostRollup {
-  return rollUpCosts(
-    rows
-      .filter((row) => row.totalTokens > 0)
-      .map((row) => estimateModelCost(row.model, row)),
-  );
+  const estimates = rows
+    .filter((row) => row.totalTokens > 0)
+    .map((row) => {
+      if (row.sourceCostUsd != null) {
+        return {
+          cost: row.sourceCostUsd,
+          pricingStatus: 'priced' as PricingStatus,
+        };
+      }
+      return estimateModelCost(row.model, row);
+    });
+  return rollUpCosts(estimates);
 }
 
 // ============================================================================

@@ -66,7 +66,7 @@ initializeSourcesAndSync()                             // background
   createWatcher({ sourceDirs, debounceMs, resyncIntervalMs, fileExtensions: ['.jsonl', '.json', '.md'], onPathsChanged, onFullResync })
   if startupSyncLimit > 0:
     syncState.phase = 'warming'
-    for sourceType in ['openclaw', 'claude-code', 'codex']:
+    for sourceType in ['openclaw', 'claude-code', 'codex', 'opencode']:
       syncScheduler.enqueueFullSource(sourceType, 'startup-warmup', { limit, sortByMtimeDesc: true })   // newest N files only
   watcher.start()
   syncState.startupComplete = true                     // /health flips ready=true
@@ -189,7 +189,7 @@ Only the source-specific shape leaves the parser boundary. Everything downstream
 
 ```ts
 export async function syncSource(
-  sourceType: 'openclaw' | 'claude-code' | 'codex',
+  sourceType: 'openclaw' | 'claude-code' | 'codex' | 'opencode',
   options?: SyncSourceOptions | string  // string = legacy basePath shorthand
 ): Promise<SyncResult>
 ```

@@ -52,6 +52,14 @@ Source directories are managed centrally via `TOOL_DIR_REGISTRY` and `resolveToo
 - **Read at:** `ingest/config/tool-dirs.ts → TOOL_DIR_REGISTRY`.
 - **Resolves to:** any directory under the root containing `.jsonl` files (recursive). Codex parent-child relationships are reconstructed from `event_msg.collab_agent_spawn_end` events during sync.
 
+### `OPENCODE_DB_PATH`
+
+- **Default:** `~/.local/share/opencode/opencode.db`.
+- **Config file key:** `opencode_db_path` (single path string).
+- **Read at:** `ingest/config/tool-dirs.ts → TOOL_DIR_REGISTRY`.
+- **Resolves to:** OpenCode's SQLite database file (not a JSONL file directory). The parser opens this DB read-only, extracting data from `session`, `message`, `part`, and `project` tables.
+- **Note:** OpenCode stores session data in SQLite, not JSONL files. This path points to a single `.db` file.
+
 ### `WORKSPACE_PATH` (deprecated)
 
 - **Default:** `~/.openclaw` (after stripping a trailing `/workspace` if present).
@@ -65,7 +73,8 @@ Source directories are managed centrally via `TOOL_DIR_REGISTRY` and `resolveToo
 {
   "openclaw_dirs": ["/Users/<you>/.openclaw/agents"],
   "claude_project_dirs": ["/Users/<you>/.claude/projects"],
-  "codex_sessions_dirs": ["/Users/<you>/.codex/sessions"]
+  "codex_sessions_dirs": ["/Users/<you>/.codex/sessions"],
+  "opencode_db_path": "/Users/<you>/.local/share/opencode/opencode.db"
 }
 ```
 
@@ -125,7 +134,7 @@ CLAUDE_PROJECTS_DIR=/Users/<you>/.claude/projects
 CODEX_SESSIONS_DIR=/Users/<you>/.codex/sessions
 ```
 
-`OPENCLAW_DIR`, `CLAUDE_PROJECTS_DIR`, and `CODEX_SESSIONS_DIR` control source discovery. You can also configure them via `~/.agents-tracing/config.json` (which supports multiple directories). Keep the `NEXT_PUBLIC_*` variables for parity with older OpenClaw tooling unless you're sure nothing in your local stack reads them.
+`OPENCLAW_DIR`, `CLAUDE_PROJECTS_DIR`, `CODEX_SESSIONS_DIR`, and `OPENCODE_DB_PATH` control source discovery. You can also configure them via `~/.agents-tracing/config.json` (which supports multiple directories). Keep the `NEXT_PUBLIC_*` variables for parity with older OpenClaw tooling unless you're sure nothing in your local stack reads them.
 
 ---
 
@@ -161,11 +170,11 @@ These don't appear in source but show up in operational practice:
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | Ingest exits immediately on `pnpm dev:ingest` | Bad `INGEST_*` value (e.g. unparseable port) | Read the printed `Error:` line; values must satisfy the validation table above |
-| `/api/v1/sources` shows `error: "ENOENT: ..."` for a source | Source root does not exist | Set the matching `OPENCLAW_DIR` / `CLAUDE_PROJECTS_DIR` / `CODEX_SESSIONS_DIR` env var, or configure paths in `~/.agents-tracing/config.json`, or create the directory |
+| `/api/v1/sources` shows `error: "ENOENT: ..."` for a source | Source root does not exist | Set the matching `OPENCLAW_DIR` / `CLAUDE_PROJECTS_DIR` / `CODEX_SESSIONS_DIR` / `OPENCODE_DB_PATH` env var, or configure paths in `~/.agents-tracing/config.json`, or create the directory |
 | OpenClaw source appears with `sessionCount: 0, error: "No agent sessions found"` | `~/.openclaw/agents/<agent>/sessions/` is empty | Run an OpenClaw session to create some, or point `OPENCLAW_DIR` at a directory that has them |
 | `[sources] Rejected path outside root: ...` warnings | Symlink leaving the configured root, or a weird absolute path discovered | Fix the symlink; `isWithinRoot` is intentional and not configurable |
 | BFF returns 502 `Ingest service unreachable` | Ingest crashed or wrong `INGEST_URL` | Check `pnpm dev` logs; `curl http://localhost:8078/health`; reset `INGEST_URL` |
-| BFF returns 400 `Invalid source tool ID` | URL `[tool]` segment is wrong | Use `openclaw`, `claude-code`, or `codex` (note the hyphen). `all` works only at the shell layer, not the BFF. |
+| BFF returns 400 `Invalid source tool ID` | URL `[tool]` segment is wrong | Use `openclaw`, `claude-code`, `codex`, or `opencode` (note the hyphens). `all` works only at the shell layer, not the BFF. |
 | Health overlay stays in "checking" forever | Ingest is up but `INGEST_STARTUP_SYNC_LIMIT` is huge and warmup hasn't finished | Lower the limit or set it to `0` to skip warmup; full sync still runs in the background |
 
 For "I made a parser change and the DB is showing stale data," see the skip-cache section of [`services/ingest.md`](services/ingest.md): bump `PARSER_CACHE_VERSION` or call `POST /api/v1/sources/:type/sync` with `{"force": true}`.

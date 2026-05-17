@@ -73,7 +73,7 @@ app.get('/version', (c) => {
   const version: VersionInfo = {
     version: '0.1.0',
     name: 'agent-tracing-dashboard-ingest',
-    sources: ['openclaw', 'claude-code', 'codex'] as TraceSource[],
+    sources: ['openclaw', 'claude-code', 'codex', 'opencode'] as TraceSource[],
   };
 
   return c.json(version);
@@ -264,7 +264,7 @@ async function initializeSourcesAndSync(): Promise<void> {
 
     // Bounded startup warmup: parse a small latest-first slice before reporting
     // ready=true. Full historical indexing continues in the background below.
-    const sourceTypes = ['openclaw', 'claude-code', 'codex'] as SyncSourceType[];
+    const sourceTypes = ['openclaw', 'claude-code', 'codex', 'opencode'] as SyncSourceType[];
 
     if (active.config.startupSyncLimit > 0) {
       active.syncState.phase = 'warming';

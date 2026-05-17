@@ -7,7 +7,7 @@ agent-tracing-dashboard exposes two HTTP surfaces:
 
 Source-scoped frontend reads should always go through `/api/agent-tools/[tool]/...`. The ingest API is documented here for tooling, debugging, and parity reference.
 
-> All examples assume defaults from [`CONFIGURATION.md`](CONFIGURATION.md). `[tool]` is one of `openclaw | claude-code | codex` (the `all` aggregate scope is shell-only and is rejected by the BFF).
+> All examples assume defaults from [`CONFIGURATION.md`](CONFIGURATION.md). `[tool]` is one of `openclaw | claude-code | codex | opencode` (the `all` aggregate scope is shell-only and is rejected by the BFF).
 
 ---
 
@@ -49,7 +49,7 @@ The route bypasses `/version` and `/health` from rate limiting in `rateLimiter`.
 {
   "version": "0.1.0",
   "name": "agent-tracing-dashboard-ingest",
-  "sources": ["openclaw", "claude-code", "codex"]
+  "sources": ["openclaw", "claude-code", "codex", "opencode"]
 }
 ```
 
@@ -87,7 +87,7 @@ List all discovered sources across all three types.
 
 Same shape as above, scoped to one source type.
 
-- **400** `Unsupported source type` when `type` is not `openclaw | claude-code | codex`.
+- **400** `Unsupported source type` when `type` is not `openclaw | claude-code | codex | opencode`.
 
 #### `POST /api/v1/sources/:type/sync`
 
@@ -135,7 +135,7 @@ Paginated session list with filtering and sort.
 
 | Query | Type | Default | Validation |
 | --- | --- | --- | --- |
-| `source` | `openclaw \| claude-code \| codex` | _(any)_ | Whitelist; **400** otherwise via downstream filter |
+| `source` | `openclaw \| claude-code \| codex \| opencode` | _(any)_ | Whitelist; **400** otherwise via downstream filter |
 | `project` | string | _(any)_ | Pass-through `=` filter |
 | `status` | `active \| idle \| aborted \| error \| unknown` | _(any)_ | Pass-through |
 | `sort` | `updated_at \| started_at \| ended_at` | `updated_at` | **400** Invalid sort parameter otherwise |
@@ -161,7 +161,7 @@ Look up a session by `(source, key)` — used by OpenClaw Gateway-to-ingest dril
 
 | Query | Required | Notes |
 | --- | --- | --- |
-| `source` | yes | Whitelist `openclaw \| claude-code \| codex`; **400** otherwise |
+| `source` | yes | Whitelist `openclaw \| claude-code \| codex \| opencode`; **400** otherwise |
 | `key` | yes | Regex `^[a-zA-Z0-9:\-_.]{1,256}$`; **400** otherwise |
 
 The lookup tries `id = ?` first, then `source_session_id = ?`, both filtered by `source`.
@@ -297,7 +297,7 @@ All BFF routes use `Content-Type: application/json` for both requests (when appl
 Every per-tool endpoint follows the same pattern:
 
 1. `assertSourceToolId(tool)` — rejects unknown tools with **400**.
-2. Look up the right adapter (`openclaw | claude-code | codex`).
+2. Look up the right adapter (`openclaw | claude-code | codex | opencode`).
 3. Call the adapter; injecting `source=<tool>` for list queries.
 4. Validate `sessionId` if present (`validateSessionId` regex). **400** on bad format.
 5. Catch and `sanitizeError` — **502** with generic `Ingest service unreachable` for unrecognised errors.
@@ -369,7 +369,7 @@ Frontend-facing health check. Wraps ingest `/health` and returns 502 on unreacha
 
 #### `POST /api/sync`
 
-All-source aggregate sync. Iterates `openclaw → claude-code → codex` calling each `/api/v1/sources/:type/sync` in turn.
+All-source aggregate sync. Iterates `openclaw → claude-code → codex → opencode` calling each `/api/v1/sources/:type/sync` in turn.
 
 | Param | Where | Default |
 | --- | --- | --- |

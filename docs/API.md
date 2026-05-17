@@ -7,7 +7,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 
 前端按源读取数据应始终通过 `/api/agent-tools/[tool]/...` 路径。此处记录摄取 API 供工具开发、调试和对照参考。
 
-> 所有示例假定使用 [`CONFIGURATION.md`](CONFIGURATION.md) 中的默认值。`[tool]` 取值为 `openclaw | claude-code | codex`（`all` 聚合作用域仅用于 shell 层，BFF 会拒绝它）。
+> 所有示例假定使用 [`CONFIGURATION.md`](CONFIGURATION.md) 中的默认值。`[tool]` 取值为 `openclaw | claude-code | codex | opencode`（`all` 聚合作用域仅用于 shell 层，BFF 会拒绝它）。
 
 ---
 
@@ -49,7 +49,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 {
   "version": "0.1.0",
   "name": "agent-tracing-dashboard-ingest",
-  "sources": ["openclaw", "claude-code", "codex"]
+  "sources": ["openclaw", "claude-code", "codex", "opencode"]
 }
 ```
 
@@ -59,7 +59,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 
 #### `GET /api/v1/sources`
 
-列出所有三种类型下已发现的数据源。
+列出所有数据源类型的已发现数据源。
 
 ```json
 {
@@ -87,7 +87,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 
 与上述结构相同，仅限某一数据源类型。
 
-- **400** 当 `type` 不是 `openclaw | claude-code | codex` 时返回 `Unsupported source type`。
+  - **400** 当 `type` 不是 `openclaw | claude-code | codex | opencode` 时返回 `Unsupported source type`。
 
 #### `POST /api/v1/sources/:type/sync`
 
@@ -135,7 +135,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 
 | 查询参数 | 类型 | 默认值 | 校验 |
 | --- | --- | --- | --- |
-| `source` | `openclaw \| claude-code \| codex` | _(任意)_ | 白名单；不匹配经下游过滤器返回 **400** |
+| `source` | `openclaw \| claude-code \| codex \| opencode` | _(任意)_ | 白名单；不匹配经下游过滤器返回 **400** |
 | `project` | string | _(任意)_ | 透传 `=` 过滤 |
 | `status` | `active \| idle \| aborted \| error \| unknown` | _(任意)_ | 透传 |
 | `sort` | `updated_at \| started_at \| ended_at` | `updated_at` | 无效排序参数返回 **400** |
@@ -161,7 +161,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 
 | 查询参数 | 是否必需 | 说明 |
 | --- | --- | --- |
-| `source` | 是 | 白名单 `openclaw \| claude-code \| codex`；否则返回 **400** |
+| `source` | 是 | 白名单 `openclaw \| claude-code \| codex \| opencode`；否则返回 **400** |
 | `key` | 是 | 正则 `^[a-zA-Z0-9:\-_.]{1,256}$`；否则返回 **400** |
 
 查找流程先尝试 `id = ?`，再尝试 `source_session_id = ?`，两者均按 `source` 过滤。
@@ -297,7 +297,7 @@ X-Accel-Buffering: no
 每个按工具划分的端点均遵循相同的模式：
 
 1. `assertSourceToolId(tool)` — 拒绝未知工具并返回 **400**。
-2. 查找正确的适配器 (`openclaw | claude-code | codex`)。
+2. 查找正确的适配器 (`openclaw | claude-code | codex | opencode`)。
 3. 调用适配器；为列表查询注入 `source=<tool>`。
 4. 校验 `sessionId`（如果存在）（`validateSessionId` 正则）。格式错误返回 **400**。
 5. 捕获并 `sanitizeError` — 无法识别的错误返回 **502**，消息为通用 `Ingest service unreachable`。
@@ -369,7 +369,7 @@ SSE 透传。`runtime = 'nodejs'`，`dynamic = 'force-dynamic'`。
 
 #### `POST /api/sync`
 
-全源聚合同步。按 `openclaw → claude-code → codex` 顺序依次调用每个 `/api/v1/sources/:type/sync`。
+全源聚合同步。按 `openclaw → claude-code → codex → opencode` 顺序依次调用每个 `/api/v1/sources/:type/sync`。
 
 | 参数 | 位置 | 默认值 |
 | --- | --- | --- |
@@ -380,7 +380,8 @@ SSE 透传。`runtime = 'nodejs'`，`dynamic = 'force-dynamic'`。
   "results": [
     { "type": "openclaw",    "syncResult": {...}, "status": "completed" },
     { "type": "claude-code", "syncResult": {...}, "status": "completed" },
-    { "type": "codex",       "error": "Ingest service unreachable", "status": "failed" }
+    { "type": "codex",       "syncResult": {...}, "status": "completed" },
+    { "type": "opencode",    "syncResult": {...}, "status": "completed" }
   ],
   "force": false
 }

@@ -1,6 +1,6 @@
 -- Agent Tracing Dashboard - Ingest Service SQLite Schema
 -- Adapted from trace contract (types/trace.ts)
--- Supports OpenClaw, Claude Code, and Codex sources
+-- Supports OpenClaw, Claude Code, Codex, and OpenCode sources
 
 -- ============================================================================
 -- Sessions Table
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
 
   -- Source identification
-  source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex')),
+  source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
   project TEXT NOT NULL,
   name TEXT,
   agent_name TEXT,
@@ -60,6 +60,11 @@ CREATE TABLE IF NOT EXISTS sessions (
   parser_malformed_lines INTEGER NOT NULL DEFAULT 0,
   is_truncated INTEGER NOT NULL DEFAULT 0 CHECK(is_truncated IN (0, 1)),
   termination_status TEXT,
+
+  -- Source-reported cost fields (Phase 17 — opencode integration)
+  source_cost_usd REAL,
+  cost_source TEXT,
+  cost_pricing_status TEXT,
 
   -- Foreign keys
   FOREIGN KEY (root_session_id) REFERENCES sessions(id) ON DELETE SET NULL,
@@ -169,7 +174,7 @@ CREATE TABLE IF NOT EXISTS subagent_links (
   -- Child session reference. The child row may not have been indexed yet, so this
   -- intentionally does not use a foreign key to sessions(id).
   subagent_session_id TEXT NOT NULL,
-  subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex')),
+  subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
   relationship TEXT NOT NULL CHECK(relationship IN ('spawned', 'attached')),
 
   -- Ordinal of the message/tool call that spawned or attached the child session.
@@ -255,7 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_turns_session_index ON turns(session_id, turn_ind
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS ingest_file_cursors (
-  source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex')),
+  source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex', 'opencode')),
   file_path TEXT NOT NULL,
   session_id TEXT,
   file_size INTEGER NOT NULL,

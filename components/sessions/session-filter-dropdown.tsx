@@ -28,6 +28,7 @@ const SOURCE_LABELS: Record<TraceSource, string> = {
   'claude-code': 'Claude Code',
   openclaw: 'OpenClaw',
   codex: 'Codex',
+  opencode: 'OpenCode',
 }
 
 // ============================================================================

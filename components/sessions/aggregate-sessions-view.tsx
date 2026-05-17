@@ -13,6 +13,8 @@ function sourceLabel(toolId: AggregateSourceStatus['toolId']): string {
       return 'CLAUDE:CODE'
     case 'codex':
       return 'CODEX'
+    case 'opencode':
+      return 'OPENCODE'
   }
 }
 

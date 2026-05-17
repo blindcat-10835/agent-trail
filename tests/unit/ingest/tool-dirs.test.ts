@@ -20,12 +20,13 @@ import {
 } from '@/ingest/config/tool-dirs';
 
 describe('TOOL_DIR_REGISTRY', () => {
-  it('should contain entries for all three source types', () => {
+  it('should contain entries for all four source types', () => {
     const types = TOOL_DIR_REGISTRY.map((d) => d.type);
     expect(types).toContain('openclaw');
     expect(types).toContain('claude-code');
     expect(types).toContain('codex');
-    expect(types).toHaveLength(3);
+    expect(types).toContain('opencode');
+    expect(types).toHaveLength(4);
   });
 
   it('should have envVar, configKey, and defaultDirs on every entry', () => {
@@ -42,6 +43,7 @@ describe('resolveToolDirs', () => {
     delete process.env.OPENCLAW_DIR;
     delete process.env.CLAUDE_PROJECTS_DIR;
     delete process.env.CODEX_SESSIONS_DIR;
+    delete process.env.OPENCODE_DB_PATH;
     delete process.env.AGENTS_TRACING_CONFIG;
   });
 
@@ -50,6 +52,7 @@ describe('resolveToolDirs', () => {
     expect(dirs.get('openclaw')).toEqual(['/mock/home/.openclaw/agents']);
     expect(dirs.get('claude-code')).toEqual(['/mock/home/.claude/projects']);
     expect(dirs.get('codex')).toEqual(['/mock/home/.codex/sessions']);
+    expect(dirs.get('opencode')).toEqual(['/mock/home/.local/share/opencode']);
   });
 
   it('should use env var override when set', () => {

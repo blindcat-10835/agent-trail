@@ -22,7 +22,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 const STATUSES = ['ALL', 'LIVE', 'IDLE', 'ERROR', 'TRUNCATED'] as const
-const SOURCE_IDS = ['openclaw', 'claude-code', 'codex'] as const
+const SOURCE_IDS = ['openclaw', 'claude-code', 'codex', 'opencode'] as const
 
 const STATUS_QUERY: Partial<Record<(typeof STATUSES)[number], string>> = {
   LIVE: 'active',

@@ -25,7 +25,7 @@ SQLite 读取模型，位于 `data/ingest.db`。由 ingest 服务（`ingest/db/`
 | Column | Type | Constraints | Description |
 | --- | --- | --- | --- |
 | `id` | TEXT | **PK** | Session ID（例如 Claude Code 为 UUID，OpenClaw 为 `agent:{name}:{uuid}`） |
-| `source` | TEXT | NOT NULL, CHECK IN (`openclaw`, `claude-code`, `codex`) | 产生此 session 的 agent 工具 |
+| `source` | TEXT | NOT NULL, CHECK IN (`openclaw`, `claude-code`, `codex`, `opencode`) | 产生此 session 的 agent 工具 |
 | `project` | TEXT | NOT NULL | 解码后的 project/cwd 路径 |
 | `name` | TEXT | nullable | 从第一条用户消息中提取的显示名称 |
 | `started_at` | TEXT | nullable | 第一条消息的 ISO 8601 时间戳 |
@@ -50,6 +50,9 @@ SQLite 读取模型，位于 `data/ingest.db`。由 ingest 服务（`ingest/db/`
 | `parser_malformed_lines` | INTEGER | NOT NULL, DEFAULT 0 | 无法解析的 JSONL 行数 |
 | `is_truncated` | INTEGER | NOT NULL, DEFAULT 0, CHECK IN (0, 1) | 上下文窗口是否被压缩 |
 | `termination_status` | TEXT | nullable | session 结束方式（例如 `completed`、`cancelled`） |
+| `source_cost_usd` | REAL | nullable | Source-reported cost in USD (opencode reports exact cost) |
+| `cost_source` | TEXT | nullable | Cost source: `'source-reported'` for opencode, null for pricing registry estimates |
+| `cost_pricing_status` | TEXT | nullable | Pricing status: `'priced'` (exact), `'reported_zero'` (cost=0 with tokens), null for estimates |
 
 **外键：**
 - `root_session_id` → `sessions.id` ON DELETE SET NULL
@@ -153,7 +156,7 @@ SQLite 读取模型，位于 `data/ingest.db`。由 ingest 服务（`ingest/db/`
 
 | Column | Type | Constraints | Description |
 | --- | --- | --- | --- |
-| `source_type` | TEXT | **PK** | 数据源类型（`openclaw`、`claude-code`、`codex`） |
+| `source_type` | TEXT | **PK** | 数据源类型（`openclaw`、`claude-code`、`codex`、`opencode`） |
 | `last_full_sync_at` | TEXT | nullable | 最近一次全量重新同步的时间戳 |
 | `last_watch_sync_at` | TEXT | nullable | 最近一次文件监听触发的同步时间戳 |
 | `files_watched` | INTEGER | NOT NULL, DEFAULT 0 | 已处理的 session 文件数 |

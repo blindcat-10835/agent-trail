@@ -143,7 +143,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 13;
+  const targetVersion = 14;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -382,6 +382,165 @@ export function runMigrations(): void {
         SET file_hash = NULL
         WHERE source IN ('claude-code', 'codex')
       `,
+    },
+    {
+      desc: 'Rebuild sessions table with opencode CHECK + cost columns',
+      sql: `
+        CREATE TABLE sessions_new (
+          id TEXT PRIMARY KEY,
+          source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+          project TEXT NOT NULL,
+          name TEXT,
+          agent_name TEXT,
+          started_at TEXT,
+          ended_at TEXT,
+          status TEXT NOT NULL CHECK(status IN ('active', 'idle', 'aborted', 'error', 'unknown')),
+          root_session_id TEXT,
+          parent_session_id TEXT,
+          relationship_type TEXT CHECK(relationship_type IN ('root', 'subagent', 'fork', 'continuation')),
+          message_count INTEGER NOT NULL DEFAULT 0,
+          user_message_count INTEGER NOT NULL DEFAULT 0,
+          total_output_tokens INTEGER,
+          total_input_tokens INTEGER NOT NULL DEFAULT 0,
+          total_cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+          total_cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+          total_reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+          total_tokens INTEGER NOT NULL DEFAULT 0,
+          has_tool_calls INTEGER NOT NULL DEFAULT 0 CHECK(has_tool_calls IN (0, 1)),
+          file_path TEXT NOT NULL,
+          file_size INTEGER,
+          file_mtime TEXT,
+          file_hash TEXT,
+          last_sync_at TEXT,
+          cwd TEXT,
+          git_branch TEXT,
+          source_session_id TEXT,
+          source_version TEXT,
+          parser_malformed_lines INTEGER NOT NULL DEFAULT 0,
+          is_truncated INTEGER NOT NULL DEFAULT 0 CHECK(is_truncated IN (0, 1)),
+          termination_status TEXT,
+          source_cost_usd REAL,
+          cost_source TEXT,
+          cost_pricing_status TEXT,
+          FOREIGN KEY (root_session_id) REFERENCES sessions(id) ON DELETE SET NULL,
+          FOREIGN KEY (parent_session_id) REFERENCES sessions(id) ON DELETE SET NULL
+        )
+      `,
+    },
+    {
+      desc: 'Copy sessions data to sessions_new',
+      sql: `
+        INSERT INTO sessions_new SELECT
+          id, source, project, name, agent_name,
+          started_at, ended_at, status,
+          root_session_id, parent_session_id, relationship_type,
+          message_count, user_message_count,
+          total_output_tokens, total_input_tokens,
+          total_cache_read_tokens, total_cache_write_tokens,
+          total_reasoning_tokens, total_tokens,
+          has_tool_calls,
+          file_path, file_size, file_mtime, file_hash, last_sync_at,
+          cwd, git_branch, source_session_id, source_version,
+          parser_malformed_lines, is_truncated, termination_status,
+          NULL, NULL, NULL
+        FROM sessions
+      `,
+    },
+    {
+      desc: 'Drop old sessions table',
+      sql: 'DROP TABLE sessions',
+    },
+    {
+      desc: 'Rename sessions_new to sessions',
+      sql: 'ALTER TABLE sessions_new RENAME TO sessions',
+    },
+    {
+      desc: 'Recreate sessions indexes',
+      sql: `
+        CREATE INDEX IF NOT EXISTS idx_sessions_source_project ON sessions(source, project);
+        CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_sessions_root_session_id ON sessions(root_session_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_session_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_agent_name ON sessions(agent_name)
+      `,
+    },
+    {
+      desc: 'Rebuild subagent_links table with opencode CHECK',
+      sql: `
+        CREATE TABLE subagent_links_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          subagent_session_id TEXT NOT NULL,
+          subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+          relationship TEXT NOT NULL CHECK(relationship IN ('spawned', 'attached')),
+          message_ordinal INTEGER,
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+      `,
+    },
+    {
+      desc: 'Copy subagent_links data to subagent_links_new',
+      sql: 'INSERT INTO subagent_links_new SELECT * FROM subagent_links',
+    },
+    {
+      desc: 'Drop old subagent_links table',
+      sql: 'DROP TABLE subagent_links',
+    },
+    {
+      desc: 'Rename subagent_links_new to subagent_links',
+      sql: 'ALTER TABLE subagent_links_new RENAME TO subagent_links',
+    },
+    {
+      desc: 'Recreate subagent_links indexes',
+      sql: `
+        CREATE INDEX IF NOT EXISTS idx_subagent_links_session_id ON subagent_links(session_id);
+        CREATE INDEX IF NOT EXISTS idx_subagent_links_message_ordinal ON subagent_links(message_ordinal);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_subagent_links_unique
+          ON subagent_links(session_id, subagent_session_id, relationship, COALESCE(message_ordinal, -1))
+      `,
+    },
+    {
+      desc: 'Rebuild ingest_file_cursors table with opencode CHECK',
+      sql: `
+        CREATE TABLE ingest_file_cursors_new (
+          source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+          file_path TEXT NOT NULL,
+          session_id TEXT,
+          file_size INTEGER NOT NULL,
+          file_mtime TEXT,
+          file_inode INTEGER,
+          file_device INTEGER,
+          parser_version TEXT NOT NULL,
+          last_indexed_offset INTEGER NOT NULL DEFAULT 0,
+          last_indexed_line INTEGER NOT NULL DEFAULT 0,
+          last_message_ordinal INTEGER NOT NULL DEFAULT -1,
+          last_turn_index INTEGER NOT NULL DEFAULT -1,
+          last_success_at TEXT,
+          last_fallback_reason TEXT,
+          PRIMARY KEY (source_type, file_path),
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
+        )
+      `,
+    },
+    {
+      desc: 'Copy ingest_file_cursors data to ingest_file_cursors_new',
+      sql: 'INSERT INTO ingest_file_cursors_new SELECT * FROM ingest_file_cursors',
+    },
+    {
+      desc: 'Drop old ingest_file_cursors table',
+      sql: 'DROP TABLE ingest_file_cursors',
+    },
+    {
+      desc: 'Rename ingest_file_cursors_new to ingest_file_cursors',
+      sql: 'ALTER TABLE ingest_file_cursors_new RENAME TO ingest_file_cursors',
+    },
+    {
+      desc: 'Recreate ingest_file_cursors indexes',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_ingest_file_cursors_session_id ON ingest_file_cursors(session_id)',
+    },
+    {
+      desc: 'Invalidate skip cache for opencode migration',
+      sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'openclaw' OR source = 'claude-code' OR source = 'codex'",
     },
   ];
 

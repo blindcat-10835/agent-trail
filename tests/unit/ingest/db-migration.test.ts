@@ -105,7 +105,7 @@ describe('ingest database migrations', () => {
         'total_tokens',
       ])
     );
-    expect(version).toBe(13);
+    expect(version).toBe(14);
   });
 
   it('initializes ingest file cursor schema idempotently', () => {
@@ -145,7 +145,7 @@ describe('ingest database migrations', () => {
       ])
     );
     expect(indexes.map((index) => index.name)).toContain('idx_ingest_file_cursors_session_id');
-    expect(version).toBe(13);
+    expect(version).toBe(14);
   });
 
   it('enforces append writer idempotency constraints', () => {

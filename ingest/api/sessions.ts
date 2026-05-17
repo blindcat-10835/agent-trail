@@ -14,7 +14,7 @@ import { estimateModelCost } from '../pricing/model-pricing.js';
 
 export const sessionsRoutes = new Hono();
 
-const VALID_SOURCES = ['openclaw', 'claude-code', 'codex'] as const;
+const VALID_SOURCES = ['openclaw', 'claude-code', 'codex', 'opencode'] as const;
 const VALID_SESSION_SORTS = [
   'updated_at',
   'started_at',
@@ -66,7 +66,7 @@ sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
   }
 
   // Validate source (whitelisted values only)
-  if (!['openclaw', 'claude-code', 'codex'].includes(source)) {
+  if (!['openclaw', 'claude-code', 'codex', 'opencode'].includes(source)) {
     return c.json({
       error: 'Invalid source parameter'
     }, 400);
@@ -90,6 +90,7 @@ sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
       total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, total_tokens,
       has_tool_calls, parser_malformed_lines, is_truncated, termination_status,
       last_sync_at, file_mtime, cwd, git_branch, agent_name,
+      source_cost_usd, cost_source, cost_pricing_status,
       ${UPDATED_AT_EXPR} as updated_at
     FROM sessions
     WHERE source = ? AND (id = ? OR source_session_id = ?)
@@ -247,6 +248,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
       s.total_cache_read_tokens, s.total_cache_write_tokens, s.total_reasoning_tokens, s.total_tokens,
       s.has_tool_calls, s.parser_malformed_lines, s.is_truncated, s.termination_status,
       s.last_sync_at, s.file_mtime, s.cwd, s.git_branch, s.agent_name,
+      s.source_cost_usd, s.cost_source, s.cost_pricing_status,
       ${updatedAtExpr('s')} as updated_at,
       COALESCE(s.name, s.project || ' — ' || COALESCE(substr(s.started_at, 1, 10), 'unknown')) as display_title,
       ${sessionTotalTokensExpr('s')} as computed_total_tokens,
@@ -355,6 +357,7 @@ sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
       s.total_cache_read_tokens, s.total_cache_write_tokens, s.total_reasoning_tokens, s.total_tokens,
       s.has_tool_calls, s.parser_malformed_lines, s.is_truncated, s.termination_status,
       s.last_sync_at, s.file_mtime, s.cwd, s.git_branch, s.agent_name,
+      s.source_cost_usd, s.cost_source, s.cost_pricing_status,
       ${updatedAtExpr('s')} as updated_at,
       COALESCE(s.name, s.project || ' — ' || COALESCE(substr(s.started_at, 1, 10), 'unknown')) as display_title,
       ${sessionTotalTokensExpr('s')} as computed_total_tokens,
@@ -440,6 +443,9 @@ interface SessionRow {
   summary?: string | null;
   tool_call_count?: number;
   subagent_count?: number;
+  source_cost_usd?: number | null;
+  cost_source?: string | null;
+  cost_pricing_status?: string | null;
 }
 
 // ============================================================================
@@ -453,13 +459,25 @@ function parseSessionRow(row: SessionRow): TraceSession {
   const cacheWriteTokens = row.total_cache_write_tokens || 0;
   const reasoningTokens = row.total_reasoning_tokens || 0;
   const totalTokens = row.total_tokens || row.computed_total_tokens || inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
-  const costEstimate = estimateModelCost(row.model, {
-    inputTokens,
-    outputTokens,
-    cacheReadTokens,
-    cacheWriteTokens,
-    reasoningTokens,
-  });
+
+  let estimatedCost: number | null;
+  let pricingStatus: string | undefined;
+
+  if (row.source_cost_usd != null) {
+    estimatedCost = row.source_cost_usd;
+    pricingStatus = 'priced';
+  } else {
+    const costEstimate = estimateModelCost(row.model, {
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      reasoningTokens,
+    });
+    estimatedCost = costEstimate.cost;
+    pricingStatus = costEstimate.pricingStatus;
+  }
+
   const summary = normalizeSummary(row.summary);
   const toolCalls = row.tool_call_count || 0;
   const subagents = row.subagent_count || 0;
@@ -513,7 +531,7 @@ function parseSessionRow(row: SessionRow): TraceSession {
     totalTurns: row.user_message_count,
     inputTokens,
     outputTokens,
-    estimatedCost: costEstimate.cost,
+    estimatedCost: estimatedCost,
   };
 }
 

@@ -815,17 +815,18 @@ describe('overview endpoints', () => {
   // ==========================================================================
 
   describe('GET /api/v1/overview/capabilities', () => {
-    it('returns capabilities map with all 3 sources', async () => {
+    it('returns capabilities map with all 4 sources', async () => {
       const res = await app.request('/api/v1/overview/capabilities');
       expect(res.status).toBe(200);
       const body = await res.json();
 
       expect(body.capabilities).toBeDefined();
       expect(body.sources).toBeDefined();
-      expect(body.sources).toHaveLength(3);
+      expect(body.sources).toHaveLength(4);
       expect(body.sources).toContain('openclaw');
       expect(body.sources).toContain('claude-code');
       expect(body.sources).toContain('codex');
+      expect(body.sources).toContain('opencode');
 
       // OpenClaw has agents, automations, cost
       expect(body.capabilities.openclaw.agents).toBe(true);

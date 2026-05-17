@@ -14,6 +14,7 @@ import { allAdapter } from '@/lib/agent-tools/all/server-adapter'
 import { openclawAdapter } from '@/lib/agent-tools/openclaw/server-adapter'
 import { claudeCodeAdapter } from '@/lib/agent-tools/claude-code/server-adapter'
 import { codexAdapter } from '@/lib/agent-tools/codex/server-adapter'
+import { opencodeAdapter } from '@/lib/agent-tools/opencode/server-adapter'
 import { sanitizeError } from '@/lib/agent-tools/server-adapter'
 import type { AgentToolServerAdapter } from '@/lib/agent-tools/server-adapter'
 
@@ -22,6 +23,7 @@ const adapters: Record<string, AgentToolServerAdapter> = {
   openclaw: openclawAdapter,
   'claude-code': claudeCodeAdapter,
   codex: codexAdapter,
+  opencode: opencodeAdapter,
 }
 
 export async function GET(

@@ -160,17 +160,18 @@ describe('app/api/sync/route.ts', () => {
     vi.clearAllMocks()
   })
 
-  it('calls ingest sync for all 3 source types', async () => {
+  it('calls ingest sync for all 4 source types', async () => {
     const { POST } = await import('@/app/api/sync/route')
 
     const req = makeRequest('http://localhost/api/sync')
     await POST(req)
 
-    expect(fetchIngestMock).toHaveBeenCalledTimes(3)
+    expect(fetchIngestMock).toHaveBeenCalledTimes(4)
     const paths = fetchIngestMock.mock.calls.map((call) => call[0] as string)
     expect(paths).toContain('/api/v1/sources/openclaw/sync')
     expect(paths).toContain('/api/v1/sources/claude-code/sync')
     expect(paths).toContain('/api/v1/sources/codex/sync')
+    expect(paths).toContain('/api/v1/sources/opencode/sync')
   })
 
   it('forwards force=true to all source syncs when query param is set', async () => {
@@ -179,7 +180,7 @@ describe('app/api/sync/route.ts', () => {
     const req = makeRequest('http://localhost/api/sync?force=true')
     await POST(req)
 
-    expect(fetchIngestMock).toHaveBeenCalledTimes(3)
+    expect(fetchIngestMock).toHaveBeenCalledTimes(4)
     for (const call of fetchIngestMock.mock.calls) {
       const [, opts] = call as [string, { body?: { force?: boolean } }]
       expect(opts?.body).toMatchObject({ force: true })
@@ -194,26 +195,25 @@ describe('app/api/sync/route.ts', () => {
 
     const body = await res.json() as Record<string, unknown>
     expect(Array.isArray(body.results)).toBe(true)
-    expect((body.results as unknown[]).length).toBe(3)
+    expect((body.results as unknown[]).length).toBe(4)
   })
 
   it('includes per-source error when one source sync fails, overall response is 200', async () => {
-    // First call succeeds, second fails (sanitizeError mock returns code 502), third succeeds
     fetchIngestMock
       .mockResolvedValueOnce({ type: 'openclaw', syncResult: {}, status: 'completed' })
       .mockRejectedValueOnce(new Error('ingest down'))
       .mockResolvedValueOnce({ type: 'codex', syncResult: {}, status: 'completed' })
+      .mockResolvedValueOnce({ type: 'opencode', syncResult: {}, status: 'completed' })
 
     const { POST } = await import('@/app/api/sync/route')
 
     const req = makeRequest('http://localhost/api/sync')
     const res = await POST(req)
 
-    expect(res.status).toBe(200) // aggregate route always returns 200
+    expect(res.status).toBe(200)
     const body = await res.json() as Record<string, unknown>
     const results = body.results as Array<Record<string, unknown>>
-    expect(results).toHaveLength(3)
-    // The failed source should have error and status='failed'
+    expect(results).toHaveLength(4)
     const failed = results.find((r) => r.status === 'failed')
     expect(failed).toBeDefined()
     expect(typeof failed?.error).toBe('string')

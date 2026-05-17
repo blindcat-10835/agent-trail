@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: completed
-last_updated: "2026-05-17T14:36:44.011Z"
+last_updated: "2026-05-17T14:50:40.000Z"
 progress:
-  total_phases: 7
-  completed_phases: 5
+  total_phases: 8
+  completed_phases: 6
   total_plans: 18
   completed_plans: 18
-  percent: 71
+  percent: 75
 ---
 
 # agent-tracing-dashboard Project State
@@ -26,26 +26,26 @@ See: `.planning/PROJECT.md` (updated 2026-05-12)
 
 **Core value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
 
-**Current focus:** Phase 13 — Sessions Table & Trace Detail v2 residuals
+**Current focus:** Phase 14 — Visual QA & Integration Hardening
 
 ---
 
 ## Current Position
 
-Phase: 13 (Sessions Table & Trace Detail v2) — PARTIAL
-Plan: residual gap closure
+Phase: 14 (Visual QA & Integration Hardening) — PLANNED
+Plan: prepare visual and regression QA after Phase 13 completion
 **Milestone:** v1.1 Data-Rich HUD Redesign — ACTIVE
 
-**Phase:** 13 (Sessions Table & Trace Detail v2)
+**Phase:** 14 (Visual QA & Integration Hardening)
 
-**Plan:** complete remaining Sessions indexed table and long-session detail gaps
+**Plan:** verify shell, overview, sessions table, session detail, themes, and source switching
 
-**Status:** Phase 12 complete; Phase 13 partially complete
+**Status:** Phase 13 complete; Phase 14 is next
 
 **Progress Bar:**
 
 ```text
-v1.1:                [▓▓▓▓▓▓▓▓▓░] 88% (16/16 plans complete, 5/7 phases complete)
+v1.1:                [▓▓▓▓▓▓▓░░░] 75% (6/8 phases complete)
 ```
 
 **Phase Progress:**
@@ -64,12 +64,12 @@ v1.1:                [▓▓▓▓▓▓▓▓▓░] 88% (16/16 plans complete,
   - 12-03: States polish — ✓ Complete
   - 12-04: Automation module — ✓ Complete
   - 12-05: Token/cost toggle and estimated cost — ✓ Complete
-- Phase 13: Sessions Table & Trace Detail v2 — Partial (2/5 requirements complete)
+- Phase 13: Sessions Table & Trace Detail v2 — ✓ Complete (5/5 requirements)
   - SES-103: Session Detail v2 baseline — ✓ Complete
   - SES-104: Replay continuity baseline — ✓ Complete
-  - SES-101: Sessions indexed table backend/search/filter/sort path — Pending
-  - SES-102: Complete session row fields — Pending
-  - SES-105: Routed long-session pagination/virtualization — Pending
+  - SES-101: Sessions indexed table backend/search/filter/sort path — ✓ Complete
+  - SES-102: Complete session row fields — ✓ Complete
+  - SES-105: Routed long-session pagination/virtualization — ✓ Complete
 - Phase 14: Visual QA & Integration Hardening — Planned
 - Phase 15: Ingest Sync Performance Hardening — ✓ Complete (3/3 plans)
   - 15-01: Sync scheduler, watcher path handoff, periodic no-reentry — ✓ Complete
@@ -80,6 +80,7 @@ v1.1:                [▓▓▓▓▓▓▓▓▓░] 88% (16/16 plans complete,
   - 16-02: Claude/Codex append parser paths — ✓ Complete
   - 16-03: Idempotent append/upsert write path — ✓ Complete
   - 16-04: Sync debug history, structured logs, bounded config, regression gate — ✓ Complete
+- Phase 17: OpenCode Source Integration — Planned
 
 ---
 
@@ -180,6 +181,7 @@ v1.1 has two explicit workstreams:
 | 260516-nvg | Token accounting repair for Claude Code and Codex channels | 2026-05-16 | a8f60fe | [260516-nvg-2026-05-16-reference-token-cost-investig](./quick/260516-nvg-2026-05-16-reference-token-cost-investig/) |
 | 260517-uks | Implement overview cost estimation from unified AI provider pricing table | 2026-05-17 | 1883e36 | [260517-uks-implement-overview-cost-estimation-from-](./quick/260517-uks-implement-overview-cost-estimation-from-/) |
 | 260517-fast | Mark Phase 12 complete and Phase 13 partial from code status | 2026-05-17 | this commit | — |
+| 260517-wjv | Complete remaining Phase 13 Sessions table and long-session detail gaps | 2026-05-17 | this commit | [260517-wjv-complete-remaining-phase-13-sessions-tab](./quick/260517-wjv-complete-remaining-phase-13-sessions-tab/) |
 
 ### Watchpoints
 
@@ -192,20 +194,21 @@ v1.1 has two explicit workstreams:
 
 ## Session Continuity
 
-**Last Session**: 2026-05-17 — Marked Phase 12 complete and Phase 13 partial from code status
+**Last Session**: 2026-05-17 — Completed Phase 13 Sessions Table & Trace Detail v2 residuals
 
 **What Was Done:**
 
-- Marked OVR-101..OVR-105 complete after overview cost, automation, source scoping, and state handling landed
-- Marked SES-103 and SES-104 complete for the current Session Detail v2/replay baseline
-- Left SES-101, SES-102, and SES-105 pending for the known Sessions table and long-session detail gaps
+- Implemented backend-backed Sessions list pagination/search/filter/sort, including ACTIVITY sort
+- Added session row enrichment for branch, summary, model, input/output token split, duration, estimated cost, and activity counts
+- Connected Session Detail turn pagination and virtualized routed TraceThread rendering for long sessions
+- Added targeted sessions API and client hook regression tests
 
 **What's Next:**
 
-- Phase 13 residuals: backend-backed Sessions table filtering/sorting/search, missing row fields, activity sort, and routed long-session pagination/virtualization
+- Phase 14: visual QA and integration hardening across shell, overview, sessions table, detail, themes, source switching, and regression suites
 
 ---
 
 *State created: 2026-05-06*
 *Last updated: 2026-05-17*
-*Last activity: 2026-05-17 - Completed fast task 260517-fast: Mark Phase 12 complete and Phase 13 partial from code status*
+*Last activity: 2026-05-17 - Completed quick task 260517-wjv: Phase 13 Sessions table and long-session detail residuals*

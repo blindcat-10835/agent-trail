@@ -15,7 +15,7 @@
  * Concrete ingest-backed agent tool sources.
  * Must remain compatible with TraceSource in types/trace.ts.
  */
-export type SourceToolId = 'openclaw' | 'claude-code' | 'codex'
+export type SourceToolId = 'openclaw' | 'claude-code' | 'codex' | 'opencode'
 
 /**
  * Supported tool scopes in the shell.

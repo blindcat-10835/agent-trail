@@ -41,4 +41,12 @@ export const SOURCE_CAPABILITIES: Record<string, SourceCapabilities> = {
     sessions: true,
     replay: true,
   },
+  opencode: {
+    agents: false,
+    automations: false,
+    cost: true,
+    activity: true,
+    sessions: true,
+    replay: true,
+  },
 };

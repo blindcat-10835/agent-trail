@@ -72,7 +72,7 @@ The frontend **never** calls the ingest service directly. Every request flows th
 
 The BFF gives us four properties for free:
 
-1. **Source scoping.** The `[tool]` URL segment is the trust boundary. `assertSourceToolId(tool)` rejects anything that isn't `openclaw`, `claude-code`, or `codex` with a 400. The adapter then injects `source=<tool>` into the ingest query — caller-supplied `source` is intentionally ignored (`buildSourceScopedSessionParams` deletes it).
+1. **Source scoping.** The `[tool]` URL segment is the trust boundary. `assertSourceToolId(tool)` rejects anything that isn't `openclaw`, `claude-code`, `codex`, or `opencode` with a 400. The adapter then injects `source=<tool>` into the ingest query — caller-supplied `source` is intentionally ignored (`buildSourceScopedSessionParams` deletes it).
 2. **Cross-source isolation.** `getSourceScopedSession` reads the session and verifies `session.source === source` before returning anything; child resources (`/messages`, `/turns`) call `requireSourceScopedSession` first, so a Codex client can't fetch an OpenClaw session by guessing its ID.
 3. **Limit capping.** The BFF caps `limit` at 100 even though ingest allows up to 1000. UI lists never need more than that and we don't want browser tabs allocating multi-MB JSON blobs.
 4. **Error sanitization.** `sanitizeError` strips stack traces, internal paths, and ingest internals before responding. Anything we can't classify becomes `{ error: "Ingest service unreachable", code: 502 }`. Validation errors keep their HTTP status (400 / 404).
@@ -102,7 +102,7 @@ The fourth scope, `all`, is a synthetic aggregate view — it is not an ingest s
 | `[tool]` URL segment (BFF) | `assertSourceToolId` (or `assertAgentToolId` for shell) | 400 on unknown tool |
 | `sessionId` URL segment (BFF) | `validateSessionId` (regex `^[a-zA-Z0-9:\-_.]{1,256}$`) | 400 on bad format |
 | `sessionId` URL segment (ingest) | Same regex applied independently | 400 on bad format |
-| `?source=` (ingest) | Whitelist `['openclaw', 'claude-code', 'codex']` | 400 on unknown source |
+| `?source=` (ingest) | Whitelist `['openclaw', 'claude-code', 'codex', 'opencode']` | 400 on unknown source |
 | `?role=` (ingest `/messages`) | Whitelist `['user', 'assistant', 'system', 'tool_result']` | 400 on bad role |
 | `?sort=` / `?order=` (ingest) | Whitelist `updated_at` / `started_at` / `ended_at` × `asc` / `desc` | 400 on bad sort |
 | `limit` / `offset` | Non-negative integers; `limit` capped at 1000 (ingest) / 100 (BFF) | 400 on negative |
@@ -115,7 +115,7 @@ The fourth scope, `all`, is a synthetic aggregate view — it is not an ingest s
 Everything in the system speaks one shape, defined in [`types/trace.ts`](../types/trace.ts):
 
 ```text
-TraceSource           = 'openclaw' | 'claude-code' | 'codex'
+TraceSource           = 'openclaw' | 'claude-code' | 'codex' | 'opencode'
 TraceSession          { id, source, project, name?, startedAt, endedAt, status, metrics, ... }
 TraceTurn             { id, sessionId, index, userMessage, assistantMessages[], activities[], ... }
 TraceMessage          { id, ordinal, role, content, timestamp?, model?, tokenUsage?, sourceMetadata }
@@ -192,11 +192,11 @@ The watcher and sync internals are detailed in [`services/ingest.md`](services/i
 
 ## 7. Frontend layout
 
-Routes live under `app/(tool-shell)/[tool]/` (a route group, so `(tool-shell)` is not part of the URL). `[tool]` is one of `openclaw | claude-code | codex | all`. The root `app/page.tsx` redirects `/` to `/all/dashboard`.
+Routes live under `app/(tool-shell)/[tool]/` (a route group, so `(tool-shell)` is not part of the URL). `[tool]` is one of `openclaw | claude-code | codex | opencode | all`. The root `app/page.tsx` redirects `/` to `/all/dashboard`.
 
 The shell (`components/shell/shell-frame.tsx`) is a 3-row CSS grid: 48px header, 1fr main (with optional 360px right rail), 26px status bar. `SidebarNav` is a fixed 56px column; `SourceSwitcher` lives in the header.
 
-Per-tool behaviour is driven by `AgentToolDefinition` records in `lib/agent-tools/{openclaw,claude-code,codex,all}/definition.ts`. The registry exposes:
+Per-tool behaviour is driven by `AgentToolDefinition` records in `lib/agent-tools/{openclaw,claude-code,codex,opencode,all}/definition.ts`. The registry exposes:
 
 - `capabilities` — feature flags (sessions, replay, activity, subagents, cost, …) that gate nav items and pages.
 - `nav` — sidebar items, each with an optional `requiredCapability` flag.
@@ -290,6 +290,6 @@ For decision history and rationale, see [`.planning/PROJECT.md`](../.planning/PR
 - **No multi-user, no auth, no RBAC.** Single-user local tool.
 - **No prompt playground, model-comparison, LLM-as-judge.** Out of v1 scope per `.planning/PROJECT.md`.
 - **No public share links, no upload.** Sessions can leak credentials and code.
-- **No agentsview-style universal-agent registry.** v1 ships only OpenClaw / Claude Code / Codex parsers; the schema leaves room to add more, but the registry is enumerated, not generic (D-21).
+- **No agentsview-style universal-agent registry.** v1 ships only OpenClaw / Claude Code / Codex / OpenCode parsers; the schema leaves room to add more, but the registry is enumerated, not generic (D-21).
 
-When in doubt: **read-only, local-only, three sources**.
+When in doubt: **read-only, local-only, four sources**.

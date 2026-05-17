@@ -25,7 +25,7 @@ One row per session file. Contains metadata, file provenance, metrics, and relat
 | Column | Type | Constraints | Description |
 | --- | --- | --- | --- |
 | `id` | TEXT | **PK** | Session ID (e.g. UUID for Claude Code, `agent:{name}:{uuid}` for OpenClaw) |
-| `source` | TEXT | NOT NULL, CHECK IN (`openclaw`, `claude-code`, `codex`) | Which agent tool produced this session |
+| `source` | TEXT | NOT NULL, CHECK IN (`openclaw`, `claude-code`, `codex`, `opencode`) | Which agent tool produced this session |
 | `project` | TEXT | NOT NULL | Decoded project/cwd path |
 | `name` | TEXT | nullable | Display name extracted from first user message |
 | `started_at` | TEXT | nullable | ISO 8601 timestamp of first message |
@@ -50,6 +50,9 @@ One row per session file. Contains metadata, file provenance, metrics, and relat
 | `parser_malformed_lines` | INTEGER | NOT NULL, DEFAULT 0 | Count of unparseable JSONL lines |
 | `is_truncated` | INTEGER | NOT NULL, DEFAULT 0, CHECK IN (0, 1) | Whether context window was compacted |
 | `termination_status` | TEXT | nullable | How the session ended (e.g. `completed`, `cancelled`) |
+| `source_cost_usd` | REAL | nullable | Source-reported cost in USD (opencode reports exact cost) |
+| `cost_source` | TEXT | nullable | Cost source: `'source-reported'` for opencode, null for pricing registry estimates |
+| `cost_pricing_status` | TEXT | nullable | Pricing status: `'priced'` (exact), `'reported_zero'` (cost=0 with tokens), null for estimates |
 
 **Foreign keys:**
 - `root_session_id` → `sessions.id` ON DELETE SET NULL
@@ -153,7 +156,7 @@ Per-source sync health tracking. One row per source type.
 
 | Column | Type | Constraints | Description |
 | --- | --- | --- | --- |
-| `source_type` | TEXT | **PK** | Source type (`openclaw`, `claude-code`, `codex`) |
+| `source_type` | TEXT | **PK** | Source type (`openclaw`, `claude-code`, `codex`, `opencode`) |
 | `last_full_sync_at` | TEXT | nullable | Timestamp of last full resync |
 | `last_watch_sync_at` | TEXT | nullable | Timestamp of last file-watcher-triggered sync |
 | `files_watched` | INTEGER | NOT NULL, DEFAULT 0 | Number of session files processed |

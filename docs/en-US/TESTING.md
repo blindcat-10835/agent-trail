@@ -21,7 +21,7 @@ For workflow context, see [`DEVELOPMENT.md`](DEVELOPMENT.md). For setup, see [`G
 | --- | --- |
 | `vitest.config.ts` | Single Vitest config. Includes `tests/**/*.test.{ts,tsx}`, `lib/**/*.test.{ts,tsx}`, `ingest/**/*.test.ts`. Default environment is `node`. Path alias `@` → repo root. |
 | `tests/types.test.ts` | Type-shape assertions on the canonical trace contract. |
-| `tests/fixtures.test.ts` | Golden-file regression: every fixture in `fixtures/{openclaw,claude-code,codex}/` parsed against its `.golden.json`. |
+| `tests/fixtures.test.ts` | Golden-file regression: every fixture in `fixtures/{openclaw,claude-code,codex,opencode}/` parsed against its `.golden.json`. |
 | `tests/fixtures/` | Source-specific real-shape JSONL captures and parser-regression fixtures. |
 | `tests/unit/ingest/` | Parser, sync, sources, turn-assembler, db-migration, sessions-API, tool-persistence, regression suites. |
 | `tests/unit/bff/` | BFF behaviour: source-switcher routing, sync route, turns pagination, replay store hooks, virtualization, key utils. |

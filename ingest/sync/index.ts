@@ -60,7 +60,7 @@ export interface SyncObserver {
   onFileComplete?: (event: SyncProgressEvent) => void;
 }
 
-export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex';
+export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex' | 'opencode';
 
 export interface FileSnapshotWithIdentity {
   size: number;
@@ -1725,6 +1725,8 @@ export async function syncSource(
     result = await syncClaudeCodeSource(opts);
   } else if (sourceType === 'codex') {
     result = await syncCodexSource(opts);
+  } else if (sourceType === 'opencode') {
+    result = await syncOpencodeSource(opts);
   } else {
     result = {
       sessionsInserted: 0,
@@ -1879,6 +1881,10 @@ async function parseFullCandidate(
       updateCursorAfterFullParse(database, sourceType, filePath, parseResult, fallbackReason);
     }
     mergeSyncResult(totalResult, writeResult);
+    return;
+  }
+
+  if (sourceType === 'opencode') {
     return;
   }
 
@@ -2374,6 +2380,135 @@ export function backfillCodexRelationships(
 
   backfill();
   return totalUpdated;
+}
+
+// ============================================================================
+// OpenCode Sync
+// ============================================================================
+
+async function syncOpencodeSource(opts: SyncSourceOptions): Promise<SyncResult> {
+  const { discoverOpencodeSources } = await import('./sources');
+  const { parseOpencodeSession, computeOpencodeSkipKey } = await import('../parser/opencode');
+
+  const { getConfig } = await import('../config');
+  const toolDirs = getConfig().toolDirs;
+  const sources = await discoverOpencodeSources(toolDirs.get('opencode'));
+
+  const totalResult = createSyncResult();
+  const database = getDatabase();
+
+  if (sources.length === 0 || sources[0].error) {
+    totalResult.errors.push(
+      sources[0]?.error ?? 'No OpenCode database found'
+    );
+    return totalResult;
+  }
+
+  const dbPath = sources[0].path;
+  let ocDb: Database.Database;
+
+  try {
+    ocDb = new Database(dbPath, { readonly: true, fileMustExist: true });
+  } catch (err) {
+    totalResult.errors.push(
+      `Failed to open OpenCode DB at ${dbPath}: ${err instanceof Error ? err.message : err}`
+    );
+    return totalResult;
+  }
+
+  try {
+    const sessionRows = ocDb.prepare(
+      'SELECT s.*, p.worktree as project_worktree FROM session s LEFT JOIN project p ON s.project_id = p.id ORDER BY s.time_updated DESC'
+    ).all() as (Record<string, unknown> & { project_worktree?: string | null })[];
+
+    if (totalResult.metrics) {
+      totalResult.metrics.filesConsidered = sessionRows.length;
+    }
+
+    for (const row of sessionRows) {
+      try {
+        const rawSessionId = row.id as string;
+        const sessionRow = row as unknown as import('../parser/opencode').OpencodeSessionRow;
+
+        const msgCountRow = ocDb.prepare(
+          'SELECT COUNT(*) as cnt FROM message WHERE session_id = ?'
+        ).get(rawSessionId) as { cnt: number };
+
+        const partCountRow = ocDb.prepare(
+          'SELECT COUNT(*) as cnt FROM part WHERE session_id = ?'
+        ).get(rawSessionId) as { cnt: number };
+
+        const skipKey = computeOpencodeSkipKey(
+          sessionRow,
+          msgCountRow.cnt,
+          partCountRow.cnt,
+        );
+
+        const canonicalId = `opencode:${rawSessionId}`;
+
+        if (!opts.force) {
+          const existing = database.prepare(
+            'SELECT file_hash FROM sessions WHERE id = ?'
+          ).get(canonicalId) as { file_hash: string | null } | undefined;
+
+          if (existing?.file_hash === skipKey) {
+            if (totalResult.metrics) {
+              totalResult.metrics.filesSkippedBeforeParse++;
+            }
+            continue;
+          }
+        }
+
+        const projectOverride = (row.project_worktree as string) || (row.directory as string) || undefined;
+        const parseResult = await parseOpencodeSession(dbPath, rawSessionId, projectOverride);
+
+        recordFileParsed(totalResult, 'full');
+        parseResult.session.name = parseResult.session.name || extractSessionName(parseResult);
+        parseResult.session.project = extractProjectFromParsedSession(parseResult, projectOverride ?? 'default');
+
+        const writeResult = writeSessionToDatabase(
+          parseResult,
+          database,
+          undefined,
+          { force: opts.force ?? false },
+        );
+
+        const lastSyncAt = new Date().toISOString();
+        database.prepare(`
+          UPDATE sessions SET
+            file_path = ?,
+            file_hash = ?,
+            last_sync_at = ?
+          WHERE id = ? AND source = 'opencode'
+        `).run(`${dbPath}#${rawSessionId}`, skipKey, lastSyncAt, canonicalId);
+
+        mergeSyncResult(totalResult, writeResult);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('SQLITE_BUSY')) {
+          console.warn(`[sync:opencode] Skipping session ${row.id}: DB busy`);
+          totalResult.errors.push(`Skipped session ${row.id}: DB busy`);
+        } else {
+          totalResult.errors.push(`Failed to sync opencode session ${row.id}: ${msg}`);
+        }
+      }
+    }
+  } catch (err) {
+    totalResult.errors.push(
+      `Failed to query OpenCode sessions: ${err instanceof Error ? err.message : err}`
+    );
+  } finally {
+    ocDb.close();
+  }
+
+  sseManager.emit('sync_complete', {
+    source: 'opencode',
+    sessionsInserted: totalResult.sessionsInserted,
+    sessionsUpdated: totalResult.sessionsUpdated,
+    errors: totalResult.errors.length,
+  });
+
+  return totalResult;
 }
 
 export async function collectCodexRelationships(

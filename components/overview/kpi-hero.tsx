@@ -47,6 +47,7 @@ const SOURCE_LABELS: Record<string, string> = {
   openclaw: 'OPENCLAW',
   'claude-code': 'CLAUDE:CODE',
   codex: 'CODEX',
+  opencode: 'OPENCODE',
 }
 
 // ============================================================================

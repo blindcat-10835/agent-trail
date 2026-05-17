@@ -19,7 +19,7 @@
 /**
  * Supported agent sources
  */
-export type TraceSource = 'openclaw' | 'claude-code' | 'codex';
+export type TraceSource = 'openclaw' | 'claude-code' | 'codex' | 'opencode';
 
 /**
  * Ingest service status (file-based discovery and parsing)

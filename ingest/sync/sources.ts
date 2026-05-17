@@ -8,8 +8,10 @@
  * @module ingest/sync/sources
  */
 
+import Database from 'better-sqlite3';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
 import { TraceSource } from '@/types/trace';
 import { getConfig } from '../config';
 import type { SourceToolId } from '@/lib/agent-tools/types';
@@ -262,6 +264,79 @@ export async function discoverCodexSources(dirs?: string[]): Promise<DiscoveredS
 }
 
 // ============================================================================
+// OpenCode Discovery
+// ============================================================================
+
+const OPENCODE_REQUIRED_TABLES = ['session', 'message', 'part', 'project'] as const;
+
+function resolveOpencodeDbPath(): string {
+  const config = getConfig();
+  const dirs = config.toolDirs.get('opencode') ?? [];
+  if (dirs.length > 0) {
+    const candidate = dirs[0];
+    if (candidate.endsWith('.db')) return candidate;
+    return path.join(candidate, 'opencode.db');
+  }
+  return path.join(os.homedir(), '.local', 'share', 'opencode', 'opencode.db');
+}
+
+/**
+ * Discover OpenCode sources from the configured SQLite database path
+ *
+ * Opens the opencode.db readonly, validates schema, counts sessions.
+ *
+ * @param dirs - Optional directory list override; defaults to resolved config
+ */
+export async function discoverOpencodeSources(dirs?: string[]): Promise<DiscoveredSource[]> {
+  let dbPath: string;
+  if (dirs && dirs.length > 0) {
+    const candidate = dirs[0];
+    dbPath = candidate.endsWith('.db') ? candidate : path.join(candidate, 'opencode.db');
+  } else {
+    dbPath = resolveOpencodeDbPath();
+  }
+
+  try {
+    await fs.access(dbPath);
+  } catch {
+    return [{ type: 'opencode', path: dbPath, sessionCount: 0, error: 'Not found' }];
+  }
+
+  let db: Database.Database;
+  try {
+    db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to open database';
+    console.warn(`[sources] OpenCode DB locked or unreadable: ${dbPath}: ${msg}`);
+    return [{ type: 'opencode', path: dbPath, sessionCount: 0, error: msg }];
+  }
+
+  try {
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+      .all() as { name: string }[];
+    const existing = new Set(tables.map((r) => r.name));
+    const missing = OPENCODE_REQUIRED_TABLES.filter((t) => !existing.has(t));
+    if (missing.length > 0) {
+      return [{
+        type: 'opencode',
+        path: dbPath,
+        sessionCount: 0,
+        error: `Schema validation failed: missing tables [${missing.join(', ')}]`,
+      }];
+    }
+
+    const row = db.prepare('SELECT COUNT(*) as cnt FROM session').get() as { cnt: number };
+    return [{ type: 'opencode', path: dbPath, sessionCount: row.cnt }];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to query database';
+    return [{ type: 'opencode', path: dbPath, sessionCount: 0, error: msg }];
+  } finally {
+    db.close();
+  }
+}
+
+// ============================================================================
 // Source Config Resolution
 // ============================================================================
 
@@ -269,7 +344,7 @@ export async function discoverCodexSources(dirs?: string[]): Promise<DiscoveredS
  * Get source configuration for a specific source type
  *
  * Returns configuration for all discovered sources of the given type.
- * Supports OpenClaw, Claude Code, and Codex sources.
+ * Supports OpenClaw, Claude Code, Codex, and OpenCode sources.
  *
  * @param sourceType - Type of source to configure
  * @returns Array of source configurations
@@ -283,6 +358,8 @@ export async function getSourceConfig(sourceType: TraceSource): Promise<SourceCo
     sources = await discoverClaudeSources();
   } else if (sourceType === 'codex') {
     sources = await discoverCodexSources();
+  } else if (sourceType === 'opencode') {
+    sources = await discoverOpencodeSources();
   } else {
     return [];
   }

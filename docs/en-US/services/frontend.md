@@ -15,7 +15,7 @@ app/
 ├── globals.css                         # Tailwind v4 + @theme inline tokens (no tailwind.config.js)
 ├── favicon.ico
 ├── (tool-shell)/                       # Route group — wraps every per-tool page in the shell
-│   └── [tool]/                         # Dynamic segment: openclaw | claude-code | codex | all
+│   └── [tool]/                         # Dynamic segment: openclaw | claude-code | codex | opencode | all
 │       ├── layout.tsx                  # Server component: assertAgentToolId(tool) → ToolLayoutClient
 │       ├── tool-layout-client.tsx      # 'use client': AgentToolProvider + ShellFrame wrapper
 │       ├── dashboard/
@@ -99,7 +99,7 @@ The route group `(tool-shell)/` is invisible in URLs. `[tool]` is a dynamic segm
 | `/<tool>/sessions/<id>` | `app/(tool-shell)/[tool]/sessions/[sessionId]/page.tsx` (turn-by-turn replay) |
 | `/<tool>/activity` | `app/(tool-shell)/[tool]/activity/page.tsx` |
 
-`<tool>` must be one of `openclaw | claude-code | codex | all`. The shell layout validates it via `assertAgentToolId`; anything else triggers `notFound()` (Next 404).
+`<tool>` must be one of `openclaw | claude-code | codex | opencode | all`. The shell layout validates it via `assertAgentToolId`; anything else triggers `notFound()` (Next 404).
 
 ### 2.3 Shell layout
 
@@ -138,7 +138,7 @@ export const AGENT_TOOL_DEFINITIONS: Record<AgentToolId, AgentToolDefinition> = 
   codex: codexDef,
 }
 
-export const TOOL_IDS: SourceToolId[] = ['openclaw', 'claude-code', 'codex']           // ingest-backed only
+export const TOOL_IDS: SourceToolId[] = ['openclaw', 'claude-code', 'codex', 'opencode']           // ingest-backed only
 export const SHELL_TOOL_IDS: AgentToolId[] = ['all', ...TOOL_IDS]                       // includes aggregate
 ```
 
@@ -160,7 +160,7 @@ Current tool capabilities (from the four definition files):
 
 The two trust-boundary validators:
 
-- `assertAgentToolId(raw)` accepts `all | openclaw | claude-code | codex` — used in shell URL parsing.
+- `assertAgentToolId(raw)` accepts `all | openclaw | claude-code | codex | opencode` — used in shell URL parsing.
 - `assertSourceToolId(raw)` accepts only the three ingest sources — used in BFF route handlers, where `all` is meaningless.
 
 Both throw with a descriptive error listing valid IDs, which the BFF turns into a 400 via `sanitizeError`.

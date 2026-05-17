@@ -106,7 +106,7 @@ These are non-obvious enough to call out:
    ```
 3. Validate every URL/query input. Use the existing patterns:
    - `sessionId` → `/^[a-zA-Z0-9:\-_.]{1,256}$/`
-   - `source`    → whitelist `['openclaw', 'claude-code', 'codex']`
+   - `source`    → whitelist `['openclaw', 'claude-code', 'codex', 'opencode']`
    - `limit`/`offset` → non-negative integers, cap `limit` at 1000
 4. Return JSON via `c.json()`. Set explicit status codes (400 / 404 / 500) — don't rely on defaults.
 5. Add tests under `ingest/api/*.test.ts` or `tests/unit/ingest/`.

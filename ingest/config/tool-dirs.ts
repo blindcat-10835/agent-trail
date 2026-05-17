@@ -42,6 +42,13 @@ export const TOOL_DIR_REGISTRY: ToolDirDef[] = [
     configKey: 'codex_sessions_dirs',
     defaultDirs: ['.codex/sessions'],
   },
+  {
+    type: 'opencode',
+    displayName: 'OpenCode',
+    envVar: 'OPENCODE_DB_PATH',
+    configKey: 'opencode_db_paths',
+    defaultDirs: ['.local/share/opencode'],
+  },
 ];
 
 interface ToolConfigFile {
