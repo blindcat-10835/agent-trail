@@ -35,7 +35,7 @@ export const SOURCE_CAPABILITIES: Record<string, SourceCapabilities> = {
   },
   codex: {
     agents: false,
-    automations: false,
+    automations: true,
     cost: false,
     activity: true,
     sessions: true,

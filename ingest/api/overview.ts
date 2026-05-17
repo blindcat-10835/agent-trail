@@ -12,6 +12,7 @@
 import { Hono } from 'hono';
 import { getDatabase } from '../db/index.js';
 import { SOURCE_CAPABILITIES } from '../config/capabilities.js';
+import { readFileBackedAutomations, type FileAutomationSummary } from './automation-sources.js';
 
 export const overviewRoutes = new Hono();
 
@@ -74,7 +75,7 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
   const db = getDatabase();
 
   const conditions: string[] = [];
-  const params: any[] = [];
+  const params: string[] = [];
 
   if (source) {
     conditions.push('source = ?');
@@ -609,20 +610,24 @@ overviewRoutes.get('/api/v1/overview/agents', (c) => {
 overviewRoutes.get('/api/v1/overview/automations', (c) => {
   const source = c.req.query('source');
 
-  // Source is required for automations endpoint
-  if (!source) {
-    return c.json({ error: 'source query parameter is required' }, 400);
-  }
-
-  if (!isValidSource(source)) {
+  if (source && !isValidSource(source)) {
     return c.json({ error: 'Invalid source parameter' }, 400);
   }
+  const requestedSource = source as FileAutomationSummary['source'] | undefined;
 
   const db = getDatabase();
 
-  // Automations: agent-named sessions with no user input (user_message_count = 0)
+  const conditions = ['s.agent_name IS NOT NULL', 's.user_message_count = 0'];
+  const params: string[] = [];
+  if (source) {
+    conditions.unshift('s.source = ?');
+    params.push(source);
+  }
+
+  // Session fallback: agent-named sessions with no user input.
   const rows = db.prepare(`
     SELECT
+      s.source AS source,
       s.agent_name AS name,
       COUNT(DISTINCT s.id) AS session_count,
       MAX(s.started_at) AS last_active_at,
@@ -645,10 +650,11 @@ overviewRoutes.get('/api/v1/overview/automations', (c) => {
         0
       ) AS tool_call_count
     FROM sessions s
-    WHERE s.source = ? AND s.agent_name IS NOT NULL AND s.user_message_count = 0
-    GROUP BY s.agent_name
+    WHERE ${conditions.join(' AND ')}
+    GROUP BY s.source, s.agent_name
     ORDER BY last_active_at DESC
-  `).all(source) as Array<{
+  `).all(...params) as Array<{
+    source: string;
     name: string;
     session_count: number;
     last_active_at: string | null;
@@ -657,15 +663,75 @@ overviewRoutes.get('/api/v1/overview/automations', (c) => {
   }>;
 
   return c.json({
-    automations: rows.map((row) => ({
+    automations: mergeAutomationSummaries(
+      rows.map((row): FileAutomationSummary => ({
+        source: row.source as FileAutomationSummary['source'],
+        name: row.name,
+        sessionCount: row.session_count,
+        toolCallCount: row.tool_call_count,
+        lastActiveAt: row.last_active_at,
+        latestStatus: row.latest_status,
+      })),
+      readFileBackedAutomations(requestedSource),
+    ).map((row) => ({
+      id: row.id,
+      source: row.source,
       name: row.name,
-      sessionCount: row.session_count,
-      toolCallCount: row.tool_call_count,
-      lastActiveAt: row.last_active_at,
-      latestStatus: row.latest_status,
+      sessionCount: row.sessionCount,
+      toolCallCount: row.toolCallCount,
+      lastActiveAt: row.lastActiveAt,
+      latestStatus: row.latestStatus,
+      schedule: row.schedule,
+      nextRunAt: row.nextRunAt,
+      model: row.model,
     })),
   });
 });
+
+type AutomationEndpointRow = FileAutomationSummary;
+
+function mergeAutomationSummaries(
+  sessionRows: AutomationEndpointRow[],
+  fileRows: AutomationEndpointRow[],
+): AutomationEndpointRow[] {
+  const merged = new Map<string, AutomationEndpointRow>();
+
+  for (const row of [...sessionRows, ...fileRows]) {
+    const key = `${row.source}:${row.name.trim().toLowerCase()}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...row });
+      continue;
+    }
+
+    const lastActiveAt = laterDate(existing.lastActiveAt, row.lastActiveAt);
+    merged.set(key, {
+      ...existing,
+      ...row,
+      id: existing.id ?? row.id,
+      schedule: existing.schedule ?? row.schedule,
+      nextRunAt: existing.nextRunAt ?? row.nextRunAt,
+      model: existing.model ?? row.model,
+      sessionCount: Math.max(existing.sessionCount, row.sessionCount),
+      toolCallCount: Math.max(existing.toolCallCount, row.toolCallCount),
+      lastActiveAt,
+      latestStatus: lastActiveAt === row.lastActiveAt ? row.latestStatus : existing.latestStatus,
+    });
+  }
+
+  return [...merged.values()].sort((a, b) => {
+    const at = a.lastActiveAt ? new Date(a.lastActiveAt).getTime() : 0;
+    const bt = b.lastActiveAt ? new Date(b.lastActiveAt).getTime() : 0;
+    if (bt !== at) return bt - at;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function laterDate(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
+}
 
 // ============================================================================
 // 8. GET /api/v1/overview/status (OPEN-103)

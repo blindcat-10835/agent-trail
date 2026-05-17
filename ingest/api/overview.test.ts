@@ -8,8 +8,8 @@
  * Pattern: open temp DB, run schema, insert fixtures, mount routes.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { rmSync } from 'fs';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -23,11 +23,78 @@ import { overviewRoutes } from './overview.js';
 // ============================================================================
 
 let dbPath: string;
+let automationFixtureRoot: string;
+let previousOpenClawHome: string | undefined;
+let previousCodexHome: string | undefined;
 
 function createApp(): Hono {
   const app = new Hono();
   app.route('/', overviewRoutes);
   return app;
+}
+
+function writeAutomationFixtures(root: string): void {
+  const openclawRoot = join(root, 'openclaw');
+  const codexRoot = join(root, 'codex');
+
+  mkdirSync(join(openclawRoot, 'cron', 'runs'), { recursive: true });
+  writeFileSync(
+    join(openclawRoot, 'cron', 'jobs.json'),
+    JSON.stringify({
+      version: 1,
+      jobs: [
+        {
+          id: 'oc-file-job',
+          name: 'openclaw-nightly-docs',
+          enabled: true,
+          schedule: { kind: 'cron', expr: '0 3 * * *', tz: 'Asia/Tokyo' },
+          payload: { model: 'gpt-5.4' },
+          state: {
+            nextRunAtMs: 1779062400000,
+            lastRunAtMs: 1778976000000,
+            lastRunStatus: 'ok',
+            lastStatus: 'ok',
+          },
+        },
+      ],
+    }),
+  );
+  writeFileSync(
+    join(openclawRoot, 'cron', 'runs', 'oc-file-job.jsonl'),
+    JSON.stringify({
+      ts: 1778976000000,
+      jobId: 'oc-file-job',
+      action: 'finished',
+      status: 'ok',
+      runAtMs: 1778976000000,
+    }) + '\n',
+  );
+
+  mkdirSync(join(codexRoot, 'automations', 'codex-file-job'), { recursive: true });
+  writeFileSync(
+    join(codexRoot, 'automations', 'codex-file-job', 'automation.toml'),
+    [
+      'id = "codex-file-job"',
+      'kind = "cron"',
+      'name = "codex-weekly-docs"',
+      'status = "ACTIVE"',
+      'rrule = "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0"',
+      'model = "gpt-5.4"',
+      'updated_at = 1778169912118',
+    ].join('\n'),
+  );
+  writeFileSync(
+    join(codexRoot, 'automations', 'codex-file-job', 'memory.md'),
+    [
+      '2026-03-15 00:03:50 JST',
+      '- First run summary.',
+      '2026-03-16 00:02:20 JST',
+      '- Second run summary.',
+    ].join('\n'),
+  );
+
+  process.env.OPENCLAW_HOME = openclawRoot;
+  process.env.CODEX_HOME = codexRoot;
 }
 
 // ============================================================================
@@ -186,6 +253,11 @@ describe('overview endpoints', () => {
   let app: Hono;
 
   beforeAll(() => {
+    previousOpenClawHome = process.env.OPENCLAW_HOME;
+    previousCodexHome = process.env.CODEX_HOME;
+    automationFixtureRoot = join(tmpdir(), `overview-automations-${randomUUID()}`);
+    writeAutomationFixtures(automationFixtureRoot);
+
     dbPath = join(tmpdir(), `overview-test-${randomUUID()}.db`);
     openDatabase({ path: dbPath });
     initSchema();
@@ -199,6 +271,11 @@ describe('overview endpoints', () => {
     rmSync(dbPath, { force: true });
     rmSync(`${dbPath}-shm`, { force: true });
     rmSync(`${dbPath}-wal`, { force: true });
+    rmSync(automationFixtureRoot, { recursive: true, force: true });
+    if (previousOpenClawHome === undefined) delete process.env.OPENCLAW_HOME;
+    else process.env.OPENCLAW_HOME = previousOpenClawHome;
+    if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previousCodexHome;
   });
 
   // ==========================================================================
@@ -598,6 +675,7 @@ describe('overview endpoints', () => {
 
       // Codex has no cost
       expect(body.capabilities.codex.cost).toBe(false);
+      expect(body.capabilities.codex.automations).toBe(true);
     });
   });
 
@@ -645,28 +723,56 @@ describe('overview endpoints', () => {
   // ==========================================================================
 
   describe('GET /api/v1/overview/automations', () => {
-    it('returns automation summaries for openclaw source', async () => {
+    it('returns database and file-backed automation summaries for openclaw source', async () => {
       const res = await app.request('/api/v1/overview/automations?source=openclaw');
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Only auto-deploy sessions (user_message_count = 0), not agent-blue
-      expect(body.automations).toHaveLength(1);
-      expect(body.automations[0].name).toBe('auto-deploy');
-      expect(body.automations[0].sessionCount).toBe(2);
-      expect(body.automations[0].toolCallCount).toBe(2);
-      expect(body.automations[0]).toHaveProperty('lastActiveAt');
-      expect(body.automations[0]).toHaveProperty('latestStatus');
+      expect(body.automations).toHaveLength(2);
+
+      // Session fallback: only auto-deploy sessions (user_message_count = 0), not agent-blue.
+      const sessionAutomation = body.automations.find((a: { name: string }) => a.name === 'auto-deploy');
+      expect(sessionAutomation).toBeDefined();
+      expect(sessionAutomation.sessionCount).toBe(2);
+      expect(sessionAutomation.toolCallCount).toBe(2);
+      expect(sessionAutomation.source).toBe('openclaw');
+
+      // Real OpenClaw automation definitions come from cron/jobs.json.
+      const fileAutomation = body.automations.find((a: { name: string }) => a.name === 'openclaw-nightly-docs');
+      expect(fileAutomation).toBeDefined();
+      expect(fileAutomation.id).toBe('oc-file-job');
+      expect(fileAutomation.sessionCount).toBe(1);
+      expect(fileAutomation.schedule).toBe('0 3 * * * Asia/Tokyo');
+      expect(fileAutomation).toHaveProperty('lastActiveAt');
+      expect(fileAutomation).toHaveProperty('latestStatus');
     });
 
-    it('returns 400 when source is missing', async () => {
+    it('returns aggregate automations when source is missing', async () => {
       const res = await app.request('/api/v1/overview/automations');
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(body.automations).toHaveLength(3);
+      expect(body.automations.map((a: { source: string }) => a.source)).toContain('openclaw');
+      expect(body.automations.map((a: { source: string }) => a.source)).toContain('codex');
     });
 
     it('returns 400 for invalid source', async () => {
       const res = await app.request('/api/v1/overview/automations?source=invalid');
       expect(res.status).toBe(400);
+    });
+
+    it('returns file-backed automations for codex source', async () => {
+      const res = await app.request('/api/v1/overview/automations?source=codex');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(body.automations).toHaveLength(1);
+      expect(body.automations[0].source).toBe('codex');
+      expect(body.automations[0].name).toBe('codex-weekly-docs');
+      expect(body.automations[0].sessionCount).toBe(2);
+      expect(body.automations[0].latestStatus).toBe('active');
+      expect(body.automations[0].schedule).toContain('FREQ=WEEKLY');
     });
 
     it('returns empty automations for source without agent_name', async () => {

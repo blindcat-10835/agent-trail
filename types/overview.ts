@@ -138,11 +138,16 @@ export interface OverviewStatus {
 // ============================================================================
 
 export interface AutomationSummary {
+  id?: string
+  source?: string
   name: string
   sessionCount: number
   lastActiveAt: string | null
   latestStatus: string
   toolCallCount: number
+  schedule?: string
+  nextRunAt?: string | null
+  model?: string
 }
 
 export interface AutomationsResponse {

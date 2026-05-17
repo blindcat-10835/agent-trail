@@ -29,6 +29,7 @@ function runStatusColor(status: string): string {
   const s = status?.toLowerCase()
   if (s === 'running' || s === 'live') return 'var(--status-success)'
   if (s === 'error' || s === 'aborted') return 'var(--destructive)'
+  if (s === 'paused' || s === 'disabled') return 'var(--muted-foreground)'
   return 'var(--muted-foreground)'
 }
 
@@ -36,6 +37,7 @@ function runStatusLabel(status: string): string {
   const s = status?.toLowerCase()
   if (s === 'running' || s === 'live') return 'RUN'
   if (s === 'error' || s === 'aborted') return 'ERR'
+  if (s === 'paused' || s === 'disabled') return 'PAU'
   return 'OK'
 }
 
@@ -43,30 +45,41 @@ function runStatusLabel(status: string): string {
 // Automations Table Row
 // ============================================================================
 
-function AutomRow({ automation }: { automation: AutomationSummary }) {
+function AutomRow({
+  automation,
+  showSource,
+}: {
+  automation: AutomationSummary
+  showSource: boolean
+}) {
   const color = runStatusColor(automation.latestStatus)
   const label = runStatusLabel(automation.latestStatus)
   const isRun = label === 'RUN'
   const isErr = label === 'ERR'
+  const countLabel = automation.sessionCount > 0 ? `${automation.sessionCount}x run` : 'defined'
 
   return (
     <div
       className="flex items-center gap-3 px-3.5 py-[5px] border-b last:border-b-0"
       style={{ borderColor: 'color-mix(in oklch, var(--border) 35%, transparent)' }}
     >
-      {/* Schedule placeholder (no cron expression in data) */}
       <span
-        className="text-[9.5px] font-mono text-muted-foreground tabular-nums shrink-0 w-[52px]"
+        className="text-[9.5px] font-mono text-muted-foreground tabular-nums shrink-0 w-[58px]"
+        title={automation.schedule}
       >
-        {automation.sessionCount}× run
+        {countLabel}
       </span>
 
       {/* Name */}
-      <span
-        className="text-[11px] text-foreground truncate flex-1 min-w-0"
-        title={automation.name}
-      >
-        {automation.name}
+      <span className="flex items-center gap-1.5 text-[11px] text-foreground truncate flex-1 min-w-0">
+        {showSource && automation.source && (
+          <span className="text-[8px] font-bold font-mono tracking-[0.12em] text-muted-foreground uppercase shrink-0">
+            {automation.source === 'claude-code' ? 'CLAUDE' : automation.source}
+          </span>
+        )}
+        <span className="truncate" title={automation.name}>
+          {automation.name}
+        </span>
       </span>
 
       {/* Status */}
@@ -160,9 +173,9 @@ export function OverviewAutomations({ capabilities, toolId, capsLoading }: Overv
   const { automations, loading: automationsLoading, error: automationsError } = useOverviewAutomations(toolId)
 
   const sourceCaps = capabilities?.capabilities?.[toolId]
-  const automationsEnabled = sourceCaps?.automations === true
   const isAll = toolId === 'all'
-  const hasAutomations = automationsEnabled && !isAll
+  const automationsEnabled = isAll || sourceCaps?.automations === true
+  const hasAutomations = automationsEnabled
 
   const pill = hasAutomations && !automationsLoading && automations.length > 0 ? (
     <span
@@ -218,7 +231,11 @@ export function OverviewAutomations({ capabilities, toolId, capsLoading }: Overv
     <HudFrame label={frameLabel} right={pill} bodyClassName="p-0">
       <div className="flex flex-col">
         {automations.map((autom) => (
-          <AutomRow key={autom.name} automation={autom} />
+          <AutomRow
+            key={`${autom.source ?? toolId}:${autom.id ?? autom.name}`}
+            automation={autom}
+            showSource={isAll}
+          />
         ))}
       </div>
     </HudFrame>
