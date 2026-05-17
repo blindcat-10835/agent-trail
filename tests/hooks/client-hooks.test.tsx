@@ -15,9 +15,10 @@ import {
   useAggregateSessions,
   useIngestStatus,
   useSSE,
+  useSessionTurns,
   useToolSessions,
 } from '@/lib/agent-tools/client-hooks'
-import type { TraceSession } from '@/types/trace'
+import type { TraceSession, TraceTurn } from '@/types/trace'
 
 const fetchMock = vi.fn()
 
@@ -119,6 +120,7 @@ function sessionFixture(
 }
 
 type AggregateHookResult = ReturnType<typeof useAggregateSessions>
+type SessionTurnsHookResult = ReturnType<typeof useSessionTurns>
 
 describe('useAggregateSessions', () => {
   it('fetches initial aggregate sessions through the three BFF source URLs', async () => {
@@ -333,6 +335,71 @@ describe('useAggregateSessions', () => {
       'claude-only',
       'old-openclaw',
     ])
+  })
+})
+
+// ============================================================================
+// useSessionTurns
+// ============================================================================
+
+function turnFixture(id: string, index: number): TraceTurn {
+  return {
+    id,
+    sessionId: 'session-1',
+    index,
+    userMessage: null,
+    assistantMessages: [],
+    activities: [],
+    startedAt: null,
+    endedAt: null,
+    durationMs: null,
+  }
+}
+
+describe('useSessionTurns', () => {
+  it('loads more turns through BFF pagination and appends without duplicates', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          turns: [turnFixture('turn-1', 0)],
+          pagination: { total: 2, limit: 1, offset: 0, hasMore: true },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          turns: [turnFixture('turn-1', 0), turnFixture('turn-2', 1)],
+          pagination: { total: 2, limit: 1, offset: 1, hasMore: false },
+        }),
+      })
+
+    let latest: SessionTurnsHookResult | undefined
+
+    function Consumer() {
+      latest = useSessionTurns('codex', 'session-1', { limit: 1 })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.loading).toBe(false))
+
+    await act(async () => {
+      await latest?.loadMore()
+    })
+
+    await waitFor(() => expect(latest?.isLoadingMore).toBe(false))
+
+    const urls = fetchMock.mock.calls.map(([url]) => String(url))
+    expect(urls).toHaveLength(2)
+    expect(urls[0]).toMatch(/^\/api\/agent-tools\/codex\/sessions\/session-1\/turns\?/)
+    expect(urls[0]).toContain('limit=1')
+    expect(urls[1]).toContain('/api/agent-tools/codex/sessions/session-1/turns?')
+    expect(urls[1]).toContain('offset=1')
+    expect(urls[1]).toContain('limit=1')
+    expect(latest?.turns.map((turn) => turn.id)).toEqual(['turn-1', 'turn-2'])
+    expect(latest?.pagination?.hasMore).toBe(false)
   })
 })
 

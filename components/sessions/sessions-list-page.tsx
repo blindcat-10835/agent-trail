@@ -6,6 +6,7 @@ import { useToolSessions, useAggregateSessions, useAgentTool } from '@/lib/agent
 import { useStarredStore } from '@/stores/starred-store'
 import { shortPath, projectColor } from '@/lib/utils'
 import type { TraceSession } from '@/types/trace'
+import type { AgentToolId } from '@/lib/agent-tools/types'
 
 const SOURCE_META: Record<string, { short_text: string; color: string }> = {
   'openclaw':    { short_text: 'OpenClaw', color: 'oklch(0.80 0.17 75)' },
@@ -21,6 +22,24 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 const STATUSES = ['ALL', 'LIVE', 'IDLE', 'ERROR', 'TRUNCATED'] as const
+const SOURCE_IDS = ['openclaw', 'claude-code', 'codex'] as const
+
+const STATUS_QUERY: Partial<Record<(typeof STATUSES)[number], string>> = {
+  LIVE: 'active',
+  IDLE: 'idle',
+  ERROR: 'error',
+  TRUNCATED: 'truncated',
+}
+
+const SORT_QUERY: Record<string, string> = {
+  updated: 'updated_at',
+  title: 'title',
+  project: 'project',
+  cost: 'cost',
+  turns: 'turns',
+  tokens: 'tokens',
+  tools: 'activity',
+}
 
 function deriveStatus(s: TraceSession): string {
   if (s.status === 'error' || s.status === 'aborted') return 'ERROR'
@@ -33,6 +52,16 @@ function fmtTok(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
   if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
   return String(n)
+}
+
+function fmtDuration(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return '—'
+  if (ms < 1000) return `${ms}ms`
+  const seconds = Math.floor(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const mins = Math.floor(seconds / 60)
+  if (mins < 60) return `${mins}m`
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`
 }
 
 function relativeTime(dateStr: string | null | undefined): string {
@@ -105,67 +134,65 @@ export function SessionsListPage() {
   const { toolId, href } = useAgentTool()
   const isAll = toolId === 'all'
 
-  const toolResult = useToolSessions(toolId, { limit: '500' })
-  const aggResult = useAggregateSessions({ limit: '500' })
-
-  const sessions = isAll ? aggResult.sessions : toolResult.sessions
-  const loading = isAll ? aggResult.loading : toolResult.loading
-  const error = isAll ? aggResult.error : toolResult.error
-  const refetch = isAll ? aggResult.refetch : toolResult.refetch
-
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const [projectFilter, setProjectFilter] = useState<string>('ALL')
   const [sort, setSort] = useState<string>('updated')
   const [sourceFilter, setSourceFilter] = useState<string>('ALL')
+  const [starredOnly, setStarredOnly] = useState(false)
 
   const isStarred = useStarredStore((s) => s.isStarred)
 
-  const filtered = useMemo(() => {
-    let list = sessions.slice()
-    if (sourceFilter !== 'ALL') {
-      list = list.filter((s) => s.source === sourceFilter)
+  const query = useMemo(() => {
+    const next: Record<string, string> = {
+      limit: '100',
+      sort: SORT_QUERY[sort] ?? 'updated_at',
+      order: 'desc',
     }
-    if (q) {
-      const lq = q.toLowerCase()
-      list = list.filter((s) => {
-        const label = (s.displayTitle || s.name || s.id).toLowerCase()
-        return label.includes(lq) || s.project.toLowerCase().includes(lq) || s.id.toLowerCase().includes(lq)
-      })
-    }
-    if (statusFilter !== 'ALL') {
-      list = list.filter((s) => deriveStatus(s) === statusFilter)
-    }
-    if (projectFilter !== 'ALL') {
-      list = list.filter((s) => s.project === projectFilter)
-    }
-    if (sort === 'cost') {
-      list.sort((a, b) => (b.estimatedCost ?? 0) - (a.estimatedCost ?? 0))
-    } else if (sort === 'turns') {
-      list.sort((a, b) => (b.totalTurns ?? b.metrics.userMessageCount) - (a.totalTurns ?? a.metrics.userMessageCount))
-    } else {
-      list.sort((a, b) => {
-        const ta = a.updatedAt || a.startedAt || ''
-        const tb = b.updatedAt || b.startedAt || ''
-        return tb.localeCompare(ta)
-      })
-    }
-    return list
-  }, [sessions, q, statusFilter, projectFilter, sort, sourceFilter])
+
+    const trimmedQuery = q.trim()
+    if (trimmedQuery) next.q = trimmedQuery
+    if (statusFilter !== 'ALL') next.status = STATUS_QUERY[statusFilter as keyof typeof STATUS_QUERY] ?? statusFilter.toLowerCase()
+    if (projectFilter !== 'ALL') next.project = projectFilter
+    if (starredOnly) next.starred = 'true'
+    return next
+  }, [q, projectFilter, sort, starredOnly, statusFilter])
+
+  const effectiveToolId = (isAll ? 'openclaw' : toolId) as AgentToolId
+  const toolResult = useToolSessions(effectiveToolId, query, { enabled: !isAll })
+  const aggResult = useAggregateSessions(query, { enabled: isAll })
+
+  const rawSessions = isAll ? aggResult.sessions : toolResult.sessions
+  const filtered = useMemo(
+    () => sourceFilter === 'ALL' ? rawSessions : rawSessions.filter((s) => s.source === sourceFilter),
+    [rawSessions, sourceFilter],
+  )
+  const paginationTotal = isAll ? aggResult.totalCount : toolResult.pagination?.total
+  const loading = isAll ? aggResult.loading : toolResult.loading
+  const error = isAll ? aggResult.error : toolResult.error
+  const refetch = isAll ? aggResult.refetch : toolResult.refetch
+  const hasMore = isAll ? aggResult.hasMore : (toolResult.pagination?.hasMore ?? false)
+  const isLoadingMore = isAll ? aggResult.isLoadingMore : toolResult.isLoadingMore
+  const loadMore = isAll ? aggResult.loadMore : toolResult.loadMore
+  const groupCounts = isAll ? aggResult.groupCounts : toolResult.groupCounts
 
   const totals = useMemo(() => ({
-    count: filtered.length,
+    count: sourceFilter === 'ALL' ? (paginationTotal ?? filtered.length) : filtered.length,
     turns: filtered.reduce((a, s) => a + (s.totalTurns ?? s.metrics.userMessageCount), 0),
-    tok: filtered.reduce((a, s) => a + (s.metrics.inputTokens ?? 0) + (s.metrics.outputTokens ?? 0), 0),
+    tok: filtered.reduce((a, s) => a + (s.metrics.totalTokens ?? (s.metrics.inputTokens ?? 0) + (s.metrics.outputTokens ?? 0)), 0),
     cost: filtered.reduce((a, s) => a + (s.estimatedCost ?? 0), 0),
-  }), [filtered])
+  }), [filtered, paginationTotal, sourceFilter])
 
   const projects = useMemo(
-    () => Array.from(new Set(sessions.map((s) => s.project))).sort(),
-    [sessions]
+    () => {
+      const labels = groupCounts?.project?.map((item) => item.label).filter((label) => label !== '-') ?? []
+      if (labels.length > 0) return labels.sort()
+      return Array.from(new Set(rawSessions.map((s) => s.project))).sort()
+    },
+    [groupCounts, rawSessions]
   )
 
-  if (loading && sessions.length === 0) {
+  if (loading && rawSessions.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" />
@@ -224,6 +251,13 @@ export function SessionsListPage() {
               {s}
             </button>
           ))}
+          <button
+            className={`sl-chip ${starredOnly ? 'active' : ''}`}
+            style={{ '--c': 'var(--accent)' } as React.CSSProperties}
+            onClick={() => setStarredOnly((value) => !value)}
+          >
+            STARRED
+          </button>
         </div>
         <select className="sl-select" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
           <option value="ALL">PROJECT {'·'} ALL</option>
@@ -233,16 +267,19 @@ export function SessionsListPage() {
         </select>
         <select className="sl-select" value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="updated">SORT {'·'} UPDATED</option>
+          <option value="title">SORT {'·'} TITLE</option>
+          <option value="project">SORT {'·'} PROJECT</option>
           <option value="cost">SORT {'·'} COST</option>
           <option value="turns">SORT {'·'} TURNS</option>
+          <option value="tokens">SORT {'·'} TOKENS</option>
           <option value="tools">SORT {'·'} ACTIVITY</option>
         </select>
         {isAll && (
           <select className="sl-select" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
             <option value="ALL">SOURCE {'·'} ALL</option>
-            <option value="openclaw">OPENCLAW</option>
-            <option value="claude-code">CLAUDE:CODE</option>
-            <option value="codex">CODEX</option>
+            {SOURCE_IDS.map((source) => (
+              <option key={source} value={source}>{SOURCE_META[source].short_text.toUpperCase()}</option>
+            ))}
           </select>
         )}
       </div>
@@ -250,13 +287,15 @@ export function SessionsListPage() {
       {/* TABLE HEADER */}
       <div className="sl-thead">
         <span className="sl-th sl-th-proj" />
-        <span className="sl-th">LABEL</span>
+        <span className="sl-th">TITLE / SUMMARY</span>
         <span className="sl-th">STATUS</span>
         <span className="sl-th">PROJECT</span>
+        <span className="sl-th">MODEL</span>
         <span className="sl-th">TOOL</span>
         <span className="sl-th sl-th-num">TURNS</span>
         <span className="sl-th">ACTIVITY</span>
-        <span className="sl-th sl-th-num">TOKENS</span>
+        <span className="sl-th sl-th-num">TOKENS I/O</span>
+        <span className="sl-th sl-th-num">DUR</span>
         <span className="sl-th sl-th-num">COST</span>
         <span className="sl-th sl-th-num">UPDATED</span>
       </div>
@@ -273,12 +312,15 @@ export function SessionsListPage() {
             const pc = projectColor(s.project)
             const srcC = getSourceColor(s.source)
             const status = deriveStatus(s)
-            const tokens = (s.metrics.inputTokens ?? 0) + (s.metrics.outputTokens ?? 0)
+            const inputTokens = s.metrics.inputTokens ?? s.inputTokens ?? 0
+            const outputTokens = s.metrics.outputTokens ?? s.outputTokens ?? 0
             const turns = s.totalTurns ?? s.metrics.userMessageCount
             const cost = s.estimatedCost != null ? `$${s.estimatedCost.toFixed(2)}` : '—'
             const label = s.displayTitle || s.name || s.id
-            const toolCount = s.turns.reduce((sum, t) => sum + (t.enrichment?.activityCounts.toolCalls ?? 0), 0)
-            const subagentCount = s.turns.reduce((sum, t) => sum + (t.enrichment?.activityCounts.subagents ?? 0), 0)
+            const toolCount = s.activityCounts?.toolCalls ?? 0
+            const subagentCount = s.activityCounts?.subagents ?? 0
+            const summary = s.summary || s.gitBranch || s.id
+            const model = s.model || '—'
 
             return (
               <button
@@ -293,7 +335,11 @@ export function SessionsListPage() {
                     {isStarred(s.id) && <span className="sl-star">{'★'}</span>}
                     <span className="sl-label">{label}</span>
                   </span>
-                  <span className="sl-id mono">{s.id}</span>
+                  <span className="sl-summary">{summary}</span>
+                  <span className="sl-id mono">
+                    {s.id}
+                    {s.gitBranch && <span className="sl-branch"> {'⎇'} {s.gitBranch}</span>}
+                  </span>
                 </span>
                 <span className="sl-cell">
                   <StatusCell status={status} />
@@ -304,6 +350,7 @@ export function SessionsListPage() {
                     <span className="sl-proj-name">{shortPath(s.project)}</span>
                   </span>
                 </span>
+                <span className="sl-cell sl-model mono" title={model}>{model}</span>
                 <span className="sl-cell">
                   <SourceBadge source={s.source} />
                 </span>
@@ -312,13 +359,22 @@ export function SessionsListPage() {
                   <ActivityChips tools={toolCount} subagents={subagentCount} />
                 </span>
                 <span className="sl-cell sl-cell-tok">
-                  <span className="mono sl-num">{fmtTok(tokens)}</span>
+                  <span className="mono sl-num">{fmtTok(inputTokens)}</span>
+                  <span className="mono sl-num sl-token-out">/{fmtTok(outputTokens)}</span>
                 </span>
+                <span className="sl-cell mono sl-num">{fmtDuration(s.durationMs)}</span>
                 <span className="sl-cell mono sl-num sl-cost">{cost}</span>
                 <span className="sl-cell mono sl-num sl-updated">{relativeTime(s.updatedAt || s.startedAt)}</span>
               </button>
             )
           })
+        )}
+        {hasMore && filtered.length > 0 && (
+          <div className="sl-load-more">
+            <button className="sl-newscan" onClick={() => loadMore()} disabled={isLoadingMore}>
+              {isLoadingMore ? 'LOADING…' : 'LOAD MORE'}
+            </button>
+          </div>
         )}
       </div>
     </div>

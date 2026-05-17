@@ -96,6 +96,14 @@ export interface SessionMetrics {
   isTruncated: boolean;
 }
 
+export interface ActivityCounts {
+  toolCalls: number;
+  skills: number;
+  subagents: number;
+  thinking: number;
+  system: number;
+}
+
 /**
  * Canonical session model
  *
@@ -120,8 +128,11 @@ export interface TraceSession {
   gitBranch?: string;
   sourceVersion?: string;
   agentName?: string;
+  model?: string;
+  summary?: string;
   metrics: SessionMetrics;
   turns: TraceTurn[];
+  activityCounts?: ActivityCounts;
 
   // Phase 10 enrichment fields (computed at query time)
   displayTitle?: string;
@@ -164,13 +175,7 @@ export interface TraceTurn {
  * for the compact turn header and inspector.
  */
 export interface TurnEnrichment {
-  activityCounts: {
-    toolCalls: number;
-    skills: number;
-    subagents: number;
-    thinking: number;
-    system: number;
-  };
+  activityCounts: ActivityCounts;
   failureStatus: 'success' | 'error' | 'partial';
   truncated: boolean;
   warningStatus: boolean;

@@ -285,6 +285,7 @@ async function fetchToolApi<T>(
 export function useToolSessions(
   toolId: AgentToolId,
   query?: Record<string, string>,
+  options?: { enabled?: boolean },
 ) {
   const [sessions, setSessions] = useState<TraceSession[]>([])
   const [pagination, setPagination] = useState<{
@@ -302,8 +303,18 @@ export function useToolSessions(
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [currentOffset, setCurrentOffset] = useState(0)
   const queryKey = JSON.stringify(query ?? {})
+  const enabled = options?.enabled ?? true
 
   const fetchSessions = useCallback(async () => {
+    if (!enabled) {
+      setSessions([])
+      setPagination(null)
+      setGroupCounts(null)
+      setLoading(false)
+      setError(null)
+      setCurrentOffset(0)
+      return
+    }
     setIsLoadingMore(false)
     try {
       const parsedQuery = JSON.parse(queryKey) as Record<string, string>
@@ -325,10 +336,10 @@ export function useToolSessions(
     } finally {
       setLoading(false)
     }
-  }, [toolId, queryKey])
+  }, [toolId, queryKey, enabled])
 
   const loadMore = useCallback(async () => {
-    if (isLoadingMore) return
+    if (!enabled || isLoadingMore) return
     const parsedQuery = JSON.parse(queryKey) as Record<string, string>
     const nextOffset = currentOffset
     setIsLoadingMore(true)
@@ -350,7 +361,7 @@ export function useToolSessions(
     } finally {
       setIsLoadingMore(false)
     }
-  }, [toolId, queryKey, currentOffset, isLoadingMore, pagination])
+  }, [toolId, queryKey, currentOffset, isLoadingMore, pagination, enabled])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- effect intentionally starts an async BFF fetch
@@ -500,7 +511,10 @@ interface AggregateToolResult {
   status: AggregateSourceStatus
 }
 
-export function useAggregateSessions(query?: Record<string, string>) {
+export function useAggregateSessions(
+  query?: Record<string, string>,
+  options?: { enabled?: boolean },
+) {
   const [sessions, setSessions] = useState<TraceSession[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [sources, setSources] = useState<AggregateSourceStatus[]>([])
@@ -515,8 +529,20 @@ export function useAggregateSessions(query?: Record<string, string>) {
   >({})
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const queryKey = JSON.stringify(query ?? {})
+  const enabled = options?.enabled ?? true
 
   const fetchAggregateSessions = useCallback(() => {
+    if (!enabled) {
+      setSessions([])
+      setTotalCount(0)
+      setSources([])
+      setLoading(false)
+      setError(null)
+      setGroupCounts(null)
+      setPaginationBySource({})
+      setIsLoadingMore(false)
+      return
+    }
     setLoading(true)
     setError(null)
     setIsLoadingMore(false)
@@ -615,12 +641,12 @@ export function useAggregateSessions(query?: Record<string, string>) {
         setError(err instanceof Error ? err.message : 'Failed')
         setLoading(false)
       })
-  }, [queryKey])
+  }, [queryKey, enabled])
 
   const hasMore = Object.values(paginationBySource).some((p) => p?.hasMore === true)
 
   const loadMore = useCallback(async () => {
-    if (isLoadingMore) return
+    if (!enabled || isLoadingMore) return
     const sourcesToFetch = (Object.entries(paginationBySource) as [SourceToolId, SourcePagination][])
       .filter(([, p]) => p.hasMore)
 
@@ -721,7 +747,7 @@ export function useAggregateSessions(query?: Record<string, string>) {
     } finally {
       setIsLoadingMore(false)
     }
-  }, [queryKey, isLoadingMore, paginationBySource])
+  }, [queryKey, isLoadingMore, paginationBySource, enabled])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- query/source changes should show aggregate loading immediately
@@ -804,10 +830,19 @@ export function useSessionTurns(
     hasMore: boolean
   } | null>(null)
   const [loading, setLoading] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const queryKey = JSON.stringify({ sessionId, ...query })
+  const buildParams = useCallback(() => {
+    const parsedQuery = JSON.parse(queryKey) as { offset?: number; limit?: number }
+    const params: Record<string, string> = {}
+    if (parsedQuery.offset !== undefined) params.offset = String(parsedQuery.offset)
+    if (parsedQuery.limit !== undefined) params.limit = String(parsedQuery.limit)
+    return params
+  }, [queryKey])
 
+  /* eslint-disable react-hooks/set-state-in-effect -- session/query changes should synchronously reset async hook state */
   useEffect(() => {
     if (!sessionId) {
       setTurns([])
@@ -815,12 +850,9 @@ export function useSessionTurns(
       setLoading(false)
       return
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
+    setIsLoadingMore(false)
     setError(null)
-    const params: Record<string, string> = {}
-    if (query?.offset !== undefined) params.offset = String(query.offset)
-    if (query?.limit !== undefined) params.limit = String(query.limit)
 
     fetchToolApi<{
       turns: TraceTurn[]
@@ -830,7 +862,7 @@ export function useSessionTurns(
         offset: number
         hasMore: boolean
       }
-    }>(toolId, `/sessions/${sessionId}/turns`, params)
+    }>(toolId, `/sessions/${sessionId}/turns`, buildParams())
       .then((data) => {
         setTurns(data.turns)
         setPagination(data.pagination)
@@ -841,16 +873,14 @@ export function useSessionTurns(
         ),
       )
       .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toolId, queryKey])
+  }, [toolId, sessionId, buildParams])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const refetch = useCallback(() => {
     if (!sessionId) return
     setLoading(true)
+    setIsLoadingMore(false)
     setError(null)
-    const params: Record<string, string> = {}
-    if (query?.offset !== undefined) params.offset = String(query.offset)
-    if (query?.limit !== undefined) params.limit = String(query.limit)
 
     fetchToolApi<{
       turns: TraceTurn[]
@@ -860,7 +890,7 @@ export function useSessionTurns(
         offset: number
         hasMore: boolean
       }
-    }>(toolId, `/sessions/${sessionId}/turns`, params)
+    }>(toolId, `/sessions/${sessionId}/turns`, buildParams())
       .then((data) => {
         setTurns(data.turns)
         setPagination(data.pagination)
@@ -871,9 +901,45 @@ export function useSessionTurns(
         ),
       )
       .finally(() => setLoading(false))
-  }, [toolId, sessionId, query?.offset, query?.limit])
+  }, [toolId, sessionId, buildParams])
 
-  return { turns, pagination, loading, error, refetch }
+  const loadMore = useCallback(async () => {
+    if (!sessionId || isLoadingMore || !pagination?.hasMore) return
+
+    const nextOffset = pagination.offset + pagination.limit
+    const parsedQuery = JSON.parse(queryKey) as { limit?: number }
+    const nextLimit = pagination.limit || parsedQuery.limit || 100
+    setIsLoadingMore(true)
+    setError(null)
+
+    try {
+      const data = await fetchToolApi<{
+        turns: TraceTurn[]
+        pagination: {
+          total: number
+          limit: number
+          offset: number
+          hasMore: boolean
+        }
+      }>(toolId, `/sessions/${sessionId}/turns`, {
+        offset: String(nextOffset),
+        limit: String(nextLimit),
+      })
+
+      setTurns((prev) => {
+        const seen = new Set(prev.map((turn) => turn.id))
+        const appended = data.turns.filter((turn) => !seen.has(turn.id))
+        return [...prev, ...appended]
+      })
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load more turns')
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [toolId, sessionId, isLoadingMore, pagination, queryKey])
+
+  return { turns, pagination, loading, error, isLoadingMore, loadMore, refetch }
 }
 
 // ============================================================================

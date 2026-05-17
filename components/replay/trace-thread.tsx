@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Search } from 'lucide-react'
 import type { TraceSession, TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
 import { MarkdownContent } from './markdown-content'
@@ -19,7 +20,10 @@ interface TraceThreadProps {
   hasMore: boolean
   loadingMore: boolean
   onLoadMore: () => void
+  totalTurns?: number
 }
+
+const VIRTUALIZATION_THRESHOLD = 30
 
 function formatTime(dateStr: string | null): string {
   if (!dateStr) return '\u2014'
@@ -343,7 +347,7 @@ function Inspector({
         <div className="eyebrow">CONTEXT</div>
         <dl className="v2-ins-kv">
           <dt>Model</dt>
-          <dd className="mono">{extractModel(session?.turns || []) || '\u2014'}</dd>
+          <dd className="mono">{session?.model || extractModel(session?.turns || []) || '\u2014'}</dd>
           <dt>Project</dt>
           <dd>{session?.project || '\u2014'}</dd>
           <dt>Branch</dt>
@@ -356,7 +360,16 @@ function Inspector({
   )
 }
 
-export function TraceThread({ session, turns, sessionId, onBackToSessions }: TraceThreadProps) {
+export function TraceThread({
+  session,
+  turns,
+  sessionId,
+  onBackToSessions,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  totalTurns,
+}: TraceThreadProps) {
   const [focused, setFocused] = useState(0)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -364,7 +377,9 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
   const searchInputRef = useRef<HTMLInputElement>(null)
   const isProgrammaticScroll = useRef(false)
   const skipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const total = turns.length
+  const loadedTotal = turns.length
+  const totalAvailable = totalTurns ?? loadedTotal
+  const totalLabel = totalAvailable > loadedTotal ? `${loadedTotal}/${totalAvailable}` : String(totalAvailable)
 
   const filtered = useMemo(() => {
     if (!query) return turns
@@ -376,9 +391,41 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
     )
   }, [query, turns])
 
+  const isVirtual = filtered.length > VIRTUALIZATION_THRESHOLD || hasMore
+
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual owns its scroll subscription.
+  const rowVirtualizer = useVirtualizer({
+    count: isVirtual ? filtered.length + (hasMore ? 1 : 0) : filtered.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 260,
+    overscan: 4,
+    enabled: isVirtual,
+  })
+
+  useEffect(() => {
+    rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false
+  }, [rowVirtualizer])
+
+  const virtualItems = rowVirtualizer.getVirtualItems()
+  const lastVirtualIndex = virtualItems.length > 0
+    ? virtualItems[virtualItems.length - 1].index
+    : null
+
+  useEffect(() => {
+    if (!isVirtual || !hasMore || loadingMore || lastVirtualIndex == null) return
+    if (lastVirtualIndex >= filtered.length - 1) {
+      onLoadMore()
+    }
+  }, [filtered.length, hasMore, isVirtual, lastVirtualIndex, loadingMore, onLoadMore])
+
   const scrollToTurn = useCallback((idx: number) => {
     const container = scrollRef.current
     if (!container) return
+    const filteredIndex = filtered.findIndex((turn) => turn.index === idx)
+    if (isVirtual && filteredIndex !== -1) {
+      rowVirtualizer.scrollToIndex(filteredIndex, { align: 'start' })
+      return
+    }
     const el =
       container.querySelector<HTMLElement>(`[data-turn-bubble="${idx}"]`) ??
       container.querySelector<HTMLElement>(`[data-turn="${idx}"]`)
@@ -389,7 +436,7 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
       top: elRect.top - containerRect.top + container.scrollTop - 24,
       behavior: 'smooth',
     })
-  }, [])
+  }, [filtered, isVirtual, rowVirtualizer])
 
   const focus = useCallback(
     (idx: number) => {
@@ -402,16 +449,29 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
     [scrollToTurn]
   )
 
+  const moveFocus = useCallback(
+    (delta: number) => {
+      if (turns.length === 0) return
+      const currentPosition = Math.max(0, turns.findIndex((turn) => turn.index === focused))
+      const nextPosition = Math.max(0, Math.min(currentPosition + delta, turns.length - 1))
+      const nextTurn = turns[nextPosition]
+      if (nextTurn) focus(nextTurn.index)
+    },
+    [focused, focus, turns],
+  )
+
+  useEffect(() => () => clearTimeout(skipTimer.current), [])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.key === 'j') { e.preventDefault(); focus(Math.min(focused + 1, total - 1)) }
-      if (e.key === 'k') { e.preventDefault(); focus(Math.max(focused - 1, 0)) }
+      if (e.key === 'j') { e.preventDefault(); moveFocus(1) }
+      if (e.key === 'k') { e.preventDefault(); moveFocus(-1) }
       if (e.key === '/') { e.preventDefault(); searchInputRef.current?.focus() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [focused, total, focus])
+  }, [moveFocus])
 
   // Track which turn is in view while user scrolls manually
   useEffect(() => {
@@ -435,8 +495,10 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
   }, [])
 
   const displayStatus = deriveDisplayStatus(session)
-  const model = extractModel(turns)
-  const focusedTurn = turns[focused] ?? null
+  const model = session?.model || extractModel(turns)
+  const focusedTurn = turns.find((turn) => turn.index === focused) ?? turns[0] ?? null
+  const focusedPosition = turns.findIndex((turn) => turn.index === focused)
+  const focusedLabel = focusedPosition >= 0 ? focusedPosition + 1 : Math.min(focused + 1, loadedTotal)
 
   const totalInput = session?.inputTokens ?? session?.metrics.inputTokens ?? 0
   const totalOutput = session?.outputTokens ?? session?.metrics.outputTokens ?? 0
@@ -465,7 +527,7 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
         <div className="v2-hud-stats">
           <div className="v2-hud-stat">
             <span className="v2-hud-k">TURNS</span>
-            <span className="v2-hud-v mono">{total}</span>
+            <span className="v2-hud-v mono">{totalLabel}</span>
           </div>
           <div className="v2-hud-stat">
             <span className="v2-hud-k">IN</span>
@@ -511,13 +573,13 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
           <span className="v2-kbd mono">/</span>
         </div>
         <div className="v2-cmd-controls">
-          <button className="v2-step" onClick={() => focus(Math.max(focused - 1, 0))} title="Prev (k)">
+          <button className="v2-step" onClick={() => moveFocus(-1)} disabled={loadedTotal === 0} title="Prev (k)">
             {'\u2039'}
           </button>
           <span className="v2-step-pos mono">
-            {String(focused + 1).padStart(2, '0')} <span className="v2-dim">of</span> {total}
+            {String(focusedLabel).padStart(2, '0')} <span className="v2-dim">of</span> {totalLabel}
           </span>
-          <button className="v2-step" onClick={() => focus(Math.min(focused + 1, total - 1))} title="Next (j)">
+          <button className="v2-step" onClick={() => moveFocus(1)} disabled={loadedTotal === 0} title="Next (j)">
             {'\u203a'}
           </button>
           <span className="v2-cmd-sep">{'\u2502'}</span>
@@ -530,16 +592,70 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
 
         <main className="v2-trace" ref={scrollRef}>
           <div className="v2-trace-pad">
-            {filtered.map((t) => (
-              <TurnCard
-                key={t.id}
-                turn={t}
-                focused={focused === t.index}
-                onFocus={() => setFocused(t.index)}
-                projectPath={session?.cwd ?? session?.project}
-              />
-            ))}
-            <div className="v2-trace-end mono">{'\u2014'} END OF TRACE {'\u2014'} listening for new turns</div>
+            {filtered.length === 0 && !hasMore ? (
+              <div className="v2-trace-end mono">
+                {'\u2014'} {query ? 'NO MATCHING TURNS' : 'NO TURNS'} {'\u2014'}
+              </div>
+            ) : isVirtual ? (
+              <div
+                className="v2-virtual-space"
+                style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+              >
+                {virtualItems.map((virtualItem) => {
+                  const turn = filtered[virtualItem.index]
+                  if (!turn) {
+                    return (
+                      <div
+                        key="load-more"
+                        ref={rowVirtualizer.measureElement}
+                        data-index={virtualItem.index}
+                        className="v2-virtual-row v2-load-row"
+                        style={{ transform: `translateY(${virtualItem.start}px)` }}
+                      >
+                        <button
+                          type="button"
+                          className="v2-load-more mono"
+                          onClick={onLoadMore}
+                          disabled={loadingMore}
+                        >
+                          {loadingMore ? 'LOADING\u2026' : 'LOAD MORE'}
+                        </button>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div
+                      key={turn.id}
+                      ref={rowVirtualizer.measureElement}
+                      data-index={virtualItem.index}
+                      className="v2-virtual-row"
+                      style={{ transform: `translateY(${virtualItem.start}px)` }}
+                    >
+                      <TurnCard
+                        turn={turn}
+                        focused={focused === turn.index}
+                        onFocus={() => setFocused(turn.index)}
+                        projectPath={session?.cwd ?? session?.project}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              filtered.map((t) => (
+                <TurnCard
+                  key={t.id}
+                  turn={t}
+                  focused={focused === t.index}
+                  onFocus={() => setFocused(t.index)}
+                  projectPath={session?.cwd ?? session?.project}
+                />
+              ))
+            )}
+            {!hasMore && filtered.length > 0 && (
+              <div className="v2-trace-end mono">{'\u2014'} END OF TRACE {'\u2014'}</div>
+            )}
           </div>
         </main>
 

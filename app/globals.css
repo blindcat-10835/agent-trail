@@ -439,6 +439,11 @@
   border-color: var(--accent);
 }
 
+.sl-newscan:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .sl-bar {
   display: flex;
   align-items: center;
@@ -522,11 +527,12 @@
 
 .sl-thead {
   display: grid;
-  grid-template-columns: 4px minmax(220px, 3fr) 100px 130px 110px 50px 90px 100px 60px 80px;
+  grid-template-columns: 4px minmax(260px, 3fr) 92px minmax(120px, 1.1fr) minmax(120px, 1fr) 92px 50px 90px 112px 70px 60px 80px;
   gap: 12px;
   padding: 8px 24px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in oklch, var(--card) 50%, transparent);
+  min-width: 1240px;
 }
 
 .sl-th {
@@ -551,10 +557,11 @@
 
 .sl-row {
   display: grid;
-  grid-template-columns: 4px minmax(220px, 3fr) 100px 130px 110px 50px 90px 100px 60px 80px;
+  grid-template-columns: 4px minmax(260px, 3fr) 92px minmax(120px, 1.1fr) minmax(120px, 1fr) 92px 50px 90px 112px 70px 60px 80px;
   gap: 12px;
   align-items: center;
   width: 100%;
+  min-width: 1240px;
   padding: 11px 24px;
   background: transparent;
   border: none;
@@ -616,6 +623,19 @@
   font-size: 10px;
   color: var(--muted-foreground);
   letter-spacing: 0.04em;
+}
+
+.sl-summary {
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sl-branch {
+  color: var(--card-foreground);
+  margin-left: 6px;
 }
 
 .sl-status {
@@ -692,8 +712,19 @@
 .sl-cell-tok {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   justify-content: flex-end;
+}
+
+.sl-token-out {
+  color: var(--muted-foreground);
+}
+
+.sl-load-more {
+  display: flex;
+  justify-content: center;
+  min-width: 1240px;
+  padding: 14px 24px 18px;
 }
 
 .sl-spark {
@@ -1117,6 +1148,45 @@
   padding: 22px 32px 60px;
   max-width: 880px;
   margin: 0 auto;
+}
+
+.v2-virtual-space {
+  position: relative;
+  width: 100%;
+}
+
+.v2-virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding-bottom: 14px;
+}
+
+.v2-load-row {
+  display: flex;
+  justify-content: center;
+}
+
+.v2-load-more {
+  min-width: 128px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--card) 60%, transparent);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+}
+
+.v2-load-more:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.v2-load-more:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .v2-trace-end {

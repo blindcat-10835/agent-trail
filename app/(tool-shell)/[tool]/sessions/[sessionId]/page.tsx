@@ -16,7 +16,15 @@ export default function SessionReplayPage({
   const { toolId, href } = useAgentTool()
   const { session, loading: sessionLoading, error: sessionError } = useSessionDetail(toolId, sessionId)
 
-  const { turns, pagination, loading: turnsLoading, error: turnsError, refetch } = useSessionTurns(
+  const {
+    turns,
+    pagination,
+    loading: turnsLoading,
+    error: turnsError,
+    isLoadingMore,
+    loadMore,
+    refetch,
+  } = useSessionTurns(
     toolId,
     sessionId,
     { limit: 100 },
@@ -79,8 +87,9 @@ export default function SessionReplayPage({
       sessionId={sessionId}
       onBackToSessions={() => router.push(href('/sessions'))}
       hasMore={hasMore}
-      loadingMore={false}
-      onLoadMore={() => {}}
+      loadingMore={isLoadingMore}
+      onLoadMore={loadMore}
+      totalTurns={pagination?.total ?? session?.totalTurns}
     />
   )
 }

@@ -142,4 +142,160 @@ describe('sessions API', () => {
       expect(body.pagination.total).toBe(2)
     })
   })
+
+  describe('Phase 13 table query support', () => {
+    function insertTableSession(
+      db: Database.Database,
+      id: string,
+      overrides: {
+        name?: string
+        project?: string
+        source?: string
+        startedAt?: string
+        endedAt?: string | null
+        status?: string
+        gitBranch?: string | null
+        inputTokens?: number
+        outputTokens?: number
+        totalTokens?: number
+        truncated?: boolean
+      } = {},
+    ) {
+      db.prepare(`
+        INSERT INTO sessions (
+          id, source, project, name, started_at, ended_at, status,
+          message_count, user_message_count, total_output_tokens, total_input_tokens,
+          total_tokens, has_tool_calls, parser_malformed_lines, is_truncated,
+          termination_status, file_path, git_branch
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        overrides.source ?? 'codex',
+        overrides.project ?? '/workspace/phase13',
+        overrides.name ?? `${id} title`,
+        overrides.startedAt ?? '2026-05-17T00:00:00.000Z',
+        overrides.endedAt ?? '2026-05-17T00:02:00.000Z',
+        overrides.status ?? 'idle',
+        2,
+        1,
+        overrides.outputTokens ?? 20,
+        overrides.inputTokens ?? 10,
+        overrides.totalTokens ?? ((overrides.inputTokens ?? 10) + (overrides.outputTokens ?? 20)),
+        1,
+        0,
+        overrides.truncated ? 1 : 0,
+        '',
+        `/tmp/${id}.jsonl`,
+        overrides.gitBranch ?? 'feat/phase-13',
+      )
+    }
+
+    function insertUserMessage(db: Database.Database, sessionId: string, content: string, model = 'gpt-5.3-codex') {
+      db.prepare(`
+        INSERT INTO messages (
+          id, session_id, ordinal, role, content, timestamp, model,
+          has_tool_use, source_file
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        `${sessionId}-m1`,
+        sessionId,
+        1,
+        'user',
+        content,
+        '2026-05-17T00:00:00.000Z',
+        model,
+        0,
+        `/tmp/${sessionId}.jsonl`,
+      )
+    }
+
+    it('filters by backend search and returns row enrichment fields', async () => {
+      const db = getDatabase()
+      insertTableSession(db, 'phase13-match', {
+        name: 'Wire indexed sessions table',
+        gitBranch: 'feat/backend-filter',
+        inputTokens: 1_000,
+        outputTokens: 2_000,
+      })
+      insertTableSession(db, 'phase13-other', { name: 'Unrelated session' })
+      insertUserMessage(db, 'phase13-match', 'Add backend search and activity sorting for the sessions table.')
+      insertUserMessage(db, 'phase13-other', 'Nothing to see here.', 'unknown-model')
+      db.prepare(`
+        INSERT INTO tool_calls (session_id, message_ordinal, tool_id, name, category, input_json, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run('phase13-match', 1, 'tool-1', 'rg', 'Grep', '{}', 'success')
+      db.prepare(`
+        INSERT INTO subagent_links (session_id, subagent_session_id, subagent_source, relationship, message_ordinal)
+        VALUES (?, ?, ?, ?, ?)
+      `).run('phase13-match', 'child-session', 'codex', 'spawned', 1)
+
+      const response = await sessionsRoutes.request(
+        'http://localhost/api/v1/sessions?source=codex&q=activity%20sorting',
+      )
+      const body = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(body.pagination.total).toBe(1)
+      expect(body.sessions[0]).toMatchObject({
+        id: 'phase13-match',
+        model: 'gpt-5.3-codex',
+        gitBranch: 'feat/backend-filter',
+        inputTokens: 1_000,
+        outputTokens: 2_000,
+        activityCounts: {
+          toolCalls: 1,
+          subagents: 1,
+        },
+      })
+      expect(body.sessions[0].summary).toContain('backend search')
+      expect(body.sessions[0].estimatedCost).toBeGreaterThan(0)
+    })
+
+    it('sorts by activity count on the backend', async () => {
+      const db = getDatabase()
+      insertTableSession(db, 'low-activity')
+      insertTableSession(db, 'high-activity')
+      insertUserMessage(db, 'low-activity', 'small')
+      insertUserMessage(db, 'high-activity', 'busy')
+      const insertTool = db.prepare(`
+        INSERT INTO tool_calls (session_id, message_ordinal, tool_id, name, category, input_json, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+      insertTool.run('low-activity', 1, 'low-tool', 'read', 'Read', '{}', 'success')
+      insertTool.run('high-activity', 1, 'high-tool-1', 'rg', 'Grep', '{}', 'success')
+      insertTool.run('high-activity', 1, 'high-tool-2', 'edit', 'Edit', '{}', 'success')
+
+      const response = await sessionsRoutes.request(
+        'http://localhost/api/v1/sessions?source=codex&sort=activity&order=desc',
+      )
+      const body = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(body.sessions.map((s: { id: string }) => s.id).slice(0, 2)).toEqual([
+        'high-activity',
+        'low-activity',
+      ])
+    })
+
+    it('filters by starred and truncated table states', async () => {
+      const db = getDatabase()
+      insertTableSession(db, 'starred-truncated', { truncated: true })
+      insertTableSession(db, 'starred-normal')
+      insertUserMessage(db, 'starred-truncated', 'truncated')
+      insertUserMessage(db, 'starred-normal', 'normal')
+      db.prepare('INSERT INTO session_stars (session_id, starred_at) VALUES (?, ?)').run(
+        'starred-truncated',
+        '2026-05-17T00:00:00.000Z',
+      )
+
+      const response = await sessionsRoutes.request(
+        'http://localhost/api/v1/sessions?source=codex&starred=true&status=truncated',
+      )
+      const body = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(body.sessions.map((s: { id: string }) => s.id)).toEqual(['starred-truncated'])
+      expect(body.pagination.total).toBe(1)
+    })
+  })
 })

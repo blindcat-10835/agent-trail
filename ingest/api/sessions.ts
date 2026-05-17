@@ -10,11 +10,44 @@
 import { Hono } from 'hono';
 import { getDatabase } from '../db';
 import { TraceSession, SessionStatus, TraceSource } from '@/types/trace';
+import { estimateModelCost } from '../pricing/model-pricing.js';
 
 export const sessionsRoutes = new Hono();
 
-const UPDATED_AT_EXPR =
-  "MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, ''))";
+const VALID_SOURCES = ['openclaw', 'claude-code', 'codex'] as const;
+const VALID_SESSION_SORTS = [
+  'updated_at',
+  'started_at',
+  'ended_at',
+  'title',
+  'project',
+  'turns',
+  'tokens',
+  'cost',
+  'activity',
+] as const;
+
+const UPDATED_AT_EXPR = updatedAtExpr();
+
+function column(alias: string | undefined, name: string): string {
+  return alias ? `${alias}.${name}` : name;
+}
+
+function updatedAtExpr(alias?: string): string {
+  return `MAX(COALESCE(${column(alias, 'ended_at')}, ''), COALESCE(${column(alias, 'started_at')}, ''), COALESCE(${column(alias, 'file_mtime')}, ''))`;
+}
+
+function sessionTotalTokensExpr(alias?: string): string {
+  return `CASE WHEN COALESCE(${column(alias, 'total_tokens')}, 0) > 0 THEN ${column(alias, 'total_tokens')} ELSE COALESCE(${column(alias, 'total_input_tokens')}, 0) + COALESCE(${column(alias, 'total_output_tokens')}, 0) + COALESCE(${column(alias, 'total_cache_read_tokens')}, 0) + COALESCE(${column(alias, 'total_cache_write_tokens')}, 0) + COALESCE(${column(alias, 'total_reasoning_tokens')}, 0) END`;
+}
+
+function isValidSource(source: string): source is typeof VALID_SOURCES[number] {
+  return (VALID_SOURCES as readonly string[]).includes(source);
+}
+
+function isValidSessionSort(sort: string): sort is typeof VALID_SESSION_SORTS[number] {
+  return (VALID_SESSION_SORTS as readonly string[]).includes(sort);
+}
 
 // ============================================================================
 // GET /api/v1/sessions/lookup - Look up session by external key
@@ -82,8 +115,10 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   // Parse query parameters
   const source = c.req.query('source') as TraceSource | null;
   const project = c.req.query('project') || null;
-  const status = c.req.query('status') as SessionStatus | null;
-  const sort = c.req.query('sort') || 'updated_at'; // updated_at, started_at, or ended_at
+  const status = c.req.query('status') as SessionStatus | 'truncated' | null;
+  const q = (c.req.query('q') || c.req.query('search') || '').trim();
+  const starred = c.req.query('starred') === 'true';
+  const sort = c.req.query('sort') || 'updated_at';
   const order = c.req.query('order') || 'desc'; // asc or desc
   const includeChildren = c.req.query('includeChildren') === 'true';
 
@@ -101,9 +136,17 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   // Cap limit to prevent resource exhaustion (T-02-14)
   const cappedLimit = Math.min(limit, 1000);
 
-  // Validate sort parameter (only allow safe column names)
-  if (sort !== 'started_at' && sort !== 'ended_at' && sort !== 'updated_at') {
-    return c.json({ error: 'Invalid sort parameter. Must be "updated_at", "started_at", or "ended_at"' }, 400);
+  if (source && !isValidSource(source)) {
+    return c.json({ error: 'Invalid source parameter' }, 400);
+  }
+
+  if (status && !['active', 'idle', 'aborted', 'error', 'unknown', 'truncated'].includes(status)) {
+    return c.json({ error: 'Invalid status parameter' }, 400);
+  }
+
+  // Validate sort parameter (only allow safe column names/aliases)
+  if (!isValidSessionSort(sort)) {
+    return c.json({ error: 'Invalid sort parameter. Must be one of: updated_at, started_at, ended_at, title, project, turns, tokens, cost, activity' }, 400);
   }
 
   // Validate order parameter
@@ -127,25 +170,51 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
 
   // Build query conditions
   const conditions: string[] = [];
-  const params: any[] = [];
+  const params: unknown[] = [];
 
   if (source) {
-    conditions.push('source = ?');
+    conditions.push('s.source = ?');
     params.push(source);
   }
 
   if (project) {
-    conditions.push('project = ?');
+    conditions.push('s.project = ?');
     params.push(project);
   }
 
   if (status) {
-    conditions.push('status = ?');
-    params.push(status);
+    if (status === 'truncated') {
+      conditions.push('s.is_truncated = 1');
+    } else {
+      conditions.push('s.status = ?');
+      params.push(status);
+    }
+  }
+
+  if (starred) {
+    conditions.push('EXISTS (SELECT 1 FROM session_stars ss WHERE ss.session_id = s.id)');
+  }
+
+  if (q) {
+    const like = `%${q.toLowerCase()}%`;
+    conditions.push(`(
+      LOWER(COALESCE(s.name, '')) LIKE ?
+      OR LOWER(s.project) LIKE ?
+      OR LOWER(s.id) LIKE ?
+      OR LOWER(COALESCE(s.git_branch, '')) LIKE ?
+      OR EXISTS (
+        SELECT 1
+        FROM messages mq
+        WHERE mq.session_id = s.id
+          AND mq.role IN ('user', 'assistant')
+          AND LOWER(mq.content) LIKE ?
+      )
+    )`);
+    params.push(like, like, like, like, like);
   }
 
   if (!includeChildren) {
-    conditions.push('(relationship_type IS NULL OR relationship_type = ?)');
+    conditions.push('(s.relationship_type IS NULL OR s.relationship_type = ?)');
     params.push('root');
   }
 
@@ -154,31 +223,68 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   // Get total count
   const countResult = db.prepare(`
     SELECT COUNT(*) as total
-    FROM sessions
+    FROM sessions s
     ${whereClause}
   `).get(...params) as { total: number };
 
   // Get sessions
   const orderBy =
-    sort === 'updated_at'
-      ? UPDATED_AT_EXPR
-      : sort === 'ended_at'
-        ? 'ended_at'
-        : 'started_at';
+    sort === 'updated_at' ? 'updated_at'
+      : sort === 'ended_at' ? 'ended_at'
+        : sort === 'started_at' ? 'started_at'
+          : sort === 'title' ? 'display_title'
+            : sort === 'project' ? 'project'
+              : sort === 'turns' ? 'user_message_count'
+                : sort === 'activity' ? 'activity_count'
+                  : 'computed_total_tokens';
   const orderDir = order === 'asc' ? 'ASC' : 'DESC';
 
   const sessions = db.prepare(`
     SELECT
-      id, source, project, name, started_at, ended_at, status,
-      root_session_id, parent_session_id, relationship_type, source_session_id,
-      message_count, user_message_count, total_output_tokens, total_input_tokens,
-      total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, total_tokens,
-      has_tool_calls, parser_malformed_lines, is_truncated, termination_status,
-      last_sync_at, file_mtime, cwd, git_branch, agent_name,
-      ${UPDATED_AT_EXPR} as updated_at
-    FROM sessions
+      s.id, s.source, s.project, s.name, s.started_at, s.ended_at, s.status,
+      s.root_session_id, s.parent_session_id, s.relationship_type, s.source_session_id,
+      s.message_count, s.user_message_count, s.total_output_tokens, s.total_input_tokens,
+      s.total_cache_read_tokens, s.total_cache_write_tokens, s.total_reasoning_tokens, s.total_tokens,
+      s.has_tool_calls, s.parser_malformed_lines, s.is_truncated, s.termination_status,
+      s.last_sync_at, s.file_mtime, s.cwd, s.git_branch, s.agent_name,
+      ${updatedAtExpr('s')} as updated_at,
+      COALESCE(s.name, s.project || ' — ' || COALESCE(substr(s.started_at, 1, 10), 'unknown')) as display_title,
+      ${sessionTotalTokensExpr('s')} as computed_total_tokens,
+      (
+        SELECT m.model
+        FROM messages m
+        WHERE m.session_id = s.id
+          AND TRIM(COALESCE(m.model, '')) <> ''
+          AND m.model <> '<synthetic>'
+        ORDER BY m.ordinal DESC
+        LIMIT 1
+      ) as model,
+      (
+        SELECT m.content
+        FROM messages m
+        WHERE m.session_id = s.id
+          AND m.role = 'user'
+          AND TRIM(COALESCE(m.content, '')) <> ''
+        ORDER BY m.ordinal ASC
+        LIMIT 1
+      ) as summary,
+      (
+        SELECT COUNT(*)
+        FROM tool_calls tc
+        WHERE tc.session_id = s.id
+      ) as tool_call_count,
+      (
+        SELECT COUNT(*)
+        FROM subagent_links sl
+        WHERE sl.session_id = s.id
+      ) as subagent_count,
+      (
+        (SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id)
+        + (SELECT COUNT(*) FROM subagent_links sl WHERE sl.session_id = s.id)
+      ) as activity_count
+    FROM sessions s
     ${whereClause}
-    ORDER BY ${orderBy} ${orderDir}
+    ORDER BY ${orderBy} ${orderDir}, updated_at DESC, id ASC
     LIMIT ? OFFSET ?
   `).all(...params, cappedLimit, offset) as SessionRow[];
 
@@ -187,7 +293,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   if (groupByDimensions.includes('agent')) {
     const agentRows = db.prepare(`
       SELECT COALESCE(agent_name, source) as label, COUNT(*) as count
-      FROM sessions
+      FROM sessions s
       ${whereClause}
       GROUP BY label
       ORDER BY count DESC
@@ -198,7 +304,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
   if (groupByDimensions.includes('project')) {
     const projectRows = db.prepare(`
       SELECT COALESCE(NULLIF(project, 'default'), '-') as label, COUNT(*) as count
-      FROM sessions
+      FROM sessions s
       ${whereClause}
       GROUP BY label
       ORDER BY count DESC
@@ -243,15 +349,45 @@ sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
 
   const session = db.prepare(`
     SELECT
-      id, source, project, name, started_at, ended_at, status,
-      root_session_id, parent_session_id, relationship_type, source_session_id,
-      message_count, user_message_count, total_output_tokens, total_input_tokens,
-      total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, total_tokens,
-      has_tool_calls, parser_malformed_lines, is_truncated, termination_status,
-      last_sync_at, file_mtime, cwd, git_branch, agent_name,
-      ${UPDATED_AT_EXPR} as updated_at
-    FROM sessions
-    WHERE id = ?
+      s.id, s.source, s.project, s.name, s.started_at, s.ended_at, s.status,
+      s.root_session_id, s.parent_session_id, s.relationship_type, s.source_session_id,
+      s.message_count, s.user_message_count, s.total_output_tokens, s.total_input_tokens,
+      s.total_cache_read_tokens, s.total_cache_write_tokens, s.total_reasoning_tokens, s.total_tokens,
+      s.has_tool_calls, s.parser_malformed_lines, s.is_truncated, s.termination_status,
+      s.last_sync_at, s.file_mtime, s.cwd, s.git_branch, s.agent_name,
+      ${updatedAtExpr('s')} as updated_at,
+      COALESCE(s.name, s.project || ' — ' || COALESCE(substr(s.started_at, 1, 10), 'unknown')) as display_title,
+      ${sessionTotalTokensExpr('s')} as computed_total_tokens,
+      (
+        SELECT m.model
+        FROM messages m
+        WHERE m.session_id = s.id
+          AND TRIM(COALESCE(m.model, '')) <> ''
+          AND m.model <> '<synthetic>'
+        ORDER BY m.ordinal DESC
+        LIMIT 1
+      ) as model,
+      (
+        SELECT m.content
+        FROM messages m
+        WHERE m.session_id = s.id
+          AND m.role = 'user'
+          AND TRIM(COALESCE(m.content, '')) <> ''
+        ORDER BY m.ordinal ASC
+        LIMIT 1
+      ) as summary,
+      (
+        SELECT COUNT(*)
+        FROM tool_calls tc
+        WHERE tc.session_id = s.id
+      ) as tool_call_count,
+      (
+        SELECT COUNT(*)
+        FROM subagent_links sl
+        WHERE sl.session_id = s.id
+      ) as subagent_count
+    FROM sessions s
+    WHERE s.id = ?
   `).get(sessionId) as SessionRow | undefined;
 
   if (!session) {
@@ -298,6 +434,12 @@ interface SessionRow {
   cwd: string | null;
   git_branch: string | null;
   agent_name: string | null;
+  display_title?: string | null;
+  computed_total_tokens?: number;
+  model?: string | null;
+  summary?: string | null;
+  tool_call_count?: number;
+  subagent_count?: number;
 }
 
 // ============================================================================
@@ -310,7 +452,17 @@ function parseSessionRow(row: SessionRow): TraceSession {
   const cacheReadTokens = row.total_cache_read_tokens || 0;
   const cacheWriteTokens = row.total_cache_write_tokens || 0;
   const reasoningTokens = row.total_reasoning_tokens || 0;
-  const totalTokens = row.total_tokens || inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
+  const totalTokens = row.total_tokens || row.computed_total_tokens || inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
+  const costEstimate = estimateModelCost(row.model, {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    reasoningTokens,
+  });
+  const summary = normalizeSummary(row.summary);
+  const toolCalls = row.tool_call_count || 0;
+  const subagents = row.subagent_count || 0;
 
   return {
     id: row.id,
@@ -329,6 +481,8 @@ function parseSessionRow(row: SessionRow): TraceSession {
     cwd: row.cwd || undefined,
     gitBranch: row.git_branch || undefined,
     agentName: row.agent_name || undefined,
+    model: row.model || undefined,
+    summary: summary || undefined,
     metrics: {
       messageCount: row.message_count,
       userMessageCount: row.user_message_count,
@@ -344,14 +498,28 @@ function parseSessionRow(row: SessionRow): TraceSession {
       isTruncated: row.is_truncated === 1
     },
     turns: [], // Turns loaded separately via /sessions/:id/turns
+    activityCounts: {
+      toolCalls,
+      skills: 0,
+      subagents,
+      thinking: 0,
+      system: row.parser_malformed_lines > 0 || row.is_truncated === 1 ? 1 : 0,
+    },
     // Phase 10 enrichment fields
-    displayTitle: row.name || `${row.project} — ${row.started_at?.split('T')[0] || 'unknown'}`,
+    displayTitle: row.display_title || row.name || `${row.project} — ${row.started_at?.split('T')[0] || 'unknown'}`,
     durationMs: row.started_at && row.ended_at
       ? new Date(row.ended_at).getTime() - new Date(row.started_at).getTime()
       : null,
     totalTurns: row.user_message_count,
     inputTokens,
     outputTokens,
-    estimatedCost: null, // Placeholder per CONTEXT.md decision
+    estimatedCost: costEstimate.cost,
   };
+}
+
+function normalizeSummary(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const compact = value.replace(/\s+/g, ' ').trim();
+  if (!compact) return null;
+  return compact.length > 180 ? `${compact.slice(0, 177)}...` : compact;
 }
