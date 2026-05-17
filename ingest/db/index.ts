@@ -447,12 +447,31 @@ export function runMigrations(): void {
       `,
     },
     {
+      desc: 'Drop FTS triggers referencing sessions before rebuild',
+      sql: 'DROP TRIGGER IF EXISTS messages_fts_ai; DROP TRIGGER IF EXISTS messages_fts_ad; DROP TRIGGER IF EXISTS messages_fts_au',
+    },
+    {
       desc: 'Drop old sessions table',
       sql: 'DROP TABLE sessions',
     },
     {
       desc: 'Rename sessions_new to sessions',
       sql: 'ALTER TABLE sessions_new RENAME TO sessions',
+    },
+    {
+      desc: 'Recreate FTS triggers after sessions rebuild',
+      sql: `
+        CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
+          INSERT INTO fts_messages_content(rowid, content) VALUES (new.id, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
+          INSERT INTO fts_messages_content(fts_messages_content, rowid, content) VALUES('delete', old.id, old.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE ON messages BEGIN
+          INSERT INTO fts_messages_content(fts_messages_content, rowid, content) VALUES('delete', old.id, old.content);
+          INSERT INTO fts_messages_content(rowid, content) VALUES (new.id, new.content);
+        END
+      `,
     },
     {
       desc: 'Recreate sessions indexes',
