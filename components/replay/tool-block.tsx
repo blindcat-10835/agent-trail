@@ -3,11 +3,32 @@
 import { useState, useCallback, useMemo } from 'react'
 import { Wrench, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react'
 import type { TraceToolCall } from '@/types/trace'
-import { cn } from '@/lib/utils'
+import { cn, shortPath } from '@/lib/utils'
 import { formatToolDisplay } from './tool-formatters'
 
 interface ToolBlockProps {
   tool: TraceToolCall
+}
+
+const CATEGORY_META: Record<string, { label: string; color: string }> = {
+  Read:  { label: 'READ',  color: 'oklch(0.78 0.10 220)' },
+  Edit:  { label: 'EDIT',  color: 'var(--accent)' },
+  Write: { label: 'WRITE', color: 'oklch(0.78 0.15 110)' },
+  Bash:  { label: 'BASH',  color: 'oklch(0.78 0.12 300)' },
+  Grep:  { label: 'GREP',  color: 'oklch(0.78 0.10 220)' },
+  Task:  { label: 'TASK',  color: 'oklch(0.78 0.15 50)' },
+  Agent: { label: 'AGENT', color: 'oklch(0.78 0.15 320)' },
+  Other: { label: 'TOOL',  color: 'var(--muted-foreground)' },
+}
+
+function extractFilePath(tool: TraceToolCall, displayFilePath?: string): string {
+  if (displayFilePath) return displayFilePath
+  try {
+    const p = JSON.parse(tool.inputJson)
+    return p.file_path || p.path || ''
+  } catch {
+    return ''
+  }
 }
 
 export function ToolBlock({ tool }: ToolBlockProps) {
@@ -18,10 +39,16 @@ export function ToolBlock({ tool }: ToolBlockProps) {
   const display = useMemo(() => formatToolDisplay(tool), [tool])
   const lineCount = display.content.split('\n').length
   const isLongInput = lineCount > 10
-  const statusColor =
-    tool.status === 'success' ? 'bg-[oklch(0.76_0.17_145)]' :
-    tool.status === 'error' ? 'bg-destructive' :
-    'bg-[oklch(0.76_0.17_75)]' // pending = yellow
+
+  const kindMeta = CATEGORY_META[tool.category] ?? CATEGORY_META.Other
+  const filePath = extractFilePath(tool, 'filePath' in display ? display.filePath : undefined)
+  const durationText = tool.durationMs != null
+    ? (tool.durationMs < 1000 ? `${tool.durationMs}ms` : `${(tool.durationMs / 1000).toFixed(1)}s`)
+    : ''
+  const dotColor =
+    tool.status === 'success' ? 'oklch(0.76 0.17 145)' :
+    tool.status === 'error' ? 'var(--destructive)' :
+    'oklch(0.76 0.17 75)'
 
   const handleCopy = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -31,88 +58,87 @@ export function ToolBlock({ tool }: ToolBlockProps) {
   }, [display])
 
   return (
-    <div className="border-t border-border/50 bg-secondary/20">
-      {/* Collapsed header — uses div[role=button] to avoid nesting <button> inside <button> */}
+    <div className={`act-row${tool.status === 'error' ? ' err' : ''}`}>
+      {/* Header — div[role=button] to avoid nesting <button> inside <button> (EL-001) */}
       <div
         role="button"
         tabIndex={0}
         onClick={() => setExpanded((prev) => !prev)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded((prev) => !prev) } }}
-        className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-secondary/30 transition-colors cursor-pointer"
+        className="act-head"
       >
-        <Wrench className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-        <span className="text-[11px] font-semibold text-foreground">{tool.name}</span>
-        {'filePath' in display && display.filePath && (
-          <span className="text-[10px] text-muted-foreground truncate max-w-[200px]" title={display.filePath}>
-            {display.filePath}
-          </span>
-        )}
-        <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground px-1.5 py-0.5 bg-secondary border border-border rounded">
-          {tool.category}
+        <Wrench style={{ width: 12, height: 12, color: 'var(--muted-foreground)', flexShrink: 0 }} />
+        <span className="act-tag" style={{ color: kindMeta.color, borderColor: kindMeta.color }}>
+          {kindMeta.label}
         </span>
-        {/* Status dot */}
-        <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusColor, tool.status === 'pending' && 'animate-pulse')} />
-        {tool.status === 'error' && (
-          <span className="text-[9px] text-destructive font-semibold">ERROR</span>
-        )}
-        {tool.durationMs != null && (
-          <span className="text-[9px] text-muted-foreground ml-auto font-mono">
-            {tool.durationMs < 1000 ? `${tool.durationMs}ms` : `${(tool.durationMs / 1000).toFixed(1)}s`}
-          </span>
-        )}
-        {/* Copy */}
-        <button onClick={handleCopy} className="p-0.5 text-muted-foreground hover:text-accent transition-colors flex-shrink-0" title={copied ? 'Copied!' : 'Copy'}>
-          {copied ? <Check className="w-2.5 h-2.5 text-accent" /> : <Copy className="w-2.5 h-2.5" />}
+        <span className="act-name">{tool.displayName || tool.name}</span>
+        <span className="act-path mono" title={filePath}>{shortPath(filePath)}</span>
+        <span className="act-time mono">{durationText}</span>
+        <span
+          className="act-dot"
+          style={{
+            background: dotColor,
+            boxShadow: `0 0 5px ${dotColor}`,
+            animation: tool.status === 'pending' ? 'hud-pulse 1.4s infinite' : 'none',
+          }}
+        />
+        <button
+          onClick={handleCopy}
+          style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: 'var(--muted-foreground)', display: 'inline-flex', flexShrink: 0 }}
+          title={copied ? 'Copied!' : 'Copy'}
+        >
+          {copied
+            ? <Check style={{ width: 10, height: 10, color: 'var(--accent)' }} />
+            : <Copy style={{ width: 10, height: 10 }} />}
         </button>
-        {expanded ? <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />}
+        <span className="act-chev">
+          {expanded
+            ? <ChevronDown style={{ width: 12, height: 12 }} />
+            : <ChevronRight style={{ width: 12, height: 12 }} />}
+        </span>
       </div>
 
-      {/* Expanded content */}
       {expanded && (
-        <div className="px-4 pb-3 space-y-2">
-          {/* Formatted input */}
+        <div className="act-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {tool.inputJson && (
             <div>
-              <button
-                onClick={() => isLongInput && setInputCollapsed((prev) => !prev)}
-                className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1"
-                disabled={!isLongInput}
-              >
-                INPUT {isLongInput && (inputCollapsed ? '(expand)' : '(collapse)')}
-              </button>
-              <pre className={cn(
-                'text-[11px] font-mono text-muted-foreground bg-background/50 p-2 border border-border overflow-x-auto whitespace-pre-wrap break-all',
-                isLongInput && inputCollapsed && 'max-h-[200px] overflow-hidden'
-              )}>
+              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--muted-foreground)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                INPUT
+                {isLongInput && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setInputCollapsed((p) => !p) }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 9, padding: 0 }}
+                  >
+                    {inputCollapsed ? '(expand)' : '(collapse)'}
+                  </button>
+                )}
+              </div>
+              <pre className={cn('act-pre', isLongInput && inputCollapsed && 'max-h-[160px] overflow-hidden')}>
                 {display.content}
               </pre>
             </div>
           )}
 
-          {/* Result events */}
           {tool.resultEvents.length > 0 && (
             <div>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground block mb-1">
+              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--muted-foreground)', marginBottom: 4 }}>
                 RESULT
-              </span>
+              </div>
               {tool.resultEvents.map((event, i) => (
-                <div key={i} className="text-[11px] font-mono text-foreground/80 bg-background/50 p-2 border border-border mb-1 whitespace-pre-wrap break-all">
+                <pre key={i} className="act-pre" style={{ marginBottom: i < tool.resultEvents.length - 1 ? 4 : 0 }}>
                   {event.timestamp && (
-                    <span className="text-[9px] text-muted-foreground block mb-0.5">
+                    <span style={{ fontSize: 9, color: 'var(--muted-foreground)', display: 'block', marginBottom: 2 }}>
                       {new Date(event.timestamp).toLocaleTimeString()}
                     </span>
                   )}
                   {event.content}
-                </div>
+                </pre>
               ))}
             </div>
           )}
 
-          {/* Error display */}
           {tool.error && (
-            <div className="text-[11px] text-destructive bg-destructive/10 p-2 border border-destructive/30 font-mono">
-              {tool.error}
-            </div>
+            <pre className="act-pre err">{tool.error}</pre>
           )}
         </div>
       )}

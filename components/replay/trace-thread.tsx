@@ -1,8 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { ChevronDown, ChevronRight, Search } from 'lucide-react'
-import type { TraceSession, TraceTurn, TraceActivity } from '@/types/trace'
+import { Search } from 'lucide-react'
+import type { TraceSession, TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
+import { MarkdownContent } from './markdown-content'
+import { ToolBlock } from './tool-block'
+import { SkillBlock } from './skill-block'
+import { SubagentBlock } from './subagent-block'
+import { ThinkingBlock } from './thinking-block'
+import { SystemEventBlock } from './system-event-block'
+import { getActivityKey, getMessageKey } from './key-utils'
 
 interface TraceThreadProps {
   session: TraceSession | null
@@ -39,75 +46,42 @@ function deriveDisplayStatus(session: TraceSession | null): { label: string; col
   return null
 }
 
-const KIND_META: Record<string, { label: string; color: string }> = {
-  read: { label: 'READ', color: 'oklch(0.78 0.10 220)' },
-  edit: { label: 'EDIT', color: 'var(--accent)' },
-  write: { label: 'WRITE', color: 'oklch(0.78 0.15 110)' },
-  bash: { label: 'BASH', color: 'oklch(0.78 0.12 300)' },
-  skill: { label: 'SKILL', color: 'oklch(0.78 0.15 50)' },
-  agent: { label: 'AGENT', color: 'oklch(0.78 0.15 320)' },
+type ActivityEntry = { activity: TraceActivity; idx: number }
+
+function shouldRenderAssistantMessage(message: TraceMessage): boolean {
+  if (message.role !== 'assistant') return false
+  const content = message.content.trim()
+  if (!content) return false
+  return !/^\[(function_call|custom_tool_call):/i.test(content)
 }
 
-function activityKind(act: TraceActivity): string {
-  if (act.type === 'tool_call') {
-    const cat = act.category
-    if (cat === 'Read') return 'read'
-    if (cat === 'Edit') return 'edit'
-    if (cat === 'Bash') return 'bash'
-    if (cat === 'Agent') return 'agent'
-    if (cat === 'Grep' || cat === 'Task') return 'write'
-    return 'read'
-  }
-  if (act.type === 'skill_use') return 'skill'
-  if (act.type === 'subagent_link') return 'agent'
-  return 'read'
-}
-
-function shouldShowActivity(act: TraceActivity): boolean {
-  return act.type === 'tool_call' || act.type === 'skill_use' || act.type === 'subagent_link'
-}
-
-function activityName(act: TraceActivity): string {
-  if (act.type === 'tool_call') return act.displayName || act.name
-  if (act.type === 'skill_use') return act.displayName || act.name
-  if (act.type === 'subagent_link') return 'subagent'
-  return ''
-}
-
-function activityPath(act: TraceActivity): string {
-  if (act.type === 'tool_call') {
-    try {
-      const parsed = JSON.parse(act.inputJson)
-      return parsed.file_path || parsed.path || ''
-    } catch {
-      return ''
-    }
-  }
-  if (act.type === 'subagent_link') return act.subagentSessionId
-  return ''
-}
-
-function activityDuration(act: TraceActivity): number | undefined {
-  if (act.type === 'tool_call') return act.durationMs
-  if (act.type === 'skill_use') return act.durationMs
-  if (act.type === 'subagent_link') return act.durationMs
+function getActivityMessageOrdinal(activity: TraceActivity): number | undefined {
+  if (activity.type === 'tool_call') return activity.messageOrdinal
+  if (activity.type === 'subagent_link') return activity.messageOrdinal
   return undefined
 }
 
-function activityStatus(act: TraceActivity): 'ok' | 'err' | 'pending' {
-  if (act.type === 'tool_call') {
-    if (act.status === 'error') return 'err'
-    if (act.status === 'pending') return 'pending'
-    return 'ok'
+function groupActivityEntriesByOrdinal(entries: ActivityEntry[]): Map<number, ActivityEntry[]> {
+  const grouped = new Map<number, ActivityEntry[]>()
+  for (const entry of entries) {
+    const ordinal = getActivityMessageOrdinal(entry.activity)
+    if (ordinal == null) continue
+    const existing = grouped.get(ordinal) ?? []
+    existing.push(entry)
+    grouped.set(ordinal, existing)
   }
-  if (act.type === 'skill_use') return act.status === 'error' ? 'err' : 'ok'
-  return 'ok'
+  return grouped
 }
 
-function activityError(act: TraceActivity): string | undefined {
-  if (act.type === 'tool_call') return act.error
-  if (act.type === 'skill_use') return act.error
-  return undefined
+function ActivityBlock({ activity, turnIndex }: { activity: TraceActivity; turnIndex: number }) {
+  switch (activity.type) {
+    case 'tool_call': return <ToolBlock tool={activity} />
+    case 'skill_use': return <SkillBlock skill={activity} />
+    case 'subagent_link': return <SubagentBlock subagent={activity} parentTurnIndex={turnIndex} />
+    case 'thinking': return <ThinkingBlock thinking={activity} />
+    case 'system': return <SystemEventBlock event={activity} />
+    default: return null
+  }
 }
 
 function extractModel(turns: TraceTurn[]): string | null {
@@ -128,82 +102,32 @@ function HudPill({ color, pulse, children }: { color: string; pulse?: boolean; c
   )
 }
 
-interface ActivityRowData {
-  act: TraceActivity
-  kind: string
-  name: string
-  path: string
-  duration: number | undefined
-  status: 'ok' | 'err' | 'pending'
-  error: string | undefined
-}
-
-function toActivityRowData(act: TraceActivity): ActivityRowData {
-  return {
-    act,
-    kind: activityKind(act),
-    name: activityName(act),
-    path: activityPath(act),
-    duration: activityDuration(act),
-    status: activityStatus(act),
-    error: activityError(act),
-  }
-}
-
-function ActivityRow({ data, expanded, onToggle }: { data: ActivityRowData; expanded: boolean; onToggle: () => void }) {
-  const m = KIND_META[data.kind] || { label: data.kind.toUpperCase(), color: 'var(--muted-foreground)' }
-  const sColor = data.status === 'ok' ? 'var(--status-success)' : data.status === 'err' ? 'var(--destructive)' : 'var(--status-warning)'
-  return (
-    <div className={`act-row ${expanded ? 'open' : ''} ${data.status === 'err' ? 'err' : ''}`}>
-      <button className="act-head" onClick={onToggle}>
-        <span className="act-tag" style={{ color: m.color, borderColor: m.color }}>{m.label}</span>
-        <span className="act-name">{data.name}</span>
-        <span className="act-path mono">{data.path}</span>
-        <span className="act-spacer" />
-        <span className="act-time mono">{data.duration != null ? formatDuration(data.duration) : ''}</span>
-        <span
-          className="act-dot"
-          style={{
-            background: sColor,
-            boxShadow: `0 0 6px ${sColor}`,
-            animation: data.status === 'pending' ? 'hud-pulse 1.4s infinite' : 'none',
-          }}
-        />
-        <span className="act-chev">{expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
-      </button>
-      {expanded && (
-        <div className="act-body">
-          {data.error ? (
-            <pre className="act-pre err">{data.error}</pre>
-          ) : (
-            <pre className="act-pre">{`$ ${data.name.toLowerCase()} ${data.path}\n\u2500 ${data.duration != null ? formatDuration(data.duration) : '?'} \u00b7 status: ${data.status}`}</pre>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
 
 function TurnCard({
   turn,
   focused,
   onFocus,
-  expandedActs,
-  onToggleAct,
 }: {
   turn: TraceTurn
   focused: boolean
   onFocus: () => void
-  expandedActs: Set<string>
-  onToggleAct: (key: string) => void
 }) {
   const ref = useRef<HTMLElement>(null)
   const userContent = turn.userMessage?.content || ''
-  const assistantContent = turn.assistantMessages.map((m) => m.content).join('\n\n')
-  const visibleActivities = turn.activities.filter(shouldShowActivity).map(toActivityRowData)
   const isErr = turn.enrichment?.failureStatus === 'error'
   const tokenIn = turn.tokenUsage?.inputTokens ?? 0
   const tokenOut = turn.tokenUsage?.outputTokens ?? 0
+
+  const activityEntries: ActivityEntry[] = turn.activities.map((activity, idx) => ({ activity, idx }))
+  const activitiesByOrdinal = groupActivityEntriesByOrdinal(activityEntries)
+  const messageOrdinals = new Set(turn.assistantMessages.map((m) => m.ordinal))
+  const unanchoredActivityEntries = activityEntries.filter(
+    ({ activity }) => getActivityMessageOrdinal(activity) == null
+  )
+  const orphanedAnchoredActivityEntries = activityEntries.filter(({ activity }) => {
+    const ordinal = getActivityMessageOrdinal(activity)
+    return ordinal != null && !messageOrdinals.has(ordinal)
+  })
 
   return (
     <article
@@ -228,28 +152,46 @@ function TurnCard({
 
         <div className="v2-bubble user">
           <span className="v2-role">USER</span>
-          <div className="v2-msg">{userContent}</div>
+          <MarkdownContent content={userContent} className="v2-msg" />
         </div>
 
-        {assistantContent && (
-          <div className="v2-bubble asst">
-            <span className="v2-role">ASSISTANT</span>
-            <div className="v2-msg">{assistantContent}</div>
-          </div>
-        )}
+        {unanchoredActivityEntries.map(({ activity, idx }) => (
+          <ActivityBlock
+            key={getActivityKey(activity, idx, turn.index)}
+            activity={activity}
+            turnIndex={turn.index}
+          />
+        ))}
 
-        {visibleActivities.length > 0 && (
-          <div className="v2-acts">
-            {visibleActivities.map((data, i) => (
-              <ActivityRow
-                key={`${turn.index}:${i}`}
-                data={data}
-                expanded={expandedActs.has(`${turn.index}:${i}`)}
-                onToggle={() => onToggleAct(`${turn.index}:${i}`)}
-              />
-            ))}
-          </div>
-        )}
+        {turn.assistantMessages.map((msg, index) => {
+          const attachedActivities = activitiesByOrdinal.get(msg.ordinal) ?? []
+          const showMessage = shouldRenderAssistantMessage(msg)
+          return (
+            <div key={getMessageKey(msg, index)}>
+              {showMessage && (
+                <div className="v2-bubble asst">
+                  <span className="v2-role">ASSISTANT</span>
+                  <MarkdownContent content={msg.content} className="v2-msg" />
+                </div>
+              )}
+              {attachedActivities.map(({ activity, idx }) => (
+                <ActivityBlock
+                  key={getActivityKey(activity, idx, turn.index)}
+                  activity={activity}
+                  turnIndex={turn.index}
+                />
+              ))}
+            </div>
+          )
+        })}
+
+        {orphanedAnchoredActivityEntries.map(({ activity, idx }) => (
+          <ActivityBlock
+            key={getActivityKey(activity, idx, turn.index)}
+            activity={activity}
+            turnIndex={turn.index}
+          />
+        ))}
       </div>
     </article>
   )
@@ -307,9 +249,30 @@ function Inspector({
 }) {
   if (!turn) return null
 
-  const visibleActivities = turn.activities.filter(shouldShowActivity).map(toActivityRowData)
   const tokenIn = turn.tokenUsage?.inputTokens ?? 0
   const tokenOut = turn.tokenUsage?.outputTokens ?? 0
+
+  const visibleActivities = turn.activities.filter(
+    (a) => a.type === 'tool_call' || a.type === 'skill_use' || a.type === 'subagent_link'
+  )
+
+  function inspectorActivityMeta(act: TraceActivity) {
+    if (act.type === 'tool_call') {
+      const cat = act.category
+      const color =
+        cat === 'Edit' ? 'var(--accent)' :
+        cat === 'Bash' ? 'oklch(0.78 0.12 300)' :
+        cat === 'Read' || cat === 'Grep' ? 'oklch(0.78 0.10 220)' :
+        cat === 'Agent' ? 'oklch(0.78 0.15 320)' :
+        'var(--muted-foreground)'
+      let path = ''
+      try { const p = JSON.parse(act.inputJson); path = p.file_path || p.path || '' } catch { /* ignore */ }
+      return { name: act.displayName || act.name, path, color }
+    }
+    if (act.type === 'skill_use') return { name: act.displayName || act.name, path: '', color: 'oklch(0.78 0.15 50)' }
+    if (act.type === 'subagent_link') return { name: 'subagent', path: act.subagentSessionId, color: 'oklch(0.78 0.15 320)' }
+    return { name: '', path: '', color: 'var(--muted-foreground)' }
+  }
 
   return (
     <aside className="v2-inspect">
@@ -351,16 +314,16 @@ function Inspector({
           {visibleActivities.length === 0 ? (
             <div className="v2-ins-empty mono">{'\u2014'} no tools called</div>
           ) : (
-            visibleActivities.map((data, i) => {
-              const m = KIND_META[data.kind] || { color: 'var(--muted-foreground)' }
+            visibleActivities.map((act, i) => {
+              const { name, path, color } = inspectorActivityMeta(act)
               return (
                 <div key={i} className="v2-ins-act">
                   <span
                     className="v2-ins-pip"
-                    style={{ background: m.color, boxShadow: `0 0 6px ${m.color}` }}
+                    style={{ background: color, boxShadow: `0 0 6px ${color}` }}
                   />
-                  <span className="mono v2-ins-actname">{data.name}</span>
-                  <span className="mono v2-ins-actpath">{data.path}</span>
+                  <span className="mono v2-ins-actname">{name}</span>
+                  <span className="mono v2-ins-actpath">{path}</span>
                 </div>
               )
             })
@@ -387,7 +350,6 @@ function Inspector({
 
 export function TraceThread({ session, turns, sessionId, onBackToSessions }: TraceThreadProps) {
   const [focused, setFocused] = useState(0)
-  const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set())
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [query, setQuery] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -403,15 +365,6 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
         t.assistantMessages.some((m) => m.content.toLowerCase().includes(q))
     )
   }, [query, turns])
-
-  const toggleAct = useCallback((key: string) => {
-    setExpandedActs((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }, [])
 
   const focus = useCallback(
     (idx: number) => {
@@ -540,26 +493,6 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
             {'\u203a'}
           </button>
           <span className="v2-cmd-sep">{'\u2502'}</span>
-          <button
-            className="v2-link"
-            onClick={() =>
-              setExpandedActs(
-                new Set(
-                  turns.flatMap((t) =>
-                    t.activities
-                      .filter(shouldShowActivity)
-                      .map((_, i) => `${t.index}:${i}`)
-                  )
-                )
-              )
-            }
-          >
-            EXPAND ALL
-          </button>
-          <button className="v2-link" onClick={() => setExpandedActs(new Set())}>
-            COLLAPSE
-          </button>
-          <span className="v2-cmd-sep">{'\u2502'}</span>
           <span className="v2-hint mono">j / k {'\u00b7'} /</span>
         </div>
       </div>
@@ -575,8 +508,6 @@ export function TraceThread({ session, turns, sessionId, onBackToSessions }: Tra
                 turn={t}
                 focused={focused === t.index}
                 onFocus={() => setFocused(t.index)}
-                expandedActs={expandedActs}
-                onToggleAct={toggleAct}
               />
             ))}
             <div className="v2-trace-end mono">{'\u2014'} END OF TRACE {'\u2014'} listening for new turns</div>

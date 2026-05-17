@@ -1253,10 +1253,9 @@
 }
 
 .act-head {
-  display: grid;
-  grid-template-columns: auto auto 1fr auto auto auto auto;
-  gap: 10px;
+  display: flex;
   align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 7px 12px;
   background: transparent;
@@ -1291,6 +1290,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  flex: 1;
 }
 
 .act-spacer {

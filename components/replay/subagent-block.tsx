@@ -15,6 +15,7 @@ interface SubagentBlockProps {
 }
 
 const MAX_DEPTH = 2
+const AGENT_COLOR = 'oklch(0.78 0.15 320)'
 
 export function SubagentBlock({ subagent, depth = 0 }: SubagentBlockProps) {
   const [expanded, setExpanded] = useState(false)
@@ -22,7 +23,6 @@ export function SubagentBlock({ subagent, depth = 0 }: SubagentBlockProps) {
   const { toolId, href } = useAgentTool()
   const router = useRouter()
 
-  // Only fetch when loaded=true (lazy)
   const { turns: childTurns, loading, error } = useSessionTurns(
     toolId,
     loaded ? subagent.subagentSessionId : null,
@@ -47,68 +47,66 @@ export function SubagentBlock({ subagent, depth = 0 }: SubagentBlockProps) {
     router.push(href(`/sessions/${subagent.subagentSessionId}`))
   }, [subagent.subagentSessionId, href, router])
 
-  const displayId = subagent.subagentSessionId.length > 40
-    ? subagent.subagentSessionId.slice(0, 40) + '...'
-    : subagent.subagentSessionId
+  const shortId = subagent.subagentSessionId.slice(-12)
+  const durationText = subagent.durationMs != null
+    ? (subagent.durationMs < 1000 ? `${subagent.durationMs}ms` : `${(subagent.durationMs / 1000).toFixed(1)}s`)
+    : ''
 
   return (
-    <div className="border-t border-border/50 bg-secondary/20">
-      {/* Header */}
+    <div className="act-row">
       <button
         onClick={() => setExpanded((prev) => !prev)}
-        className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-secondary/30 transition-colors"
+        className="act-head"
       >
-        <Bot className="w-3 h-3 text-[oklch(0.76_0.17_75)] flex-shrink-0" />
-        <span className="text-[11px] font-semibold text-foreground">Subagent</span>
-        <span className="text-[9px] text-muted-foreground font-mono truncate max-w-[200px]">
-          {displayId}
+        <Bot style={{ width: 12, height: 12, color: AGENT_COLOR, flexShrink: 0 }} />
+        <span className="act-tag" style={{ color: AGENT_COLOR, borderColor: AGENT_COLOR }}>AGENT</span>
+        <span className="act-name">Subagent</span>
+        <span className="act-path mono" title={subagent.subagentSessionId}>{shortId}</span>
+        <span className="act-time mono">{durationText}</span>
+        <span className="act-dot" style={{ background: AGENT_COLOR, boxShadow: `0 0 5px ${AGENT_COLOR}` }} />
+        <span className="act-chev">
+          {expanded
+            ? <ChevronDown style={{ width: 12, height: 12 }} />
+            : <ChevronRight style={{ width: 12, height: 12 }} />}
         </span>
-        <span className="text-[9px] text-muted-foreground ml-auto">
-          {subagent.relationship}
-        </span>
-        {expanded ? <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />}
       </button>
 
-      {/* Expanded content */}
       {expanded && (
-        <div className="px-4 pb-3">
-          {/* Depth cap check */}
+        <div className="act-body">
           {depth >= MAX_DEPTH ? (
-            <div className="text-[10px] text-muted-foreground py-2 text-center">
+            <div style={{ fontSize: 10, color: 'var(--muted-foreground)', padding: '8px 0', textAlign: 'center' }}>
               Max nesting depth reached
             </div>
           ) : !loaded ? (
             <button
               onClick={handleLoad}
-              className="w-full px-3 py-2 text-[10px] font-semibold uppercase tracking-wider border border-border rounded hover:bg-accent/10 hover:border-accent transition-colors text-accent text-center"
+              style={{ width: '100%', padding: '8px 12px', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', border: '1px solid var(--border)', background: 'none', color: 'var(--accent)', cursor: 'pointer', textAlign: 'center' }}
             >
               Load Subagent
             </button>
           ) : loading ? (
-            <div className="flex items-center justify-center py-4">
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent" />
             </div>
           ) : loadError ? (
-            <div className="flex flex-col items-center gap-2 py-3">
-              <div className="text-[10px] font-bold text-destructive uppercase">ERR</div>
-              <div className="text-[9px] text-muted-foreground text-center">Could not load subagent turns.</div>
-              <div className="flex gap-2">
-                <button onClick={handleRetry} className="text-[9px] text-accent hover:underline">RETRY</button>
-                <button onClick={() => setLoaded(false)} className="text-[9px] text-muted-foreground hover:underline">DISMISS</button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '12px 0' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--destructive)', textTransform: 'uppercase' }}>ERR</div>
+              <div style={{ fontSize: 9, color: 'var(--muted-foreground)', textAlign: 'center' }}>Could not load subagent turns.</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={handleRetry} style={{ fontSize: 9, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>RETRY</button>
+                <button onClick={() => setLoaded(false)} style={{ fontSize: 9, color: 'var(--muted-foreground)', background: 'none', border: 'none', cursor: 'pointer' }}>DISMISS</button>
               </div>
             </div>
           ) : (
-            <div className="space-y-2 mt-2 ml-4 border-l-2 border-border/50 pl-4">
-              {/* Mini turn cards for child turns */}
+            <div style={{ marginTop: 8, marginLeft: 16, borderLeft: '2px solid var(--border)', paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {childTurns.slice(0, 5).map((turn, index) => (
                 <TurnCard key={getTurnKey(turn, index)} turn={turn} />
               ))}
-              {/* Open full session */}
               <button
                 onClick={handleOpenFull}
-                className="flex items-center gap-1 text-[10px] text-accent hover:text-accent/80 transition-colors font-semibold"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
               >
-                Open Full Session <ExternalLink className="w-2.5 h-2.5" />
+                Open Full Session <ExternalLink style={{ width: 10, height: 10 }} />
               </button>
             </div>
           )}
