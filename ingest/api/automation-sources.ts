@@ -23,6 +23,9 @@ interface OpenClawRunStats {
   latestStatus: string | null;
 }
 
+const FILE_AUTOMATION_CACHE_TTL_MS = 10_000;
+const fileAutomationCache = new Map<string, { expiresAt: number; rows: FileAutomationSummary[] }>();
+
 function unique(paths: string[]): string[] {
   return [...new Set(paths.map((p) => path.resolve(p)))];
 }
@@ -58,12 +61,6 @@ function getCodexRoots(): string[] {
 function msToIso(value: unknown): string | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
   return new Date(value).toISOString();
-}
-
-function laterIso(a: string | null, b: string | null): string | null {
-  if (!a) return b;
-  if (!b) return a;
-  return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -108,34 +105,53 @@ function formatOpenClawSchedule(schedule: unknown): string | undefined {
   return kind;
 }
 
-function readOpenClawRunStats(root: string): Map<string, OpenClawRunStats> {
+function countNonEmptyLines(raw: string): number {
+  let count = 0;
+  let inLine = false;
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw.charCodeAt(i);
+    if (ch === 10 || ch === 13) {
+      if (inLine) count += 1;
+      inLine = false;
+    } else if (!inLine) {
+      inLine = true;
+    }
+  }
+
+  return inLine ? count + 1 : count;
+}
+
+function lastNonEmptyLine(raw: string): string | null {
+  let end = raw.length - 1;
+  while (end >= 0 && /\s/.test(raw[end])) end -= 1;
+  if (end < 0) return null;
+
+  const start = raw.lastIndexOf('\n', end);
+  return raw.slice(start + 1, end + 1).trim() || null;
+}
+
+function readOpenClawRunStats(root: string, jobIds: Set<string>): Map<string, OpenClawRunStats> {
   const runsDir = path.join(root, 'cron', 'runs');
   const stats = new Map<string, OpenClawRunStats>();
 
   if (!existsSync(runsDir)) return stats;
 
-  for (const fileName of readdirSync(runsDir)) {
-    if (!fileName.endsWith('.jsonl')) continue;
+  for (const jobId of jobIds) {
+    const filePath = path.join(runsDir, `${jobId}.jsonl`);
+    if (!existsSync(filePath)) continue;
 
-    const filePath = path.join(runsDir, fileName);
     try {
-      for (const line of readFileSync(filePath, 'utf-8').split('\n')) {
-        if (!line.trim()) continue;
-        const obj = parseJsonObject(line);
-        const jobId = obj ? readString(obj, 'jobId') ?? fileName.replace(/\.jsonl$/, '') : '';
-        if (!jobId) continue;
+      const raw = readFileSync(filePath, 'utf-8');
+      const obj = parseJsonObject(lastNonEmptyLine(raw) ?? '');
+      const timestamp = msToIso(obj?.runAtMs) ?? msToIso(obj?.ts);
+      const status = obj ? readString(obj, 'status') ?? null : null;
 
-        const current = stats.get(jobId) ?? { count: 0, lastActiveAt: null, latestStatus: null };
-        const timestamp = msToIso(obj?.runAtMs) ?? msToIso(obj?.ts);
-        const status = obj ? readString(obj, 'status') ?? null : null;
-        const latest = laterIso(current.lastActiveAt, timestamp);
-
-        stats.set(jobId, {
-          count: current.count + 1,
-          lastActiveAt: latest,
-          latestStatus: latest === timestamp ? status : current.latestStatus,
-        });
-      }
+      stats.set(jobId, {
+        count: countNonEmptyLines(raw),
+        lastActiveAt: timestamp,
+        latestStatus: status,
+      });
     } catch {
       // Ignore unreadable or malformed run logs.
     }
@@ -153,7 +169,13 @@ function readOpenClawAutomations(): FileAutomationSummary[] {
 
     const jobsFile = parseJsonObject(readFileSync(jobsPath, 'utf-8'));
     const jobs = Array.isArray(jobsFile?.jobs) ? jobsFile.jobs : [];
-    const runStats = readOpenClawRunStats(root);
+    const jobIds = new Set(
+      jobs
+        .filter(isRecord)
+        .map((job) => readString(job, 'id'))
+        .filter((id): id is string => Boolean(id)),
+    );
+    const runStats = readOpenClawRunStats(root, jobIds);
 
     for (const job of jobs) {
       if (!job || typeof job !== 'object') continue;
@@ -294,6 +316,13 @@ function readCodexAutomations(): FileAutomationSummary[] {
 }
 
 export function readFileBackedAutomations(source?: SourceToolId): FileAutomationSummary[] {
+  const cacheKey = source ?? 'all';
+  const now = Date.now();
+  const cached = fileAutomationCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.rows.map((row) => ({ ...row }));
+  }
+
   const rows: FileAutomationSummary[] = [];
 
   if (!source || source === 'openclaw') {
@@ -304,5 +333,10 @@ export function readFileBackedAutomations(source?: SourceToolId): FileAutomation
     rows.push(...readCodexAutomations());
   }
 
-  return rows;
+  fileAutomationCache.set(cacheKey, {
+    expiresAt: now + FILE_AUTOMATION_CACHE_TTL_MS,
+    rows,
+  });
+
+  return rows.map((row) => ({ ...row }));
 }

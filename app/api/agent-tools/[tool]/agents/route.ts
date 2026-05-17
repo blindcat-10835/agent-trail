@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { assertSourceToolId } from '@/lib/agent-tools/registry'
+import { assertAgentToolId, assertSourceToolId } from '@/lib/agent-tools/registry'
 import { fetchIngest } from '@/lib/agent-tools/server-adapter'
 
 export async function GET(
@@ -16,6 +16,10 @@ export async function GET(
   const { tool } = await params
 
   try {
+    if (assertAgentToolId(tool) === 'all') {
+      return NextResponse.json({ agents: [] })
+    }
+
     const toolId = assertSourceToolId(tool)
     const data = await fetchIngest<{ agents: unknown[] }>(
       `/api/v1/agents?source=${toolId}`,

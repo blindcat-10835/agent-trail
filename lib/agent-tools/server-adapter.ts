@@ -162,6 +162,9 @@ export function sanitizeError(err: unknown): { error: string; code: number } {
     ) {
       return { error: err.message, code: 400 }
     }
+    if (err.message === 'Ingest service request timed out') {
+      return { error: 'Ingest service is still indexing. Retry shortly.', code: 504 }
+    }
     // Never expose stack traces or internal paths to frontend
     return { error: 'Ingest service unreachable', code: 502 }
   }
@@ -186,6 +189,7 @@ export function sanitizeError(err: unknown): { error: string; code: number } {
  */
 /** Default timeout for ingest fetch calls (ms) */
 const INGEST_FETCH_TIMEOUT_MS = 5_000
+export const INGEST_OVERVIEW_FETCH_TIMEOUT_MS = 20_000
 
 export async function fetchIngest<T>(
   path: string,

@@ -9,7 +9,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { assertSourceToolId } from '@/lib/agent-tools/registry'
-import { fetchIngest, sanitizeError } from '@/lib/agent-tools/server-adapter'
+import {
+  INGEST_OVERVIEW_FETCH_TIMEOUT_MS,
+  fetchIngest,
+  sanitizeError,
+} from '@/lib/agent-tools/server-adapter'
 
 export async function GET(
   request: NextRequest,
@@ -22,7 +26,7 @@ export async function GET(
     const qs = request.nextUrl.searchParams.toString()
     const data = await fetchIngest(
       `/api/v1/overview/agents?source=${toolId}&${qs}`,
-      { cache: 'no-store' },
+      { cache: 'no-store', timeout: INGEST_OVERVIEW_FETCH_TIMEOUT_MS },
     )
     return NextResponse.json(data)
   } catch (err) {
