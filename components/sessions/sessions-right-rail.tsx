@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { RefreshCw, X } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import {
   useAgentTool,
@@ -13,32 +13,37 @@ import {
 } from '@/lib/agent-tools/client-hooks'
 import { useToolStore } from '@/stores/tool-store'
 import { useStarredStore } from '@/stores/starred-store'
-import {
-  SessionFilterDropdown,
-  type SessionFilterState,
-  type GroupMode,
-} from './session-filter-dropdown'
-import { cn } from '@/lib/utils'
+import { useUIStore } from '@/stores/ui-store'
+import { shortPath, projectColor } from '@/lib/utils'
 import type { AgentToolId, SourceToolId } from '@/lib/agent-tools/types'
-import type { TraceSession, TraceSource } from '@/types/trace'
-import { TOOL_IDS } from '@/lib/agent-tools/registry'
+import type { TraceSession } from '@/types/trace'
 
-const SOURCE_SPINE_COLORS: Record<string, string> = {
-  openclaw: 'border-l-[3px] border-l-[oklch(0.76_0.17_145)]',
-  'claude-code': 'border-l-[3px] border-l-[oklch(0.8_0.17_75)]',
-  codex: 'border-l-[3px] border-l-[oklch(0.76_0.17_200)]',
+const SOURCE_META: Record<string, { short_text: string; color: string }> = {
+  'openclaw':    { short_text: 'OpenClaw', color: 'oklch(0.80 0.17 75)' },
+  'claude-code': { short_text: 'Claude',   color: 'oklch(0.78 0.15 35)' },
+  'codex':       { short_text: 'Codex',    color: 'oklch(0.78 0.10 250)' },
 }
 
-export type RailScope = 'recent' | 'starred' | 'live'
+const RR_STATUS: Record<string, string> = {
+  LIVE:      'var(--status-success)',
+  IDLE:      'var(--muted-foreground)',
+  ERROR:     'var(--destructive)',
+  TRUNCATED: 'var(--status-parser-warning)',
+}
+
+function deriveDisplayStatus(s: TraceSession): string {
+  if (s.status === 'error' || s.status === 'aborted') return 'ERROR'
+  if (s.metrics.isTruncated) return 'TRUNCATED'
+  if (s.status === 'active') return 'LIVE'
+  return 'IDLE'
+}
 
 interface SessionsRightRailProps {
-  railScope: RailScope
   selectedSessionId: string | null
   onClearSelection: () => void
 }
 
 export function SessionsRightRail({
-  railScope,
   selectedSessionId,
   onClearSelection,
 }: SessionsRightRailProps) {
@@ -47,7 +52,6 @@ export function SessionsRightRail({
   if (toolId === 'all') {
     return (
       <AggregateSessionsRightRail
-        railScope={railScope}
         selectedSessionId={selectedSessionId}
         onClearSelection={onClearSelection}
       />
@@ -56,7 +60,6 @@ export function SessionsRightRail({
 
   return (
     <SourceSessionsRightRail
-      railScope={railScope}
       selectedSessionId={selectedSessionId}
       onClearSelection={onClearSelection}
       sourceToolId={toolId}
@@ -65,14 +68,13 @@ export function SessionsRightRail({
 }
 
 function AggregateSessionsRightRail({
-  railScope,
   selectedSessionId,
   onClearSelection,
 }: SessionsRightRailProps) {
-  const { definition, href } = useAgentTool()
+  const { href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const { sessions, totalCount, groupCounts, loading, error, hasMore, isLoadingMore, loadMore } = useAggregateSessions({ limit: '100' })
+  const { sessions, totalCount, loading, error, hasMore, isLoadingMore, loadMore } = useAggregateSessions({ limit: '100' })
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
 
@@ -97,8 +99,6 @@ function AggregateSessionsRightRail({
 
   return (
     <SessionsRailContent
-      definitionLabel={definition.shortLabel}
-      railScope={railScope}
       sessions={sessions}
       loading={loading || syncing}
       error={syncError ?? error}
@@ -109,7 +109,6 @@ function AggregateSessionsRightRail({
       onSelect={handleSelect}
       currentToolId="all"
       syncing={syncing}
-      groupCounts={groupCounts}
       hasMore={hasMore}
       isLoadingMore={isLoadingMore}
       loadMore={loadMore}
@@ -118,15 +117,14 @@ function AggregateSessionsRightRail({
 }
 
 function SourceSessionsRightRail({
-  railScope,
   selectedSessionId,
   onClearSelection,
   sourceToolId,
 }: SessionsRightRailProps & { sourceToolId: SourceToolId }) {
-  const { definition, href } = useAgentTool()
+  const { href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const { sessions, pagination, groupCounts, loading, error, isLoadingMore, loadMore, refetch } = useToolSessions(
+  const { sessions, pagination, loading, error, isLoadingMore, loadMore, refetch } = useToolSessions(
     sourceToolId,
     { limit: '100', sort: 'updated_at', order: 'desc' },
   )
@@ -154,8 +152,6 @@ function SourceSessionsRightRail({
 
   return (
     <SessionsRailContent
-      definitionLabel={definition.shortLabel}
-      railScope={railScope}
       sessions={sessions}
       loading={loading || syncing}
       error={syncError ?? error}
@@ -166,7 +162,6 @@ function SourceSessionsRightRail({
       onSelect={handleSelect}
       currentToolId={sourceToolId}
       syncing={syncing}
-      groupCounts={groupCounts}
       hasMore={pagination?.hasMore ?? false}
       isLoadingMore={isLoadingMore}
       loadMore={loadMore}
@@ -174,14 +169,7 @@ function SourceSessionsRightRail({
   )
 }
 
-interface GroupSection {
-  label: string
-  sessions: TraceSession[]
-}
-
 function SessionsRailContent({
-  definitionLabel,
-  railScope,
   sessions,
   loading,
   error,
@@ -192,13 +180,10 @@ function SessionsRailContent({
   onSelect,
   currentToolId,
   syncing,
-  groupCounts,
   hasMore,
   isLoadingMore,
   loadMore,
 }: {
-  definitionLabel: string
-  railScope: RailScope
   sessions: TraceSession[]
   loading: boolean
   error: string | null
@@ -209,128 +194,31 @@ function SessionsRailContent({
   onSelect: (session: TraceSession) => void
   currentToolId: AgentToolId
   syncing?: boolean
-  groupCounts?: {
-    agent?: Array<{ label: string; count: number }>
-    project?: Array<{ label: string; count: number }>
-  } | null
   hasMore?: boolean
   isLoadingMore?: boolean
   loadMore?: () => void
 }) {
-  // -- Filter state with localStorage restore for groupMode --
-  const [filter, setFilter] = useState<SessionFilterState>(() => {
-    let groupMode: GroupMode = 'none'
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem('agents-tracing-group-mode')
-        if (stored === 'agent' || stored === 'project') {
-          groupMode = currentToolId === 'all' || stored === 'project' ? stored : 'none'
-        }
-      } catch {}
-    }
-    return { groupMode, sourceFilter: new Set(), starredOnly: false, searchQuery: '' }
-  })
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const railScope = useUIStore((s) => s.railScope)
+  const setRailScope = useUIStore((s) => s.setRailScope)
+  const setRightRailOpen = useUIStore((s) => s.setRightRailOpen)
   const starredIds = useStarredStore((s) => s.ids)
-  const starredToggle = useStarredStore((s) => s.toggle)
   const starredIsStarred = useStarredStore((s) => s.isStarred)
+  const starredToggle = useStarredStore((s) => s.toggle)
 
-  const visibleFilter = useMemo<SessionFilterState>(() => {
-    if (currentToolId === 'all') return filter
-
-    return {
-      ...filter,
-      groupMode: filter.groupMode === 'agent' ? 'none' : filter.groupMode,
-      sourceFilter: new Set(),
-      searchQuery: '',
-    }
-  }, [currentToolId, filter])
-
-  // -- Filtered sessions --
   const filteredSessions = useMemo(() => {
-    // Scope pre-filter
-    let result = sessions
-    if (railScope === 'starred') {
-      result = result.filter((s) => starredIds.has(s.id))
-    } else if (railScope === 'live') {
-      result = result.filter((s) => s.status === 'active')
-    }
-    // 'recent' = no filter (shows all sessions)
+    if (railScope === 'starred') return sessions.filter((s) => starredIds.has(s.id))
+    if (railScope === 'live') return sessions.filter((s) => s.status === 'active')
+    return sessions
+  }, [sessions, railScope, starredIds])
 
-    // Search filter
-    if (visibleFilter.searchQuery) {
-      const q = visibleFilter.searchQuery.toLowerCase()
-      result = result.filter(
-        (s) =>
-          (s.name && s.name.toLowerCase().includes(q)) ||
-          (s.project && s.project.toLowerCase().includes(q)),
-      )
-    }
-
-    // Source filter (empty set = show all)
-    if (visibleFilter.sourceFilter.size > 0) {
-      result = result.filter((s) => visibleFilter.sourceFilter.has(s.source))
-    }
-
-    // Starred only filter
-    if (visibleFilter.starredOnly) {
-      result = result.filter((s) => starredIds.has(s.id))
-    }
-
-    return result
-  }, [sessions, railScope, visibleFilter.searchQuery, visibleFilter.sourceFilter, visibleFilter.starredOnly, starredIds])
-
-  // -- Grouped sessions --
-  const groupedSessions = useMemo((): GroupSection[] | null => {
-    if (visibleFilter.groupMode === 'none') return null
-
-    const map = new Map<string, TraceSession[]>()
-    for (const s of filteredSessions) {
-      const key =
-        visibleFilter.groupMode === 'agent'
-          ? s.source
-          : (s.project || 'default')
-      const list = map.get(key) || []
-      list.push(s)
-      map.set(key, list)
-    }
-
-    return Array.from(map.entries())
-      .sort((a, b) => b[1].length - a[1].length)
-      .map(([label, sessions]) => ({ label, sessions }))
-  }, [filteredSessions, visibleFilter.groupMode])
-
-  // -- Filter callback handlers --
-  const handleGroupModeChange = (mode: GroupMode) => {
-    const nextMode = currentToolId === 'all' || mode !== 'agent' ? mode : 'none'
-    setFilter((prev) => ({ ...prev, groupMode: nextMode }))
-    setExpandedGroups(new Set())
-    try { localStorage.setItem('agents-tracing-group-mode', nextMode) } catch {}
-  }
-
-  const handleSourceToggle = (source: TraceSource) => {
-    setFilter((prev) => {
-      const next = new Set(prev.sourceFilter)
-      if (next.has(source)) next.delete(source)
-      else next.add(source)
-      return { ...prev, sourceFilter: next.size === TOOL_IDS.length ? new Set() : next }
-    })
-  }
-
-  const handleClearAll = () => {
-    setFilter({ groupMode: 'none', sourceFilter: new Set(), starredOnly: false, searchQuery: '' })
-    setExpandedGroups(new Set())
-    try { localStorage.removeItem('agents-tracing-group-mode') } catch {}
-  }
-
-  const toggleGroupCollapse = (label: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(label)) next.delete(label)
-      else next.add(label)
-      return next
-    })
-  }
+  const liveCount = useMemo(
+    () => sessions.filter((s) => s.status === 'active').length,
+    [sessions]
+  )
+  const starredCount = useMemo(
+    () => sessions.filter((s) => starredIds.has(s.id)).length,
+    [sessions, starredIds]
+  )
 
   const sentinelRef = useRef<HTMLDivElement>(null)
 
@@ -338,13 +226,8 @@ function SessionsRailContent({
     if (!loadMore || !hasMore || isLoadingMore) return
     const el = sentinelRef.current
     if (!el) return
-
     const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          loadMore()
-        }
-      },
+      (entries) => { if (entries[0]?.isIntersecting) loadMore() },
       { threshold: 0.1 }
     )
     observer.observe(el)
@@ -352,153 +235,91 @@ function SessionsRailContent({
   }, [loadMore, hasMore, isLoadingMore])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="relative flex items-center gap-2 border-b border-border px-3 py-2">
-        <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-            Sessions
-          </div>
-          <div className="mt-0.5 text-[11px] font-mono text-foreground">
-            {railScope === 'starred'
-              ? `${filteredSessions.length} starred`
-              : railScope === 'live'
-                ? `${filteredSessions.length} active`
-                : `${(total ?? sessions.length).toLocaleString()} indexed`}
+    <>
+      {/* HEADER */}
+      <header className="rr-head">
+        <div className="rr-head-row">
+          <span className="eyebrow accent">◆ SESSIONS</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              className="rr-close"
+              onClick={onRefresh}
+              disabled={syncing}
+              title={syncing ? 'Syncing…' : 'Refresh sessions'}
+              aria-label={syncing ? 'Syncing…' : 'Refresh sessions'}
+            >
+              <RefreshCw style={{ width: 11, height: 11 }} className={syncing ? 'animate-spin' : ''} />
+            </button>
+            <button
+              className="rr-close"
+              onClick={() => setRightRailOpen(false)}
+              title="Hide rail"
+              aria-label="Hide rail"
+            >
+              »
+            </button>
           </div>
         </div>
-        {selectedSessionId && (
+        <div className="rr-tabs">
           <button
-            type="button"
-            onClick={onClearSelection}
-            className="grid h-7 w-7 place-items-center border border-border text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
-            aria-label="Clear selected session"
-            title="Clear selected session"
+            className={`rr-tab ${railScope === 'recent' ? 'active' : ''}`}
+            onClick={() => setRailScope('recent')}
           >
-            <X className="h-3.5 w-3.5" />
+            RECENT<span className="rr-count">{total ?? sessions.length}</span>
           </button>
-        )}
-        <SessionFilterDropdown
-          filter={visibleFilter}
-          scope={currentToolId === 'all' ? 'all' : 'source'}
-          hideStarredFilter={railScope === 'starred'}
-          onGroupModeChange={handleGroupModeChange}
-          onSourceToggle={handleSourceToggle}
-          onClearSources={() => setFilter((prev) => ({ ...prev, sourceFilter: new Set() }))}
-          onStarredOnlyToggle={() => setFilter((prev) => ({ ...prev, starredOnly: !prev.starredOnly }))}
-          onSearchChange={(q) => setFilter((prev) => ({ ...prev, searchQuery: q }))}
-          onClearAll={handleClearAll}
-        />
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={syncing}
-          className={cn(
-            'grid h-7 w-7 place-items-center border border-border text-muted-foreground transition-colors hover:border-accent hover:text-accent',
-            syncing && 'cursor-not-allowed opacity-50',
-          )}
-          aria-label={syncing ? 'Syncing…' : 'Refresh sessions'}
-          title={syncing ? 'Syncing…' : 'Refresh sessions'}
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', (loading || syncing) && 'animate-spin')} />
-        </button>
-      </div>
+          <button
+            className={`rr-tab ${railScope === 'starred' ? 'active' : ''}`}
+            onClick={() => setRailScope('starred')}
+          >
+            ★<span className="rr-count">{starredCount}</span>
+          </button>
+          <button
+            className={`rr-tab ${railScope === 'live' ? 'active' : ''}`}
+            onClick={() => setRailScope('live')}
+          >
+            <span className="rr-livedot" />
+            LIVE<span className="rr-count">{liveCount}</span>
+          </button>
+        </div>
+      </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* SCROLL AREA */}
+      <div className="rr-scroll">
         {loading && sessions.length === 0 ? (
-          <div className="grid h-full place-items-center">
+          <div style={{ display: 'grid', placeItems: 'center', height: 120 }}>
             <div className="h-7 w-7 animate-spin rounded-full border-b-2 border-accent" />
           </div>
         ) : error ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-5 text-center">
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-destructive">
-              ERR
-            </div>
-            <div className="text-[10px] leading-relaxed text-muted-foreground">
-              {error}
-            </div>
+          <div className="rr-empty">
+            <div className="rr-empty-tag">ERR</div>
+            <div className="rr-empty-body">{error}</div>
           </div>
         ) : filteredSessions.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-5 text-center">
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              NO SESSIONS
-            </div>
-            <div className="text-[10px] leading-relaxed text-muted-foreground">
-              {sessions.length === 0
-                ? `${definitionLabel} index is empty.`
-                : 'No sessions match current filters.'}
-            </div>
-          </div>
-        ) : groupedSessions ? (
-          <div className="divide-y divide-border">
-            {groupedSessions.map((group) => {
-              let groupCount: number | undefined
-              if (groupCounts && visibleFilter.groupMode === 'agent') {
-                groupCount = groupCounts.agent?.find(g => g.label === group.label)?.count
-              } else if (groupCounts && visibleFilter.groupMode === 'project') {
-                groupCount = groupCounts.project?.find(g => g.label === group.label)?.count
-              }
-
-              return (
-                <div key={group.label}>
-                  <button
-                    type="button"
-                    onClick={() => toggleGroupCollapse(group.label)}
-                    className="flex w-full items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1.5 text-left transition-colors hover:bg-muted/50"
-                  >
-                    <span className="text-[9px] text-muted-foreground/60 transition-transform" style={{ transform: expandedGroups.has(group.label) ? undefined : 'rotate(-90deg)' }}>
-                      &#9662;
-                    </span>
-                    <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {group.label}
-                    </span>
-                    <span className="text-[9px] font-mono tabular-nums text-muted-foreground/60">
-                      ({groupCount ?? group.sessions.length})
-                    </span>
-                  </button>
-                  {expandedGroups.has(group.label) &&
-                    group.sessions.map((session, index) => (
-                      <SessionRailRow
-                        key={session.id || `${session.source}-${index}`}
-                        session={session}
-                        active={selectedSessionId === session.id}
-                        currentToolId={currentToolId}
-                        onSelect={() => onSelect(session)}
-                        isStarred={starredIsStarred(session.id)}
-                        onToggleStar={() => starredToggle(session.id)}
-                      />
-                    ))}
-                </div>
-              )
-            })}
+          <div className="rr-empty">
+            <div className="rr-empty-tag">EMPTY</div>
+            <div className="rr-empty-body">No sessions match this filter.</div>
           </div>
         ) : (
-          <div className="divide-y divide-border">
-            {filteredSessions.map((session, index) => (
-              <SessionRailRow
-                key={session.id || `${session.source}-${index}`}
-                session={session}
-                active={selectedSessionId === session.id}
-                currentToolId={currentToolId}
-                onSelect={() => onSelect(session)}
-                isStarred={starredIsStarred(session.id)}
-                onToggleStar={() => starredToggle(session.id)}
-              />
-            ))}
-          </div>
+          filteredSessions.map((session, index) => (
+            <SessionRailRow
+              key={session.id || `${session.source}-${index}`}
+              session={session}
+              active={selectedSessionId === session.id}
+              currentToolId={currentToolId}
+              onSelect={() => onSelect(session)}
+              isStarred={starredIsStarred(session.id)}
+              onToggleStar={() => starredToggle(session.id)}
+            />
+          ))
         )}
         {isLoadingMore && (
-          <div className="flex items-center justify-center py-2">
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
             <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-accent" />
           </div>
         )}
-        {hasMore && !isLoadingMore && (
-          <div className="flex items-center justify-center py-2">
-            <span className="text-[9px] text-muted-foreground/40">Scroll for more</span>
-          </div>
-        )}
-        <div ref={sentinelRef} className="h-px" />
+        <div ref={sentinelRef} style={{ height: 1 }} />
       </div>
-    </div>
+    </>
   )
 }
 
@@ -517,97 +338,62 @@ function SessionRailRow({
   isStarred: boolean
   onToggleStar: () => void
 }) {
-  const name = deriveSessionName(session)
-  const project = deriveProject(session)
-  const updated = formatRelativeTime(getSessionFreshness(session))
-  const sourceLabel = formatSourceLabel(
-    currentToolId === 'all' ? session.source : (currentToolId as SourceToolId),
-  )
+  const pc = projectColor(session.project)
+  const displayStatus = deriveDisplayStatus(session)
+  const sc = RR_STATUS[displayStatus] || 'var(--muted-foreground)'
+  const sm = SOURCE_META[session.source]
+  const srcC = sm?.color || 'var(--muted-foreground)'
+  const cost = session.estimatedCost != null ? `$${session.estimatedCost.toFixed(2)}` : null
 
   return (
     <div
       role="button"
       tabIndex={0}
+      className={`rr-item${active ? ' active' : ''}${displayStatus === 'ERROR' ? ' err' : ''}`}
+      style={{ '--src-c': srcC, '--proj-c': pc } as React.CSSProperties}
       onClick={onSelect}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() } }}
-      className={cn(
-        'grid w-full gap-1 px-3 py-2.5 text-left transition-colors hover:bg-accent/5',
-        active && 'bg-accent/10 text-accent',
-        SOURCE_SPINE_COLORS[session.source] || 'border-l-[3px] border-l-border',
-      )}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-foreground">
-          {name}
-        </span>
-        <span className="shrink-0 border border-border px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          {sourceLabel}
-        </span>
-      </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 text-[10px] text-muted-foreground">
-        <span className="truncate font-mono" title={project}>
-          {project}
-        </span>
-        <span className="font-mono tabular-nums">
-          {updated}
-        </span>
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleStar() }}
-          className={`flex-shrink-0 ml-1 text-sm transition-colors ${
-            isStarred ? 'text-amber-500' : 'text-muted-foreground/30 hover:text-muted-foreground'
-          }`}
-          aria-label={isStarred ? 'Unstar session' : 'Star session'}
-        >
-          {isStarred ? '★' : '☆'}
-        </button>
+      <span className="rr-spine" />
+      <div className="rr-body">
+        <div className="rr-line1">
+          <span className="rr-proj-dot" style={{ background: pc }} />
+          <span className="rr-proj mono">{shortPath(session.project) || '—'}</span>
+          <span className="rr-status" style={{ color: sc }}>
+            {displayStatus === 'LIVE'
+              ? <span className="rr-pulse" style={{ background: sc }} />
+              : displayStatus === 'ERROR'
+                ? '✕'
+                : displayStatus === 'TRUNCATED'
+                  ? '⚠'
+                  : null}
+          </span>
+          {isStarred && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleStar() }}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', lineHeight: 1 }}
+              aria-label="Unstar session"
+            >
+              <span className="rr-star">★</span>
+            </button>
+          )}
+        </div>
+        <div className="rr-label">{session.displayTitle || session.name || session.id}</div>
+        <div className="rr-line2 mono">
+          <span>{session.id.slice(-8)}</span>
+          {cost && (
+            <>
+              <span className="rr-sep">·</span>
+              <span className="rr-cost">{cost}</span>
+            </>
+          )}
+        </div>
+        {sm && (
+          <span className="rr-src-corner mono" title={sm.short_text}>
+            {sm.short_text}
+          </span>
+        )}
       </div>
     </div>
   )
-}
-
-function deriveSessionName(session: TraceSession): string {
-  return session.name?.trim() || session.id.slice(-8) || 'Untitled session'
-}
-
-function deriveProject(session: TraceSession): string {
-  if (session.project && session.project !== 'default') return session.project
-  return '-'
-}
-
-function getSessionFreshness(session: TraceSession): string | null {
-  const dynamicSession = session as TraceSession & {
-    updatedAt?: string | null
-  }
-  return getFreshestIso([
-    dynamicSession.updatedAt,
-    session.endedAt,
-    session.startedAt,
-  ])
-}
-
-function getFreshestIso(values: Array<string | null | undefined>): string | null {
-  let freshest: { iso: string; time: number } | null = null
-  for (const value of values) {
-    if (!value) continue
-    const time = new Date(value).getTime()
-    if (!Number.isFinite(time)) continue
-    if (!freshest || time > freshest.time) freshest = { iso: value, time }
-  }
-  return freshest?.iso ?? null
-}
-
-function formatRelativeTime(iso: string | null): string {
-  if (!iso) return '-'
-  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (seconds < 0) return 'now'
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
-  return `${Math.floor(seconds / 86400)}d`
-}
-
-function formatSourceLabel(source: SourceToolId): string {
-  if (source === 'claude-code') return 'CLAUDE'
-  if (source === 'openclaw') return 'OPENCLAW'
-  return 'CODEX'
 }
