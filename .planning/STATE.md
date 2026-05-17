@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: executing
-last_updated: "2026-05-16T08:27:35.728Z"
+last_updated: "2026-05-17T13:35:06Z"
 progress:
   total_phases: 7
   completed_phases: 5
@@ -16,7 +16,7 @@ progress:
 
 **Project:** agent-tracing-dashboard
 **Core Value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
-**Last Updated:** 2026-05-16
+**Last Updated:** 2026-05-17
 
 ---
 
@@ -171,6 +171,7 @@ v1.1 has two explicit workstreams:
 | 260515-tn5 | Codex full sync relationship scope and 15-minute periodic resync | 2026-05-15 | 24df3f4 | [260515-tn5-codex-full-sync-regular-full-sync-relati](./quick/260515-tn5-codex-full-sync-regular-full-sync-relati/) |
 | 260515-xa7 | Ingest session display name bounded extraction | 2026-05-15 | 559df1d | [260515-xa7-ingest-session-display-name-extractsessi](./quick/260515-xa7-ingest-session-display-name-extractsessi/) |
 | 260516-nvg | Token accounting repair for Claude Code and Codex channels | 2026-05-16 | a8f60fe | [260516-nvg-2026-05-16-reference-token-cost-investig](./quick/260516-nvg-2026-05-16-reference-token-cost-investig/) |
+| 260517-uks | Implement overview cost estimation from unified AI provider pricing table | 2026-05-17 | 1883e36 | [260517-uks-implement-overview-cost-estimation-from-](./quick/260517-uks-implement-overview-cost-estimation-from-/) |
 
 ### Watchpoints
 
@@ -198,5 +199,5 @@ v1.1 has two explicit workstreams:
 ---
 
 *State created: 2026-05-06*
-*Last updated: 2026-05-16*
-*Last activity: 2026-05-16 - Completed quick task 260516-nvg: Token accounting repair for Claude Code and Codex channels*
+*Last updated: 2026-05-17*
+*Last activity: 2026-05-17 - Completed quick task 260517-uks: Implement overview cost estimation from unified AI provider pricing table*
