@@ -350,7 +350,81 @@ describe('overview endpoints', () => {
   });
 
   // ==========================================================================
-  // 2. Top Models (DATA-102)
+  // 2. Daily Tokens
+  // ==========================================================================
+
+  describe('GET /api/v1/overview/daily-tokens', () => {
+    it('returns a zero-filled 30 day token series by default', async () => {
+      const res = await app.request('/api/v1/overview/daily-tokens');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(body.days).toHaveLength(30);
+      expect(body.days[0]).toHaveProperty('date');
+      expect(body.days[0]).toHaveProperty('sessionCount');
+      expect(body.days[0]).toHaveProperty('inputTokens');
+      expect(body.days[0]).toHaveProperty('outputTokens');
+      expect(body.days[0]).toHaveProperty('cacheReadTokens');
+      expect(body.days[0]).toHaveProperty('cacheWriteTokens');
+      expect(body.days[0]).toHaveProperty('reasoningTokens');
+      expect(body.days[0]).toHaveProperty('totalTokens');
+
+      const zeroDays = body.days.filter((day: { totalTokens: number }) => day.totalTokens === 0);
+      expect(zeroDays.length).toBeGreaterThan(0);
+    });
+
+    it('aggregates daily token totals for the 30 day window', async () => {
+      const res = await app.request('/api/v1/overview/daily-tokens');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const today = new Date().toISOString().slice(0, 10);
+      const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+      const fifteenDaysAgo = new Date(Date.now() - 15 * 86400000).toISOString().slice(0, 10);
+
+      const byDate = new Map(
+        body.days.map((day: {
+          date: string;
+          sessionCount: number;
+          totalTokens: number;
+        }) => [day.date, day]),
+      );
+
+      expect(byDate.get(today)).toMatchObject({ sessionCount: 2, totalTokens: 11000 });
+      expect(byDate.get(fiveDaysAgo)).toMatchObject({ sessionCount: 4, totalTokens: 30300 });
+      expect(byDate.get(fifteenDaysAgo)).toMatchObject({ sessionCount: 1, totalTokens: 3000 });
+    });
+
+    it('filters daily token totals by source', async () => {
+      const res = await app.request('/api/v1/overview/daily-tokens?source=openclaw');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+      const day = body.days.find((row: { date: string }) => row.date === fiveDaysAgo);
+      expect(day).toMatchObject({ sessionCount: 3, totalTokens: 12300 });
+    });
+
+    it('supports a bounded custom day count', async () => {
+      const res = await app.request('/api/v1/overview/daily-tokens?days=7');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.days).toHaveLength(7);
+    });
+
+    it('returns 400 for invalid source', async () => {
+      const res = await app.request('/api/v1/overview/daily-tokens?source=invalid');
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 for invalid days', async () => {
+      const res = await app.request('/api/v1/overview/daily-tokens?days=999');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ==========================================================================
+  // 3. Top Models (DATA-102)
   // ==========================================================================
 
   describe('GET /api/v1/overview/top-models', () => {

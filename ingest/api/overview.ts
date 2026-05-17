@@ -43,6 +43,12 @@ function getDateCondition(column: string, window: string): string | null {
   }
 }
 
+function parseDaysParam(rawDays: string | undefined): number | null {
+  const days = Number.parseInt(rawDays || '30', 10);
+  if (!Number.isFinite(days) || days < 1 || days > 90) return null;
+  return days;
+}
+
 function validateSource(source: string | null): string | null {
   if (!source) return null;
   if (!VALID_SOURCES.includes(source as any)) return undefined as any; // signal invalid
@@ -127,7 +133,95 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
 });
 
 // ============================================================================
-// 2. GET /api/v1/overview/top-models (DATA-102)
+// 2. GET /api/v1/overview/daily-tokens
+// ============================================================================
+
+overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
+  const source = c.req.query('source');
+  const days = parseDaysParam(c.req.query('days'));
+
+  if (source && !isValidSource(source)) {
+    return c.json({ error: 'Invalid source parameter' }, 400);
+  }
+
+  if (days === null) {
+    return c.json({ error: 'Invalid days parameter. Must be an integer from 1 to 90' }, 400);
+  }
+
+  const db = getDatabase();
+  const sinceModifier = `-${days - 1} days`;
+  const sourceFilter = source ? 'AND source = ?' : '';
+  const params: Array<string | number> = [
+    sinceModifier,
+    days,
+    sinceModifier,
+    ...(source ? [source] : []),
+  ];
+
+  const rows = db.prepare(`
+    WITH RECURSIVE day_series(day, n) AS (
+      SELECT date('now', ?), 1
+      UNION ALL
+      SELECT date(day, '+1 day'), n + 1
+      FROM day_series
+      WHERE n < ?
+    ),
+    session_daily AS (
+      SELECT
+        date(started_at) AS day,
+        COUNT(*) AS session_count,
+        COALESCE(SUM(total_input_tokens), 0) AS input_tokens,
+        COALESCE(SUM(total_output_tokens), 0) AS output_tokens,
+        COALESCE(SUM(total_cache_read_tokens), 0) AS cache_read_tokens,
+        COALESCE(SUM(total_cache_write_tokens), 0) AS cache_write_tokens,
+        COALESCE(SUM(total_reasoning_tokens), 0) AS reasoning_tokens,
+        COALESCE(SUM(${sessionTotalTokensExpr()}), 0) AS total_tokens
+      FROM sessions
+      WHERE started_at IS NOT NULL
+        AND date(started_at) >= date('now', ?)
+        AND date(started_at) <= date('now')
+        ${sourceFilter}
+      GROUP BY date(started_at)
+    )
+    SELECT
+      ds.day AS date,
+      COALESCE(sd.session_count, 0) AS session_count,
+      COALESCE(sd.input_tokens, 0) AS input_tokens,
+      COALESCE(sd.output_tokens, 0) AS output_tokens,
+      COALESCE(sd.cache_read_tokens, 0) AS cache_read_tokens,
+      COALESCE(sd.cache_write_tokens, 0) AS cache_write_tokens,
+      COALESCE(sd.reasoning_tokens, 0) AS reasoning_tokens,
+      COALESCE(sd.total_tokens, 0) AS total_tokens
+    FROM day_series ds
+    LEFT JOIN session_daily sd ON sd.day = ds.day
+    ORDER BY ds.day ASC
+  `).all(...params) as Array<{
+    date: string;
+    session_count: number;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    reasoning_tokens: number;
+    total_tokens: number;
+  }>;
+
+  return c.json({
+    days: rows.map((row) => ({
+      date: row.date,
+      sessionCount: row.session_count,
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+      cacheReadTokens: row.cache_read_tokens,
+      cacheWriteTokens: row.cache_write_tokens,
+      reasoningTokens: row.reasoning_tokens,
+      totalTokens: row.total_tokens,
+    })),
+  });
+});
+
+// ============================================================================
+// 3. GET /api/v1/overview/top-models (DATA-102)
 // ============================================================================
 
 overviewRoutes.get('/api/v1/overview/top-models', (c) => {

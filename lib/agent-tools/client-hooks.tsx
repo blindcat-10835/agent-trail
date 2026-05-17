@@ -35,6 +35,7 @@ import type { TraceSession } from '@/types/trace'
 import type { TraceTurn, AgentInfo } from '@/types/trace'
 import type {
   OverviewAggregates,
+  DailyTokensResponse,
   TopModelsResponse,
   TopProjectsResponse,
   StarredResponse,
@@ -909,6 +910,67 @@ export function useOverviewAggregates(toolId: AgentToolId, window: TimeWindow) {
   }, [toolId, window])
 
   return { aggregates, loading, error }
+}
+
+/**
+ * Hook: Fetch daily token usage for a tool via BFF proxy.
+ *
+ * Returns zero-filled day buckets for the requested recent day count.
+ * Re-fetches when toolId or days changes.
+ *
+ * @param toolId - Current tool from AgentToolProvider
+ * @param days - Number of recent days to load
+ * @returns { dailyTokens, loading, error }
+ */
+export function useDailyTokens(toolId: AgentToolId, days: number = 30) {
+  const requestKey = `${toolId}:${days}`
+  const [state, setState] = useState<{
+    requestKey: string
+    dailyTokens: DailyTokensResponse['days']
+    loading: boolean
+    error: string | null
+  }>({
+    requestKey,
+    dailyTokens: [],
+    loading: true,
+    error: null,
+  })
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetchToolApi<DailyTokensResponse>(toolId, '/overview/daily-tokens', { days: String(days) })
+      .then((data) => {
+        if (cancelled) return
+        setState({
+          requestKey,
+          dailyTokens: data.days,
+          loading: false,
+          error: null,
+        })
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setState((prev) => ({
+          requestKey,
+          dailyTokens: prev.requestKey === requestKey ? prev.dailyTokens : [],
+          loading: false,
+          error: err instanceof Error ? err.message : 'Failed to load daily tokens',
+        }))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [toolId, days, requestKey])
+
+  const stale = state.requestKey !== requestKey
+
+  return {
+    dailyTokens: stale ? [] : state.dailyTokens,
+    loading: stale || state.loading,
+    error: stale ? null : state.error,
+  }
 }
 
 /**

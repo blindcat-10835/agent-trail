@@ -9,6 +9,7 @@ import {
   useStarredSessions,
   useTimeline,
   useOverviewCapabilities,
+  useDailyTokens,
 } from '@/lib/agent-tools/client-hooks'
 import { KpiHero } from '@/components/overview/kpi-hero'
 import { TimeWindowSelector } from '@/components/overview/time-window-selector'
@@ -32,6 +33,7 @@ export function OverviewPage() {
 
   // Hero band always uses 30D
   const { aggregates, loading: aggLoading, error: aggError } = useOverviewAggregates(toolId, '30d')
+  const { dailyTokens, loading: dailyTokensLoading, error: dailyTokensError } = useDailyTokens(toolId, 30)
 
   // Row A: window-dependent
   const { models, loading: modelsLoading, error: modelsError } = useTopModels(toolId, window, modelSortBy)
@@ -45,7 +47,15 @@ export function OverviewPage() {
   if (aggError && !aggLoading && !aggregates) {
     return (
       <div className="p-[18px_22px_26px] flex flex-col gap-[14px] min-h-0 overflow-y-auto">
-        <KpiHero toolId={toolId} aggregates={null} loading={false} error={aggError} />
+        <KpiHero
+          toolId={toolId}
+          aggregates={null}
+          dailyTokens={dailyTokens}
+          dailyTokensLoading={dailyTokensLoading}
+          dailyTokensError={dailyTokensError}
+          loading={false}
+          error={aggError}
+        />
         <EmptyState
           heading="INGEST OFFLINE"
           body="UNABLE TO REACH INGEST SERVICE. CHECK THAT THE INGEST SERVER IS RUNNING."
@@ -58,7 +68,15 @@ export function OverviewPage() {
     <div className="p-[18px_22px_26px] flex flex-col gap-[14px] min-h-0 overflow-y-auto">
 
       {/* ═══ HERO BAND ═══ */}
-      <KpiHero toolId={toolId} aggregates={aggregates} loading={aggLoading} error={aggError} />
+      <KpiHero
+        toolId={toolId}
+        aggregates={aggregates}
+        dailyTokens={dailyTokens}
+        dailyTokensLoading={dailyTokensLoading}
+        dailyTokensError={dailyTokensError}
+        loading={aggLoading}
+        error={aggError}
+      />
 
       {/* ═══ AGENTS STRIP (OpenClaw only) ═══ */}
       <OverviewAgents capabilities={capabilities} toolId={toolId} capsLoading={capsLoading} />

@@ -23,6 +23,21 @@ export interface OverviewAggregates {
   totalTokens: number
 }
 
+export interface DailyTokenUsage {
+  date: string
+  sessionCount: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
+  totalTokens: number
+}
+
+export interface DailyTokensResponse {
+  days: DailyTokenUsage[]
+}
+
 // ============================================================================
 // Model Ranking Types
 // ============================================================================

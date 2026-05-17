@@ -2,7 +2,8 @@
 
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { OverviewAggregates } from '@/types/overview'
+import { EmptyState } from '@/components/dashboard/empty-state'
+import type { DailyTokenUsage, OverviewAggregates } from '@/types/overview'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 
 // ============================================================================
@@ -20,6 +21,12 @@ function fmtTokens(n: number): string {
 function pctOf(a: number, total: number): string {
   if (!total) return '0.0%'
   return ((a / total) * 100).toFixed(1) + '%'
+}
+
+function fmtShortDate(date: string): string {
+  const [, month, day] = date.split('-')
+  if (!month || !day) return date
+  return `${month}/${day}`
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -151,29 +158,135 @@ function PulsePanel({
 }
 
 // ============================================================================
-// Chart Placeholder
+// Token Chart
 // ============================================================================
 
-function ChartPlaceholder() {
+function buildLinePath(
+  points: DailyTokenUsage[],
+  maxValue: number,
+  width: number,
+  height: number,
+  padX: number,
+  padY: number,
+): { linePath: string; areaPath: string; lastX: number; lastY: number } | null {
+  if (points.length === 0) return null
+
+  const baseline = height - padY
+  const usableWidth = width - padX * 2
+  const usableHeight = height - padY * 2
+  const denominator = Math.max(points.length - 1, 1)
+  const coords = points.map((point, index) => {
+    const x = padX + (index / denominator) * usableWidth
+    const y = baseline - (point.totalTokens / maxValue) * usableHeight
+    return { x, y }
+  })
+
+  const linePath = coords
+    .map((coord, index) => `${index === 0 ? 'M' : 'L'} ${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`)
+    .join(' ')
+  const first = coords[0]
+  const last = coords[coords.length - 1]
+  const areaPath = `${linePath} L ${last.x.toFixed(2)} ${baseline} L ${first.x.toFixed(2)} ${baseline} Z`
+
+  return { linePath, areaPath, lastX: last.x, lastY: last.y }
+}
+
+function DailyTokenChart({
+  dailyTokens,
+  loading,
+  error,
+}: {
+  dailyTokens: DailyTokenUsage[]
+  loading: boolean
+  error?: string | null
+}) {
+  const totalTokens = dailyTokens.reduce((sum, day) => sum + day.totalTokens, 0)
+  const peakTokens = dailyTokens.reduce((max, day) => Math.max(max, day.totalTokens), 0)
+  const hasData = totalTokens > 0
+  const firstDate = dailyTokens[0]?.date
+  const lastDate = dailyTokens[dailyTokens.length - 1]?.date
+  const maxValue = Math.max(peakTokens, 1)
+  const chart = buildLinePath(dailyTokens, maxValue, 320, 126, 12, 14)
+
+  const right = (
+    <span className="inline-flex items-center gap-1.5 text-[9px] text-muted-foreground font-mono tracking-[0.06em]">
+      <span
+        className="w-1.5 h-1.5 rounded-full"
+        style={{ background: hasData ? 'var(--accent)' : 'color-mix(in oklch, var(--muted-foreground) 45%, transparent)' }}
+      />
+      {loading ? 'LOADING' : hasData ? fmtTokens(totalTokens) : 'NO DATA'}
+    </span>
+  )
+
   return (
     <HudFrame
       label="30D · TOKEN USAGE"
       glow
       className="flex flex-col"
-      bodyClassName="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 px-10 py-4"
-      right={
-        <span className="inline-flex items-center gap-1.5 text-[9px] text-muted-foreground font-mono tracking-[0.06em]">
-          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />
-          NO DATA
-        </span>
-      }
+      bodyClassName="flex-1 min-h-0 p-3"
+      right={right}
     >
-      <span className="text-[9px] font-bold tracking-[0.2em] text-muted-foreground/40 uppercase">
-        DAILY AGGREGATE ENDPOINT REQUIRED
-      </span>
-      <span className="text-[9px] text-muted-foreground/30 font-mono tracking-[0.06em]">
-        /api/v1/overview/daily-tokens
-      </span>
+      {loading ? (
+        <div className="h-full flex flex-col gap-2 justify-end">
+          <Skeleton className="h-24 w-full" />
+          <div className="flex justify-between">
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="h-3 w-12" />
+          </div>
+        </div>
+      ) : error ? (
+        <EmptyState heading="LOAD ERROR" body={error} />
+      ) : !hasData || !chart ? (
+        <EmptyState heading="NO TOKEN DATA" body="No sessions with token totals in the last 30 days." />
+      ) : (
+        <div className="h-full min-h-[138px] flex flex-col gap-2">
+          <div className="relative flex-1 min-h-0">
+            <svg
+              viewBox="0 0 320 126"
+              preserveAspectRatio="none"
+              className="absolute inset-0 h-full w-full overflow-visible"
+              role="img"
+              aria-label="Daily token usage over the last 30 days"
+            >
+              {[22, 52, 82, 112].map((y) => (
+                <line
+                  key={y}
+                  x1="10"
+                  x2="310"
+                  y1={y}
+                  y2={y}
+                  stroke="color-mix(in oklch, var(--border) 52%, transparent)"
+                  strokeWidth="1"
+                  strokeDasharray="4 6"
+                />
+              ))}
+              <path
+                d={chart.areaPath}
+                fill="color-mix(in oklch, var(--accent) 16%, transparent)"
+              />
+              <path
+                d={chart.linePath}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+              />
+              <circle
+                cx={chart.lastX}
+                cy={chart.lastY}
+                r="3"
+                fill="var(--accent)"
+                style={{ filter: 'drop-shadow(0 0 6px var(--accent))' }}
+              />
+            </svg>
+          </div>
+          <div className="grid grid-cols-3 items-center text-[9px] font-mono text-muted-foreground">
+            <span>{firstDate ? fmtShortDate(firstDate) : DASH}</span>
+            <span className="text-center">PEAK {fmtTokens(peakTokens)}</span>
+            <span className="text-right">{lastDate ? fmtShortDate(lastDate) : DASH}</span>
+          </div>
+        </div>
+      )}
     </HudFrame>
   )
 }
@@ -284,7 +397,7 @@ function KpiMiniStack({
         label="DAILY BURN · AVG"
         value={DASH}
         color="oklch(0.75 0.17 340)"
-        sub={DASH}
+        sub={loading ? '…' : 'Pricing pending'}
       />
     </div>
   )
@@ -297,6 +410,9 @@ function KpiMiniStack({
 interface KpiHeroProps {
   toolId: AgentToolId
   aggregates: OverviewAggregates | null
+  dailyTokens: DailyTokenUsage[]
+  dailyTokensLoading: boolean
+  dailyTokensError?: string | null
   loading: boolean
   error?: string | null
 }
@@ -305,7 +421,15 @@ interface KpiHeroProps {
 // Component — Hero Band: PulsePanel + Chart + KpiMiniStack
 // ============================================================================
 
-export function KpiHero({ toolId, aggregates, loading, error }: KpiHeroProps) {
+export function KpiHero({
+  toolId,
+  aggregates,
+  dailyTokens,
+  dailyTokensLoading,
+  dailyTokensError,
+  loading,
+  error,
+}: KpiHeroProps) {
   if (error && !aggregates && !loading) {
     return (
       <div
@@ -327,7 +451,11 @@ export function KpiHero({ toolId, aggregates, loading, error }: KpiHeroProps) {
       style={{ gridTemplateColumns: '220px minmax(0,1fr) 200px', minHeight: 180 }}
     >
       <PulsePanel toolId={toolId} aggregates={aggregates} loading={loading} />
-      <ChartPlaceholder />
+      <DailyTokenChart
+        dailyTokens={dailyTokens}
+        loading={dailyTokensLoading}
+        error={dailyTokensError}
+      />
       <KpiMiniStack aggregates={aggregates} loading={loading} />
     </div>
   )
