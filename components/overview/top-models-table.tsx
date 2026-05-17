@@ -29,6 +29,11 @@ function fmtTokens(n: number): string {
   return (n / 1e6).toFixed(2) + 'M'
 }
 
+function fmtCost(n: number | null): string {
+  if (n == null) return '—'
+  return '$' + n.toFixed(2)
+}
+
 // ============================================================================
 // Sort Toggle
 // ============================================================================
@@ -64,7 +69,7 @@ function SortToggle({
 // Winner Component
 // ============================================================================
 
-function Winner({ items }: { items: ModelRanking[] }) {
+function Winner({ items, sortBy }: { items: ModelRanking[]; sortBy: string }) {
   if (!items.length) return null
 
   const [winner, ...rest] = items
@@ -155,7 +160,7 @@ function Winner({ items }: { items: ModelRanking[] }) {
               key={model.name}
               className="grid items-center px-3.5 py-[5px] border-t first:border-t-0"
               style={{
-                gridTemplateColumns: '24px 8px minmax(0,1fr) 50px 34px',
+                gridTemplateColumns: '24px 8px minmax(0,1fr) 44px 44px 36px',
                 gap: 8,
                 fontSize: 11,
                 borderColor: 'color-mix(in oklch, var(--border) 35%, transparent)',
@@ -183,6 +188,9 @@ function Winner({ items }: { items: ModelRanking[] }) {
                   style={{ width: `${model.sharePercent}%`, background: color }}
                 />
               </div>
+              <span className="text-[10px] font-mono tabular-nums text-muted-foreground text-right">
+                {sortBy === 'cost' ? fmtCost(model.cost) : fmtTokens(model.totalTokens)}
+              </span>
               <span className="text-[10.5px] font-mono tabular-nums text-muted-foreground text-right">
                 {model.sharePercent.toFixed(1)}%
               </span>
@@ -270,7 +278,7 @@ export function TopModelsTable({ models, loading, error, sortBy, onSortChange }:
 
   return (
     <HudFrame label="TOP MODELS" right={rightSlot} bodyClassName="p-0">
-      <Winner items={models} />
+      <Winner items={models} sortBy={sortBy} />
     </HudFrame>
   )
 }

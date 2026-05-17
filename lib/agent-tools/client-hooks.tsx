@@ -1015,7 +1015,7 @@ export function useTopModels(toolId: AgentToolId, window: TimeWindow, sortBy: st
  * @param window - Time window for filtering
  * @returns { projects, loading, error }
  */
-export function useTopProjects(toolId: AgentToolId, window: TimeWindow) {
+export function useTopProjects(toolId: AgentToolId, window: TimeWindow, sortBy: string = 'tokens') {
   const [projects, setProjects] = useState<TopProjectsResponse['projects']>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -1023,7 +1023,7 @@ export function useTopProjects(toolId: AgentToolId, window: TimeWindow) {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetchToolApi<TopProjectsResponse>(toolId, '/overview/top-projects', { window, limit: '10' })
+    fetchToolApi<TopProjectsResponse>(toolId, '/overview/top-projects', { window, limit: '10', sortBy })
       .then((data) => {
         setProjects(data.projects)
         setError(null)
@@ -1032,7 +1032,7 @@ export function useTopProjects(toolId: AgentToolId, window: TimeWindow) {
         setError(err instanceof Error ? err.message : 'Failed to load projects'),
       )
       .finally(() => setLoading(false))
-  }, [toolId, window])
+  }, [toolId, window, sortBy])
 
   return { projects, loading, error }
 }

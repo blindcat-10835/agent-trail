@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useRef } from 'react'
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
@@ -161,32 +162,32 @@ function PulsePanel({
 // Token Chart
 // ============================================================================
 
+const C_W = 320
+const C_H = 126
+const C_PAD_X = 12
+const C_PAD_Y = 14
+const C_USABLE_W = C_W - C_PAD_X * 2
+const C_USABLE_H = C_H - C_PAD_Y * 2
+const C_BASELINE = C_H - C_PAD_Y
+
 function buildLinePath(
   points: DailyTokenUsage[],
   maxValue: number,
-  width: number,
-  height: number,
-  padX: number,
-  padY: number,
 ): { linePath: string; areaPath: string; lastX: number; lastY: number } | null {
   if (points.length === 0) return null
 
-  const baseline = height - padY
-  const usableWidth = width - padX * 2
-  const usableHeight = height - padY * 2
   const denominator = Math.max(points.length - 1, 1)
-  const coords = points.map((point, index) => {
-    const x = padX + (index / denominator) * usableWidth
-    const y = baseline - (point.totalTokens / maxValue) * usableHeight
-    return { x, y }
-  })
+  const coords = points.map((point, index) => ({
+    x: C_PAD_X + (index / denominator) * C_USABLE_W,
+    y: C_BASELINE - (point.totalTokens / maxValue) * C_USABLE_H,
+  }))
 
   const linePath = coords
-    .map((coord, index) => `${index === 0 ? 'M' : 'L'} ${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`)
+    .map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(2)} ${c.y.toFixed(2)}`)
     .join(' ')
   const first = coords[0]
   const last = coords[coords.length - 1]
-  const areaPath = `${linePath} L ${last.x.toFixed(2)} ${baseline} L ${first.x.toFixed(2)} ${baseline} Z`
+  const areaPath = `${linePath} L ${last.x.toFixed(2)} ${C_BASELINE} L ${first.x.toFixed(2)} ${C_BASELINE} Z`
 
   return { linePath, areaPath, lastX: last.x, lastY: last.y }
 }
@@ -200,13 +201,33 @@ function DailyTokenChart({
   loading: boolean
   error?: string | null
 }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
   const totalTokens = dailyTokens.reduce((sum, day) => sum + day.totalTokens, 0)
   const peakTokens = dailyTokens.reduce((max, day) => Math.max(max, day.totalTokens), 0)
   const hasData = totalTokens > 0
   const firstDate = dailyTokens[0]?.date
   const lastDate = dailyTokens[dailyTokens.length - 1]?.date
   const maxValue = Math.max(peakTokens, 1)
-  const chart = buildLinePath(dailyTokens, maxValue, 320, 126, 12, 14)
+  const chart = buildLinePath(dailyTokens, maxValue)
+
+  const n = dailyTokens.length
+  const denom = Math.max(n - 1, 1)
+
+  // SVG coords for hovered point
+  const hovSvgX = hoverIdx !== null ? C_PAD_X + (hoverIdx / denom) * C_USABLE_W : null
+  const hovSvgY = hoverIdx !== null && dailyTokens[hoverIdx]
+    ? C_BASELINE - (dailyTokens[hoverIdx].totalTokens / maxValue) * C_USABLE_H
+    : null
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current || n === 0) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const svgX = ((e.clientX - rect.left) / rect.width) * C_W
+    const adjusted = Math.max(0, Math.min(1, (svgX - C_PAD_X) / C_USABLE_W))
+    setHoverIdx(Math.round(adjusted * denom))
+  }
 
   const right = (
     <span className="inline-flex items-center gap-1.5 text-[9px] text-muted-foreground font-mono tracking-[0.06em]">
@@ -240,30 +261,28 @@ function DailyTokenChart({
         <EmptyState heading="NO TOKEN DATA" body="No sessions with token totals in the last 30 days." />
       ) : (
         <div className="h-full min-h-[138px] flex flex-col gap-2">
-          <div className="relative flex-1 min-h-0">
+          <div
+            ref={containerRef}
+            className="relative flex-1 min-h-0"
+            onMouseMove={handleMouseMove}
+            onMouseLeave={() => setHoverIdx(null)}
+          >
             <svg
-              viewBox="0 0 320 126"
+              viewBox={`0 0 ${C_W} ${C_H}`}
               preserveAspectRatio="none"
               className="absolute inset-0 h-full w-full overflow-visible"
-              role="img"
               aria-label="Daily token usage over the last 30 days"
             >
               {[22, 52, 82, 112].map((y) => (
                 <line
                   key={y}
-                  x1="10"
-                  x2="310"
-                  y1={y}
-                  y2={y}
+                  x1="10" x2="310" y1={y} y2={y}
                   stroke="color-mix(in oklch, var(--border) 52%, transparent)"
                   strokeWidth="1"
                   strokeDasharray="4 6"
                 />
               ))}
-              <path
-                d={chart.areaPath}
-                fill="color-mix(in oklch, var(--accent) 16%, transparent)"
-              />
+              <path d={chart.areaPath} fill="color-mix(in oklch, var(--accent) 16%, transparent)" />
               <path
                 d={chart.linePath}
                 fill="none"
@@ -271,14 +290,74 @@ function DailyTokenChart({
                 strokeWidth="2"
                 vectorEffect="non-scaling-stroke"
               />
-              <circle
-                cx={chart.lastX}
-                cy={chart.lastY}
-                r="3"
-                fill="var(--accent)"
-                style={{ filter: 'drop-shadow(0 0 6px var(--accent))' }}
-              />
+              {/* End dot (hidden when hovering) */}
+              {hoverIdx === null && (
+                <circle
+                  cx={chart.lastX} cy={chart.lastY} r="3"
+                  fill="var(--accent)"
+                  style={{ filter: 'drop-shadow(0 0 6px var(--accent))' }}
+                />
+              )}
+              {/* Crosshair */}
+              {hovSvgX !== null && hovSvgY !== null && (
+                <line
+                  x1={hovSvgX} x2={hovSvgX}
+                  y1={hovSvgY} y2={C_BASELINE}
+                  stroke="var(--accent)"
+                  strokeWidth="1"
+                  strokeDasharray="3 3"
+                  opacity="0.45"
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
             </svg>
+
+            {/* Hover dot — rendered as HTML div to stay circular under non-uniform SVG scaling */}
+            {hovSvgX !== null && hovSvgY !== null && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${(hovSvgX / C_W) * 100}%`,
+                  top: `${(hovSvgY / C_H) * 100}%`,
+                  transform: 'translate(-50%, -50%)',
+                  width: 5,
+                  height: 5,
+                  borderRadius: '50%',
+                  background: 'var(--accent)',
+                  boxShadow: '0 0 6px var(--accent)',
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+
+            {/* Tooltip */}
+            {hoverIdx !== null && hovSvgX !== null && hovSvgY !== null && dailyTokens[hoverIdx] && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${(hovSvgX / C_W) * 100}%`,
+                  top: `${(hovSvgY / C_H) * 100}%`,
+                  transform: 'translate(-50%, calc(-100% - 10px))',
+                  pointerEvents: 'none',
+                  zIndex: 20,
+                  background: 'color-mix(in oklch, var(--card) 92%, var(--accent) 8%)',
+                  border: '1px solid color-mix(in oklch, var(--accent) 45%, transparent)',
+                  boxShadow: '0 0 14px color-mix(in oklch, var(--accent) 18%, transparent)',
+                  padding: '5px 8px',
+                  minWidth: 88,
+                }}
+              >
+                <div style={{ fontSize: 8.5, fontFamily: 'var(--font-mono)', letterSpacing: '0.12em', color: 'var(--muted-foreground)', marginBottom: 3, textTransform: 'uppercase' }}>
+                  {dailyTokens[hoverIdx].date.replace(/-/g, '/')}
+                </div>
+                <div style={{ fontSize: 14, fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--accent)', lineHeight: 1, marginBottom: 3, textShadow: '0 0 8px color-mix(in oklch, var(--accent) 40%, transparent)' }}>
+                  {fmtTokens(dailyTokens[hoverIdx].totalTokens)}
+                </div>
+                <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--muted-foreground)', opacity: 0.8, letterSpacing: '0.04em' }}>
+                  {'↑'}{fmtTokens(dailyTokens[hoverIdx].inputTokens)}{'  '}{'↓'}{fmtTokens(dailyTokens[hoverIdx].outputTokens)}
+                </div>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-3 items-center text-[9px] font-mono text-muted-foreground">
             <span>{firstDate ? fmtShortDate(firstDate) : DASH}</span>

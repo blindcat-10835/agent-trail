@@ -21,6 +21,8 @@ const PROJECT_COLORS = [
   'oklch(0.78 0.10 250)',
 ]
 
+const SORT_MODES = ['tokens', 'cost'] as const
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -31,11 +33,47 @@ function fmtTokens(n: number): string {
   return (n / 1e6).toFixed(2) + 'M'
 }
 
+function fmtCost(n: number | null): string {
+  if (n == null) return '—'
+  return '$' + n.toFixed(2)
+}
+
+// ============================================================================
+// Sort Toggle
+// ============================================================================
+
+function SortToggle({
+  sortBy,
+  onSortChange,
+}: {
+  sortBy: string
+  onSortChange: (v: string) => void
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {SORT_MODES.map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => onSortChange(mode)}
+          className={
+            sortBy === mode
+              ? 'text-[8.5px] font-bold tracking-[0.14em] uppercase px-1.5 py-0.5 border border-accent text-accent hud-clip-sm transition-colors'
+              : 'text-[8.5px] font-bold tracking-[0.14em] uppercase px-1.5 py-0.5 text-muted-foreground hover:text-foreground transition-colors'
+          }
+        >
+          {mode === 'tokens' ? 'TOKENS' : 'COST'}
+        </button>
+      ))}
+    </span>
+  )
+}
+
 // ============================================================================
 // Winner Component
 // ============================================================================
 
-function Winner({ items }: { items: ProjectRanking[] }) {
+function Winner({ items, sortBy }: { items: ProjectRanking[]; sortBy: string }) {
   if (!items.length) return null
 
   const [winner, ...rest] = items
@@ -97,7 +135,7 @@ function Winner({ items }: { items: ProjectRanking[] }) {
             {winner.rankWeight.toFixed(1)}%
           </span>
           <span className="text-[11px] text-muted-foreground">
-            {fmtTokens(winner.totalTokens)}
+            {sortBy === 'cost' ? fmtCost(winner.cost) : fmtTokens(winner.totalTokens)}
           </span>
         </div>
         {/* Progress bar */}
@@ -125,7 +163,7 @@ function Winner({ items }: { items: ProjectRanking[] }) {
               key={proj.project}
               className="grid items-center px-3.5 py-[5px] border-t first:border-t-0"
               style={{
-                gridTemplateColumns: '24px 8px minmax(0,1fr) 50px 34px',
+                gridTemplateColumns: '24px 8px minmax(0,1fr) 44px 44px 36px',
                 gap: 8,
                 fontSize: 11,
                 borderColor: 'color-mix(in oklch, var(--border) 35%, transparent)',
@@ -153,6 +191,9 @@ function Winner({ items }: { items: ProjectRanking[] }) {
                   style={{ width: `${proj.rankWeight}%`, background: color }}
                 />
               </div>
+              <span className="text-[10px] font-mono tabular-nums text-muted-foreground text-right">
+                {sortBy === 'cost' ? fmtCost(proj.cost) : fmtTokens(proj.totalTokens)}
+              </span>
               <span className="text-[10.5px] font-mono tabular-nums text-muted-foreground text-right">
                 {proj.rankWeight.toFixed(1)}%
               </span>
@@ -196,16 +237,21 @@ interface TopProjectsTableProps {
   projects: ProjectRanking[]
   loading: boolean
   error?: string | null
+  sortBy: string
+  onSortChange: (sortBy: string) => void
 }
 
 // ============================================================================
 // Component
 // ============================================================================
 
-export function TopProjectsTable({ projects, loading, error }: TopProjectsTableProps) {
+export function TopProjectsTable({ projects, loading, error, sortBy, onSortChange }: TopProjectsTableProps) {
   const rightSlot = (
-    <span className="text-[9px] font-mono text-muted-foreground tracking-[0.04em]">
-      BY TOKENS · 30D
+    <span className="inline-flex items-center gap-2">
+      <span className="text-[9px] font-mono text-muted-foreground tracking-[0.04em]">
+        BY
+      </span>
+      <SortToggle sortBy={sortBy} onSortChange={onSortChange} />
     </span>
   )
 
@@ -235,7 +281,7 @@ export function TopProjectsTable({ projects, loading, error }: TopProjectsTableP
 
   return (
     <HudFrame label="TOP PROJECTS" right={rightSlot} bodyClassName="p-0">
-      <Winner items={projects} />
+      <Winner items={projects} sortBy={sortBy} />
     </HudFrame>
   )
 }

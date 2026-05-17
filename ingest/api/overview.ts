@@ -74,8 +74,8 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
 
   // Validate window
   const dateCondition = getDateCondition('started_at', window);
-  if (window !== 'today' && window !== '7d' && window !== '30d') {
-    return c.json({ error: 'Invalid window parameter. Must be "today", "7d", or "30d"' }, 400);
+  if (!['today', '7d', '30d', 'all'].includes(window)) {
+    return c.json({ error: 'Invalid window parameter. Must be "today", "7d", "30d", or "all"' }, 400);
   }
 
   const db = getDatabase();
@@ -358,6 +358,11 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
   const source = c.req.query('source');
   const window = c.req.query('window') || '7d';
   const rawLimit = parseInt(c.req.query('limit') || '10', 10);
+  const sortBy = c.req.query('sortBy') || 'tokens';
+
+  if (!['tokens', 'cost'].includes(sortBy)) {
+    return c.json({ error: 'Invalid sortBy parameter. Must be "tokens" or "cost"' }, 400);
+  }
 
   // Validate source
   if (source && !isValidSource(source)) {
@@ -420,7 +425,7 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
     total_tokens: number;
   }>;
 
-  const result = projects.map((p) => ({
+  const mapped = projects.map((p) => ({
     project: p.project,
     sessionCount: p.session_count,
     turnCount: p.turn_count,
@@ -434,7 +439,12 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
       totalRow.total_tokens > 0
         ? Math.round((p.total_tokens / totalRow.total_tokens) * 10000) / 100
         : 0,
+    cost: null as number | null,
   }));
+
+  const result = sortBy === 'cost'
+    ? [...mapped].sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1))
+    : mapped;
 
   return c.json({ projects: result });
 });

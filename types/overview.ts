@@ -74,6 +74,7 @@ export interface ProjectRanking {
   reasoningTokens?: number
   totalTokens: number
   rankWeight: number
+  cost: number | null
 }
 
 export interface TopProjectsResponse {
@@ -173,4 +174,4 @@ export interface AutomationsResponse {
 // Shared Types
 // ============================================================================
 
-export type TimeWindow = 'today' | '7d' | '30d'
+export type TimeWindow = 'today' | '7d' | '30d' | 'all'

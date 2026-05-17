@@ -20,6 +20,7 @@ const WINDOWS: { id: TimeWindow; label: string }[] = [
   { id: 'today', label: 'TODAY' },
   { id: '7d', label: '7D' },
   { id: '30d', label: '30D' },
+  { id: 'all', label: 'ALL' },
 ]
 
 // ============================================================================

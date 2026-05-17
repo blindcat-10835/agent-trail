@@ -30,6 +30,7 @@ export function OverviewPage() {
   const { toolId } = useAgentTool()
   const [window, setWindow] = useState<TimeWindow>('30d')
   const [modelSortBy, setModelSortBy] = useState<string>('tokens')
+  const [projectSortBy, setProjectSortBy] = useState<string>('tokens')
 
   // Hero band always uses 30D
   const { aggregates, loading: aggLoading, error: aggError } = useOverviewAggregates(toolId, '30d')
@@ -37,7 +38,7 @@ export function OverviewPage() {
 
   // Row A: window-dependent
   const { models, loading: modelsLoading, error: modelsError } = useTopModels(toolId, window, modelSortBy)
-  const { projects, loading: projectsLoading, error: projectsError } = useTopProjects(toolId, window)
+  const { projects, loading: projectsLoading, error: projectsError } = useTopProjects(toolId, window, projectSortBy)
 
   // Non-window data
   const { starred, loading: starredLoading, error: starredError } = useStarredSessions(toolId)
@@ -103,6 +104,8 @@ export function OverviewPage() {
             projects={projects}
             loading={projectsLoading}
             error={projectsError}
+            sortBy={projectSortBy}
+            onSortChange={setProjectSortBy}
           />
           <ActivityTimeline
             timeline={timeline}
