@@ -13,6 +13,14 @@ import { Hono } from 'hono';
 import { getDatabase } from '../db/index.js';
 import { SOURCE_CAPABILITIES } from '../config/capabilities.js';
 import { readFileBackedAutomations, type FileAutomationSummary } from './automation-sources.js';
+import type { ServiceContext } from '../types.js';
+import {
+  estimateModelCost,
+  rollUpCosts,
+  type CostRollup,
+  type PricingStatus,
+  type TokenUsageForPricing,
+} from '../pricing/model-pricing.js';
 
 export const overviewRoutes = new Hono();
 
@@ -24,6 +32,17 @@ const UPDATED_AT_EXPR =
 function sessionTotalTokensExpr(alias?: string): string {
   const prefix = alias ? `${alias}.` : '';
   return `CASE WHEN COALESCE(${prefix}total_tokens, 0) > 0 THEN ${prefix}total_tokens ELSE COALESCE(${prefix}total_input_tokens, 0) + COALESCE(${prefix}total_output_tokens, 0) END`;
+}
+
+type IngestDatabase = ReturnType<typeof getDatabase>;
+type SqlParam = string | number;
+
+interface SessionCostRow extends TokenUsageForPricing {
+  id: string;
+  project: string;
+  day: string | null;
+  model: string | null;
+  totalTokens: number;
 }
 
 // ============================================================================
@@ -49,14 +68,70 @@ function parseDaysParam(rawDays: string | undefined): number | null {
   return days;
 }
 
-function validateSource(source: string | null): string | null {
-  if (!source) return null;
-  if (!VALID_SOURCES.includes(source as any)) return undefined as any; // signal invalid
-  return source;
+function isValidSource(source: string): source is typeof VALID_SOURCES[number] {
+  return (VALID_SOURCES as readonly string[]).includes(source);
 }
 
-function isValidSource(source: string): source is typeof VALID_SOURCES[number] {
-  return VALID_SOURCES.includes(source as any);
+function getSessionCostRows(
+  db: IngestDatabase,
+  whereClause: string,
+  params: SqlParam[],
+): SessionCostRow[] {
+  const rows = db.prepare(`
+    SELECT
+      s.id,
+      s.project,
+      date(s.started_at) AS day,
+      (
+        SELECT m.model
+        FROM messages m
+        WHERE m.session_id = s.id
+          AND TRIM(COALESCE(m.model, '')) <> ''
+          AND m.model <> '<synthetic>'
+        ORDER BY m.ordinal DESC
+        LIMIT 1
+      ) AS model,
+      COALESCE(s.total_input_tokens, 0) AS input_tokens,
+      COALESCE(s.total_output_tokens, 0) AS output_tokens,
+      COALESCE(s.total_cache_read_tokens, 0) AS cache_read_tokens,
+      COALESCE(s.total_cache_write_tokens, 0) AS cache_write_tokens,
+      COALESCE(s.total_reasoning_tokens, 0) AS reasoning_tokens,
+      ${sessionTotalTokensExpr('s')} AS total_tokens
+    FROM sessions s
+    ${whereClause}
+  `).all(...params) as Array<{
+    id: string;
+    project: string;
+    day: string | null;
+    model: string | null;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    reasoning_tokens: number;
+    total_tokens: number;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    project: row.project,
+    day: row.day,
+    model: row.model,
+    inputTokens: row.input_tokens,
+    outputTokens: row.output_tokens,
+    cacheReadTokens: row.cache_read_tokens,
+    cacheWriteTokens: row.cache_write_tokens,
+    reasoningTokens: row.reasoning_tokens,
+    totalTokens: row.total_tokens,
+  }));
+}
+
+function rollUpSessionCosts(rows: SessionCostRow[]): CostRollup {
+  return rollUpCosts(
+    rows
+      .filter((row) => row.totalTokens > 0)
+      .map((row) => estimateModelCost(row.model, row)),
+  );
 }
 
 // ============================================================================
@@ -74,6 +149,7 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
 
   // Validate window
   const dateCondition = getDateCondition('started_at', window);
+  const costDateCondition = getDateCondition('s.started_at', window);
   if (!['today', '7d', '30d', 'all'].includes(window)) {
     return c.json({ error: 'Invalid window parameter. Must be "today", "7d", "30d", or "all"' }, 400);
   }
@@ -82,17 +158,26 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
 
   const conditions: string[] = [];
   const params: string[] = [];
+  const costConditions: string[] = [];
+  const costParams: SqlParam[] = [];
 
   if (source) {
     conditions.push('source = ?');
     params.push(source);
+    costConditions.push('s.source = ?');
+    costParams.push(source);
   }
 
   if (dateCondition) {
     conditions.push(dateCondition);
   }
 
+  if (costDateCondition) {
+    costConditions.push(costDateCondition);
+  }
+
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const costWhereClause = costConditions.length > 0 ? `WHERE ${costConditions.join(' AND ')}` : '';
 
   const result = db.prepare(`
     SELECT
@@ -119,6 +204,8 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
     total_tokens: number;
   };
 
+  const costSummary = rollUpSessionCosts(getSessionCostRows(db, costWhereClause, costParams));
+
   return c.json({
     sessionCount: result.session_count,
     turnCount: result.turn_count,
@@ -129,6 +216,8 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
     cacheWriteTokens: result.cache_write_tokens,
     reasoningTokens: result.reasoning_tokens,
     totalTokens: result.total_tokens,
+    totalCost: costSummary.cost,
+    pricingStatus: costSummary.pricingStatus,
   });
 });
 
@@ -151,9 +240,14 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
   const db = getDatabase();
   const sinceModifier = `-${days - 1} days`;
   const sourceFilter = source ? 'AND source = ?' : '';
+  const sourceCostFilter = source ? 'AND s.source = ?' : '';
   const params: Array<string | number> = [
     sinceModifier,
     days,
+    sinceModifier,
+    ...(source ? [source] : []),
+  ];
+  const costParams: SqlParam[] = [
     sinceModifier,
     ...(source ? [source] : []),
   ];
@@ -206,17 +300,44 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
     total_tokens: number;
   }>;
 
+  const costRows = getSessionCostRows(
+    db,
+    `
+      WHERE s.started_at IS NOT NULL
+        AND date(s.started_at) >= date('now', ?)
+        AND date(s.started_at) <= date('now')
+        ${sourceCostFilter}
+    `,
+    costParams,
+  );
+  const costByDate = new Map<string, CostRollup>();
+  const rowsByDate = new Map<string, SessionCostRow[]>();
+
+  for (const row of costRows) {
+    if (!row.day) continue;
+    rowsByDate.set(row.day, [...(rowsByDate.get(row.day) ?? []), row]);
+  }
+
+  for (const [day, dayRows] of rowsByDate) {
+    costByDate.set(day, rollUpSessionCosts(dayRows));
+  }
+
   return c.json({
-    days: rows.map((row) => ({
-      date: row.date,
-      sessionCount: row.session_count,
-      inputTokens: row.input_tokens,
-      outputTokens: row.output_tokens,
-      cacheReadTokens: row.cache_read_tokens,
-      cacheWriteTokens: row.cache_write_tokens,
-      reasoningTokens: row.reasoning_tokens,
-      totalTokens: row.total_tokens,
-    })),
+    days: rows.map((row) => {
+      const costSummary = costByDate.get(row.date);
+      return {
+        date: row.date,
+        sessionCount: row.session_count,
+        inputTokens: row.input_tokens,
+        outputTokens: row.output_tokens,
+        cacheReadTokens: row.cache_read_tokens,
+        cacheWriteTokens: row.cache_write_tokens,
+        reasoningTokens: row.reasoning_tokens,
+        totalTokens: row.total_tokens,
+        cost: costSummary?.cost ?? null,
+        pricingStatus: costSummary?.pricingStatus ?? 'unknown',
+      };
+    }),
   });
 });
 
@@ -249,7 +370,7 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
   const db = getDatabase();
 
   const conditions: string[] = [];
-  const params: any[] = [];
+  const params: SqlParam[] = [];
 
   if (source) {
     conditions.push('s.source = ?');
@@ -314,8 +435,7 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
     WHERE ms.model IS NOT NULL
     GROUP BY ms.model
     ORDER BY total_tokens DESC
-    LIMIT ?
-  `).all(...params, limit) as Array<{
+  `).all(...params) as Array<{
     name: string;
     session_count: number;
     output_tokens: number;
@@ -326,28 +446,39 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
     total_tokens: number;
   }>;
 
-  const mapped = models.map((m) => ({
-    name: m.name,
-    sessionCount: m.session_count,
-    inputTokens: m.input_tokens,
-    outputTokens: m.output_tokens,
-    cacheReadTokens: m.cache_read_tokens,
-    cacheWriteTokens: m.cache_write_tokens,
-    reasoningTokens: m.reasoning_tokens,
-    totalTokens: m.total_tokens,
-    sharePercent:
-      totalRow.total_tokens > 0
-        ? Math.round((m.total_tokens / totalRow.total_tokens) * 10000) / 100
-        : 0,
-    cost: null as number | null,
-  }));
+  const mapped = models.map((m) => {
+    const costEstimate = estimateModelCost(m.name, {
+      inputTokens: m.input_tokens,
+      outputTokens: m.output_tokens,
+      cacheReadTokens: m.cache_read_tokens,
+      cacheWriteTokens: m.cache_write_tokens,
+      reasoningTokens: m.reasoning_tokens,
+    });
 
-  // Sort by cost when requested (nulls last; currently all costs are null so order is unchanged)
+    return {
+      name: m.name,
+      sessionCount: m.session_count,
+      inputTokens: m.input_tokens,
+      outputTokens: m.output_tokens,
+      cacheReadTokens: m.cache_read_tokens,
+      cacheWriteTokens: m.cache_write_tokens,
+      reasoningTokens: m.reasoning_tokens,
+      totalTokens: m.total_tokens,
+      sharePercent:
+        totalRow.total_tokens > 0
+          ? Math.round((m.total_tokens / totalRow.total_tokens) * 10000) / 100
+          : 0,
+      cost: costEstimate.cost,
+      pricingStatus: costEstimate.pricingStatus,
+    };
+  });
+
+  // Sort by cost when requested (nulls last)
   const result = sortBy === 'cost'
     ? [...mapped].sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1))
     : mapped;
 
-  return c.json({ models: result });
+  return c.json({ models: result.slice(0, limit) });
 });
 
 // ============================================================================
@@ -372,15 +503,15 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
   // Validate and cap limit
   const limit = Math.min(Math.max(isNaN(rawLimit) ? 10 : rawLimit, 1), 50);
 
-  const dateCondition = getDateCondition('started_at', window);
+  const dateCondition = getDateCondition('s.started_at', window);
 
   const db = getDatabase();
 
   const conditions: string[] = [];
-  const params: any[] = [];
+  const params: SqlParam[] = [];
 
   if (source) {
-    conditions.push('source = ?');
+    conditions.push('s.source = ?');
     params.push(source);
   }
 
@@ -392,28 +523,27 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
 
   // Get total tokens across all projects for rank weight
   const totalRow = db.prepare(`
-    SELECT COALESCE(SUM(${sessionTotalTokensExpr()}), 0) as total_tokens
-    FROM sessions
+    SELECT COALESCE(SUM(${sessionTotalTokensExpr('s')}), 0) as total_tokens
+    FROM sessions s
     ${whereClause}
   `).get(...params) as { total_tokens: number };
 
   const projects = db.prepare(`
     SELECT
-      project,
+      s.project AS project,
       COUNT(*) as session_count,
-      COALESCE(SUM(user_message_count), 0) as turn_count,
-      COALESCE(SUM(total_input_tokens), 0) as input_tokens,
-      COALESCE(SUM(total_output_tokens), 0) as output_tokens,
-      COALESCE(SUM(total_cache_read_tokens), 0) as cache_read_tokens,
-      COALESCE(SUM(total_cache_write_tokens), 0) as cache_write_tokens,
-      COALESCE(SUM(total_reasoning_tokens), 0) as reasoning_tokens,
-      COALESCE(SUM(${sessionTotalTokensExpr()}), 0) as total_tokens
-    FROM sessions
+      COALESCE(SUM(s.user_message_count), 0) as turn_count,
+      COALESCE(SUM(s.total_input_tokens), 0) as input_tokens,
+      COALESCE(SUM(s.total_output_tokens), 0) as output_tokens,
+      COALESCE(SUM(s.total_cache_read_tokens), 0) as cache_read_tokens,
+      COALESCE(SUM(s.total_cache_write_tokens), 0) as cache_write_tokens,
+      COALESCE(SUM(s.total_reasoning_tokens), 0) as reasoning_tokens,
+      COALESCE(SUM(${sessionTotalTokensExpr('s')}), 0) as total_tokens
+    FROM sessions s
     ${whereClause}
-    GROUP BY project
+    GROUP BY s.project
     ORDER BY total_tokens DESC
-    LIMIT ?
-  `).all(...params, limit) as Array<{
+  `).all(...params) as Array<{
     project: string;
     session_count: number;
     turn_count: number;
@@ -425,28 +555,42 @@ overviewRoutes.get('/api/v1/overview/top-projects', (c) => {
     total_tokens: number;
   }>;
 
-  const mapped = projects.map((p) => ({
-    project: p.project,
-    sessionCount: p.session_count,
-    turnCount: p.turn_count,
-    inputTokens: p.input_tokens,
-    outputTokens: p.output_tokens,
-    cacheReadTokens: p.cache_read_tokens,
-    cacheWriteTokens: p.cache_write_tokens,
-    reasoningTokens: p.reasoning_tokens,
-    totalTokens: p.total_tokens,
-    rankWeight:
-      totalRow.total_tokens > 0
-        ? Math.round((p.total_tokens / totalRow.total_tokens) * 10000) / 100
-        : 0,
-    cost: null as number | null,
-  }));
+  const costRows = getSessionCostRows(db, whereClause, params);
+  const costByProject = new Map<string, CostRollup>();
+
+  for (const project of new Set(costRows.map((row) => row.project))) {
+    costByProject.set(
+      project,
+      rollUpSessionCosts(costRows.filter((row) => row.project === project)),
+    );
+  }
+
+  const mapped = projects.map((p) => {
+    const costSummary = costByProject.get(p.project);
+    return {
+      project: p.project,
+      sessionCount: p.session_count,
+      turnCount: p.turn_count,
+      inputTokens: p.input_tokens,
+      outputTokens: p.output_tokens,
+      cacheReadTokens: p.cache_read_tokens,
+      cacheWriteTokens: p.cache_write_tokens,
+      reasoningTokens: p.reasoning_tokens,
+      totalTokens: p.total_tokens,
+      rankWeight:
+        totalRow.total_tokens > 0
+          ? Math.round((p.total_tokens / totalRow.total_tokens) * 10000) / 100
+          : 0,
+      cost: costSummary?.cost ?? null,
+      pricingStatus: costSummary?.pricingStatus ?? ('unknown' as PricingStatus),
+    };
+  });
 
   const result = sortBy === 'cost'
     ? [...mapped].sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1))
     : mapped;
 
-  return c.json({ projects: result });
+  return c.json({ projects: result.slice(0, limit) });
 });
 
 // ============================================================================
@@ -468,7 +612,7 @@ overviewRoutes.get('/api/v1/overview/starred', (c) => {
   const db = getDatabase();
 
   const conditions: string[] = [];
-  const params: any[] = [];
+  const params: SqlParam[] = [];
 
   if (source) {
     conditions.push('s.source = ?');
@@ -539,11 +683,11 @@ overviewRoutes.get('/api/v1/overview/timeline', (c) => {
   const sourceFilterSync = source ? `AND source_type = ?` : '';
 
   // Each UNION branch has its own params array for clarity
-  const p1: any[] = source ? [source] : [];
-  const p2: any[] = source ? [source] : [];
-  const p3: any[] = source ? [source] : [];
-  const p4: any[] = source ? [source] : [];
-  const p5: any[] = source ? [source] : [];
+  const p1: string[] = source ? [source] : [];
+  const p2: string[] = source ? [source] : [];
+  const p3: string[] = source ? [source] : [];
+  const p4: string[] = source ? [source] : [];
+  const p5: string[] = source ? [source] : [];
 
   const timeline = db.prepare(`
     SELECT * FROM (
@@ -843,7 +987,7 @@ function laterDate(a: string | null, b: string | null): string | null {
 
 overviewRoutes.get('/api/v1/overview/status', async (c) => {
   // Dynamic import to avoid circular dependency with index.ts at module load time
-  let ctx: any = null;
+  let ctx: ServiceContext | null = null;
   try {
     const mod = await import('../index.js');
     ctx = mod.getServiceContext();

@@ -4,7 +4,7 @@ import { shortPath } from '@/lib/utils'
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
-import type { ProjectRanking } from '@/types/overview'
+import type { PricingStatus, ProjectRanking } from '@/types/overview'
 
 // ============================================================================
 // Constants
@@ -33,9 +33,10 @@ function fmtTokens(n: number): string {
   return (n / 1e6).toFixed(2) + 'M'
 }
 
-function fmtCost(n: number | null): string {
+function fmtCost(n: number | null, status?: PricingStatus): string {
   if (n == null) return '—'
-  return '$' + n.toFixed(2)
+  const value = n < 0.01 ? n.toFixed(4) : n < 1 ? n.toFixed(3) : n.toFixed(2)
+  return `${status === 'partial' ? '~' : ''}$${value}`
 }
 
 // ============================================================================
@@ -78,6 +79,12 @@ function Winner({ items, sortBy }: { items: ProjectRanking[]; sortBy: string }) 
 
   const [winner, ...rest] = items
   const winnerColor = PROJECT_COLORS[0]
+  const winnerMetric = sortBy === 'cost'
+    ? fmtCost(winner.cost, winner.pricingStatus)
+    : `${winner.rankWeight.toFixed(1)}%`
+  const winnerSub = sortBy === 'cost'
+    ? `${winner.rankWeight.toFixed(1)}% share`
+    : fmtTokens(winner.totalTokens)
 
   return (
     <div className="flex flex-col">
@@ -132,10 +139,10 @@ function Winner({ items, sortBy }: { items: ProjectRanking[]; sortBy: string }) 
               textShadow: `0 0 10px color-mix(in oklch, ${winnerColor} 35%, transparent)`,
             }}
           >
-            {winner.rankWeight.toFixed(1)}%
+            {winnerMetric}
           </span>
           <span className="text-[11px] text-muted-foreground">
-            {sortBy === 'cost' ? fmtCost(winner.cost) : fmtTokens(winner.totalTokens)}
+            {winnerSub}
           </span>
         </div>
         {/* Progress bar */}
@@ -192,7 +199,7 @@ function Winner({ items, sortBy }: { items: ProjectRanking[]; sortBy: string }) 
                 />
               </div>
               <span className="text-[10px] font-mono tabular-nums text-muted-foreground text-right">
-                {sortBy === 'cost' ? fmtCost(proj.cost) : fmtTokens(proj.totalTokens)}
+                {sortBy === 'cost' ? fmtCost(proj.cost, proj.pricingStatus) : fmtTokens(proj.totalTokens)}
               </span>
               <span className="text-[10.5px] font-mono tabular-nums text-muted-foreground text-right">
                 {proj.rankWeight.toFixed(1)}%

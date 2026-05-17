@@ -297,6 +297,8 @@ describe('overview endpoints', () => {
       expect(body.inputTokens).toBe(16800);
       expect(body.outputTokens).toBe(24500);
       expect(body.totalTokens).toBe(body.inputTokens + body.outputTokens);
+      expect(body.totalCost).toBe(0.174);
+      expect(body.pricingStatus).toBe('partial');
     });
 
     it('returns correct counts for today window', async () => {
@@ -309,6 +311,8 @@ describe('overview endpoints', () => {
       expect(body.projectCount).toBe(1);
       expect(body.inputTokens).toBe(4000);
       expect(body.outputTokens).toBe(7000);
+      expect(body.totalCost).toBeNull();
+      expect(body.pricingStatus).toBe('unknown');
     });
 
     it('returns correct counts for 30d window', async () => {
@@ -319,6 +323,8 @@ describe('overview endpoints', () => {
       // Sessions within 30d: oc-1, oc-2, cc-1, cc-2, oc-3, oc-auto-1, oc-auto-2 = 7
       expect(body.sessionCount).toBe(7);
       expect(body.projectCount).toBe(3); // alpha, beta, gamma
+      expect(body.totalCost).toBe(0.207);
+      expect(body.pricingStatus).toBe('partial');
     });
 
     it('filters by source', async () => {
@@ -368,6 +374,8 @@ describe('overview endpoints', () => {
       expect(body.days[0]).toHaveProperty('cacheWriteTokens');
       expect(body.days[0]).toHaveProperty('reasoningTokens');
       expect(body.days[0]).toHaveProperty('totalTokens');
+      expect(body.days[0]).toHaveProperty('cost');
+      expect(body.days[0]).toHaveProperty('pricingStatus');
 
       const zeroDays = body.days.filter((day: { totalTokens: number }) => day.totalTokens === 0);
       expect(zeroDays.length).toBeGreaterThan(0);
@@ -387,12 +395,29 @@ describe('overview endpoints', () => {
           date: string;
           sessionCount: number;
           totalTokens: number;
+          cost: number | null;
+          pricingStatus: string;
         }) => [day.date, day]),
       );
 
-      expect(byDate.get(today)).toMatchObject({ sessionCount: 2, totalTokens: 11000 });
-      expect(byDate.get(fiveDaysAgo)).toMatchObject({ sessionCount: 4, totalTokens: 30300 });
-      expect(byDate.get(fifteenDaysAgo)).toMatchObject({ sessionCount: 1, totalTokens: 3000 });
+      expect(byDate.get(today)).toMatchObject({
+        sessionCount: 2,
+        totalTokens: 11000,
+        cost: null,
+        pricingStatus: 'unknown',
+      });
+      expect(byDate.get(fiveDaysAgo)).toMatchObject({
+        sessionCount: 4,
+        totalTokens: 30300,
+        cost: 0.174,
+        pricingStatus: 'partial',
+      });
+      expect(byDate.get(fifteenDaysAgo)).toMatchObject({
+        sessionCount: 1,
+        totalTokens: 3000,
+        cost: 0.033,
+        pricingStatus: 'priced',
+      });
     });
 
     it('filters daily token totals by source', async () => {
@@ -461,8 +486,22 @@ describe('overview endpoints', () => {
         expect(m).toHaveProperty('totalTokens');
         expect(m).toHaveProperty('sharePercent');
         expect(m).toHaveProperty('cost');
-        expect(m.cost).toBeNull();
+        expect(m).toHaveProperty('pricingStatus');
       }
+
+      const byName = new Map(body.models.map((m: {
+        name: string;
+        cost: number | null;
+        pricingStatus: string;
+      }) => [m.name, m]));
+      expect(byName.get('claude-sonnet-4-20250514')).toMatchObject({
+        cost: 0.174,
+        pricingStatus: 'priced',
+      });
+      expect(byName.get('gpt-4o')).toMatchObject({
+        cost: null,
+        pricingStatus: 'unknown',
+      });
     });
 
     it('does not duplicate session totals across repeated model-tagged messages', async () => {
@@ -485,6 +524,18 @@ describe('overview endpoints', () => {
       expect(byName.get('claude-sonnet-4-20250514')).toMatchObject({
         sessionCount: 1,
         totalTokens: 18000,
+      });
+    });
+
+    it('sorts models by estimated cost when requested', async () => {
+      const res = await app.request('/api/v1/overview/top-models?sortBy=cost');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(body.models[0]).toMatchObject({
+        name: 'claude-sonnet-4-20250514',
+        cost: 0.174,
+        pricingStatus: 'priced',
       });
     });
 
@@ -528,6 +579,11 @@ describe('overview endpoints', () => {
       const res = await app.request('/api/v1/overview/top-models?source=invalid');
       expect(res.status).toBe(400);
     });
+
+    it('returns 400 for invalid sortBy', async () => {
+      const res = await app.request('/api/v1/overview/top-models?sortBy=latency');
+      expect(res.status).toBe(400);
+    });
   });
 
   // ==========================================================================
@@ -549,6 +605,8 @@ describe('overview endpoints', () => {
         expect(p).toHaveProperty('outputTokens');
         expect(p).toHaveProperty('totalTokens');
         expect(p).toHaveProperty('rankWeight');
+        expect(p).toHaveProperty('cost');
+        expect(p).toHaveProperty('pricingStatus');
         expect(typeof p.rankWeight).toBe('number');
       }
 
@@ -559,6 +617,32 @@ describe('overview endpoints', () => {
       );
       expect(totalWeight).toBeGreaterThanOrEqual(99);
       expect(totalWeight).toBeLessThanOrEqual(101);
+
+      const byProject = new Map(body.projects.map((p: {
+        project: string;
+        cost: number | null;
+        pricingStatus: string;
+      }) => [p.project, p]));
+      expect(byProject.get('project-alpha')).toMatchObject({
+        cost: 0.174,
+        pricingStatus: 'partial',
+      });
+      expect(byProject.get('project-beta')).toMatchObject({
+        cost: null,
+        pricingStatus: 'unknown',
+      });
+    });
+
+    it('sorts projects by estimated cost when requested', async () => {
+      const res = await app.request('/api/v1/overview/top-projects?sortBy=cost');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(body.projects[0]).toMatchObject({
+        project: 'project-alpha',
+        cost: 0.174,
+        pricingStatus: 'partial',
+      });
     });
 
     it('filters by source', async () => {
@@ -581,6 +665,11 @@ describe('overview endpoints', () => {
 
     it('returns 400 for invalid source', async () => {
       const res = await app.request('/api/v1/overview/top-projects?source=invalid');
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 for invalid sortBy', async () => {
+      const res = await app.request('/api/v1/overview/top-projects?sortBy=latency');
       expect(res.status).toBe(400);
     });
   });

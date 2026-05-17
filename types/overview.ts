@@ -21,6 +21,8 @@ export interface OverviewAggregates {
   cacheWriteTokens?: number
   reasoningTokens?: number
   totalTokens: number
+  totalCost: number | null
+  pricingStatus: PricingStatus
 }
 
 export interface DailyTokenUsage {
@@ -32,6 +34,8 @@ export interface DailyTokenUsage {
   cacheWriteTokens?: number
   reasoningTokens?: number
   totalTokens: number
+  cost: number | null
+  pricingStatus: PricingStatus
 }
 
 export interface DailyTokensResponse {
@@ -53,6 +57,7 @@ export interface ModelRanking {
   totalTokens: number
   sharePercent: number
   cost: number | null
+  pricingStatus: PricingStatus
 }
 
 export interface TopModelsResponse {
@@ -75,6 +80,7 @@ export interface ProjectRanking {
   totalTokens: number
   rankWeight: number
   cost: number | null
+  pricingStatus: PricingStatus
 }
 
 export interface TopProjectsResponse {
@@ -175,3 +181,4 @@ export interface AutomationsResponse {
 // ============================================================================
 
 export type TimeWindow = 'today' | '7d' | '30d' | 'all'
+export type PricingStatus = 'priced' | 'partial' | 'unknown'

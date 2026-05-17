@@ -4,7 +4,7 @@ import { useState, useRef } from 'react'
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
-import type { DailyTokenUsage, OverviewAggregates } from '@/types/overview'
+import type { DailyTokenUsage, OverviewAggregates, PricingStatus } from '@/types/overview'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 
 // ============================================================================
@@ -17,6 +17,18 @@ function fmtTokens(n: number): string {
   if (n < 1000) return String(n)
   if (n < 1e6) return (n / 1000).toFixed(1) + 'K'
   return (n / 1e6).toFixed(2) + 'M'
+}
+
+function fmtCost(n: number | null | undefined, status?: PricingStatus): string {
+  if (n == null) return DASH
+  const value = n < 0.01 ? n.toFixed(4) : n < 1 ? n.toFixed(3) : n.toFixed(2)
+  return `${status === 'partial' ? '~' : ''}$${value}`
+}
+
+function pricingSub(status: PricingStatus | undefined, fallback: string): string {
+  if (status === 'partial') return 'Partial pricing'
+  if (status === 'unknown') return 'Pricing pending'
+  return fallback
 }
 
 function pctOf(a: number, total: number): string {
@@ -451,14 +463,17 @@ function KpiMiniStack({
   const totalT = aggregates?.totalTokens ?? 0
   const inT = aggregates?.inputTokens ?? 0
   const outT = aggregates?.outputTokens ?? 0
+  const totalCost = aggregates?.totalCost ?? null
+  const pricingStatus = aggregates?.pricingStatus
+  const dailyBurn = totalCost === null ? null : totalCost / 30
 
   return (
     <div className="flex flex-col gap-[3px]">
       <KpiMini
         label="TOTAL COST · 30D"
-        value={DASH}
+        value={loading ? DASH : fmtCost(totalCost, pricingStatus)}
         color="var(--accent)"
-        sub={loading ? '…' : `${fmtTokens(totalT)} tokens`}
+        sub={loading ? '…' : pricingSub(pricingStatus, `${fmtTokens(totalT)} tokens`)}
       />
       <KpiMini
         label="INPUT TOKENS · 30D"
@@ -474,9 +489,9 @@ function KpiMiniStack({
       />
       <KpiMini
         label="DAILY BURN · AVG"
-        value={DASH}
+        value={loading ? DASH : fmtCost(dailyBurn, pricingStatus)}
         color="oklch(0.75 0.17 340)"
-        sub={loading ? '…' : 'Pricing pending'}
+        sub={loading ? '…' : pricingSub(pricingStatus, 'est. avg/day')}
       />
     </div>
   )

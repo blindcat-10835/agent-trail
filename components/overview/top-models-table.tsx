@@ -3,7 +3,7 @@
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
-import type { ModelRanking } from '@/types/overview'
+import type { ModelRanking, PricingStatus } from '@/types/overview'
 
 // ============================================================================
 // Constants
@@ -29,9 +29,10 @@ function fmtTokens(n: number): string {
   return (n / 1e6).toFixed(2) + 'M'
 }
 
-function fmtCost(n: number | null): string {
+function fmtCost(n: number | null, status?: PricingStatus): string {
   if (n == null) return '—'
-  return '$' + n.toFixed(2)
+  const value = n < 0.01 ? n.toFixed(4) : n < 1 ? n.toFixed(3) : n.toFixed(2)
+  return `${status === 'partial' ? '~' : ''}$${value}`
 }
 
 // ============================================================================
@@ -75,6 +76,12 @@ function Winner({ items, sortBy }: { items: ModelRanking[]; sortBy: string }) {
   const [winner, ...rest] = items
 
   const winnerColor = MODEL_COLORS[0]
+  const winnerMetric = sortBy === 'cost'
+    ? fmtCost(winner.cost, winner.pricingStatus)
+    : `${winner.sharePercent.toFixed(1)}%`
+  const winnerSub = sortBy === 'cost'
+    ? `${winner.sharePercent.toFixed(1)}% share`
+    : fmtTokens(winner.totalTokens)
 
   return (
     <div className="flex flex-col">
@@ -129,10 +136,10 @@ function Winner({ items, sortBy }: { items: ModelRanking[]; sortBy: string }) {
               textShadow: `0 0 10px color-mix(in oklch, ${winnerColor} 35%, transparent)`,
             }}
           >
-            {winner.sharePercent.toFixed(1)}%
+            {winnerMetric}
           </span>
           <span className="text-[11px] text-muted-foreground">
-            {fmtTokens(winner.totalTokens)}
+            {winnerSub}
           </span>
         </div>
         {/* Progress bar */}
@@ -189,7 +196,7 @@ function Winner({ items, sortBy }: { items: ModelRanking[]; sortBy: string }) {
                 />
               </div>
               <span className="text-[10px] font-mono tabular-nums text-muted-foreground text-right">
-                {sortBy === 'cost' ? fmtCost(model.cost) : fmtTokens(model.totalTokens)}
+                {sortBy === 'cost' ? fmtCost(model.cost, model.pricingStatus) : fmtTokens(model.totalTokens)}
               </span>
               <span className="text-[10.5px] font-mono tabular-nums text-muted-foreground text-right">
                 {model.sharePercent.toFixed(1)}%
