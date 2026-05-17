@@ -78,6 +78,19 @@
 - [x] **PERF-111**: Developer can read one structured sync completion log per run with reason, scope, files considered/skipped/parsed, rows written, duration, coalesced/queued status, and error count.
 - [x] **PERF-112**: Developer can bound any parse concurrency and SQLite write batching through explicit configuration so performance hardening cannot reintroduce unbounded parallel work.
 
+### Qoder Source Integration
+
+- [ ] **QDR-101**: User sees `qoder` as a formal source value across the type system (`TraceSource`, `SourceToolId`, `SyncSourceType`), validation arrays, BFF tool registry, and SQLite CHECK constraints, alongside openclaw, claude-code, codex, and opencode.
+- [ ] **QDR-102**: User can have ingest auto-discover the local Qoder SQLite main database via `QODER_DB_PATH` environment variable, `qoder_db_paths` config key, or built-in default `~/Library/Application Support/Qoder/SharedClientCache/cache/db/local.db`, and see configured/empty/error state through `/api/v1/sources/qoder`.
+- [ ] **QDR-103**: User can have ingest read Qoder sessions, records, messages, and tool results from `local.db` opened readonly and translate them into the canonical `ParseResult` model with session IDs prefixed `qoder:`.
+- [ ] **QDR-104**: User can browse Qoder sessions from `/qoder/sessions` with status, source, id, title, project, model, turn count, token totals, duration, recency columns, and from `/all/sessions` with mixed-source rows.
+- [ ] **QDR-105**: User can open a Qoder session detail page with HUD header (title, project, model key, agent type, tokens, duration) and a continuous turn replay assembled by `chat_record.request_id` showing user input, assistant text, tool calls, tool results, and error tools.
+- [ ] **QDR-106**: User can see Qoder activity rows for `read_file`, `search_file`, `grep_code`, `search_codebase`, `list_dir`, `run_in_terminal`, and `Agent` tool calls with status (FINISHED/ERROR), parameters, results, and error messages.
+- [ ] **QDR-107**: User can navigate from a parent Qoder session's `Agent` tool call to the spawned child session via `chat_session.parent_session_id` / `parent_tool_call_id` linkage represented as `subagent` relationship and `TraceSubagentLink` records.
+- [ ] **QDR-108**: User sees Qoder token totals computed from assistant `chat_message.token_info` with `prompt_tokens` mapped to input, `completion_tokens` to output, `cached_tokens` to cache-read, and `totalTokens = prompt + completion` to avoid double-counting; `max_input_tokens` is metadata only.
+- [ ] **QDR-109**: User sees Qoder model display as the recorded model key (`ultimate`, `experts-ultimate`, or a specific model name when Qoder writes one), prioritized as `chat_message.model_info.model_key` > `chat_record.extra.modelConfig.key` > `chat_session.preferred_model_info` > `unknown`; Qoder rows are excluded from cost-based ranking and any cost cell shows `—` / `unknown`.
+- [ ] **QDR-110**: Developer can rely on Qoder ingest never reading `SharedClientCache/cache/machine_token.json`, `supabase_token` table, `secret://` keys in `state.vscdb`, or any HTTP/cookie credential storage; Qoder DB is opened readonly with no write PRAGMAs; sync uses per-session fingerprint (`session_id + gmt_modified + message_count + max message gmt`) so unchanged sessions skip parser/write work; locked DB / WAL contention is logged as a parser warning without crashing ingest.
+
 ## Future Requirements
 
 ### Data And Insights
@@ -154,12 +167,22 @@
 | PERF-110 | Phase 16 | Complete |
 | PERF-111 | Phase 16 | Complete |
 | PERF-112 | Phase 16 | Complete |
+| QDR-101 | Phase 18 | Pending |
+| QDR-102 | Phase 18 | Pending |
+| QDR-103 | Phase 18 | Pending |
+| QDR-104 | Phase 18 | Pending |
+| QDR-105 | Phase 18 | Pending |
+| QDR-106 | Phase 18 | Pending |
+| QDR-107 | Phase 18 | Pending |
+| QDR-108 | Phase 18 | Pending |
+| QDR-109 | Phase 18 | Pending |
+| QDR-110 | Phase 18 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 45 total
-- Mapped to phases: 45
+- v1.1 requirements: 55 total
+- Mapped to phases: 55
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-12*
-*Last updated: 2026-05-15 after Phase 16 completion*
+*Last updated: 2026-05-18 after Phase 18 Qoder source integration was added*

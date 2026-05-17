@@ -40,6 +40,7 @@
 | 15 | Ingest Sync Performance Hardening | 修复 ingest watcher/background/periodic sync 重叠导致的高内存、高 CPU、大 JSONL 重复解析问题。 | PERF-101..106, TEST-103, OPEN-103 |
 | 16 | Ingest Incremental JSONL and Sync Observability Hardening | 完成 Phase 15 剩余 P2/P3：append-only JSONL 增量解析、cursor 安全回退、append/upsert 写入、sync run 历史与生产级 debug 指标。 | PERF-107..112 |
 | 17 | OpenCode Source Integration | 将 opencode CLI 的 SQLite session 数据作为第四个正式 source 纳入 dashboard，支持 session browsing、turn replay、tool activity、token usage、cost display。 | OPN-101..110 |
+| 18 | Qoder Source Integration | 将 Qoder 桌面端 SQLite 主库作为第五个正式 source 纳入 dashboard，支持 session browsing、turn replay、tool activity、subagent links、token totals；cost 暂不估算。 | QDR-101..110 |
 
 #### Phase 10: Rich Ingest Metrics & Data Contracts
 
@@ -206,6 +207,7 @@ Plans:
 | 15. Ingest Sync Performance | v1.1 | 3/3 | Complete | 2026-05-14 |
 | 16. Incremental Sync Observability | v1.1 | 4/4 | Complete | 2026-05-15 |
 | 17. OpenCode Source Integration | v1.1 | 0/TBD | Planned | — |
+| 18. Qoder Source Integration | v1.1 | 0/TBD | Planned | — |
 
 #### Phase 17: OpenCode Source Integration
 
@@ -224,6 +226,28 @@ Plans:
 6. SQLite schema migrates cleanly, existing three sources unaffected.
 7. Parser handles WAL lock (SQLITE_BUSY) without crashing.
 8. Existing parser, API, BFF, replay, sync, and migration tests still pass.
+
+#### Phase 18: Qoder Source Integration
+
+**Goal:** Add Qoder (desktop IDE assistant) as a fifth formal data source, enabling full-stack session browsing, turn replay, tool activity, subagent linkage, and token usage display from Qoder's local SQLite main database. Cost is intentionally excluded in this phase because Qoder records only product-tier model keys (`ultimate` / `experts-ultimate`) without verifiable underlying provider/model billing semantics.
+
+**Requirements:** QDR-101, QDR-102, QDR-103, QDR-104, QDR-105, QDR-106, QDR-107, QDR-108, QDR-109, QDR-110
+
+**Canonical refs:** `.planning/2026-05-17-qoder-source-integration-plan.md`, `.planning/phases/18-qoder-source-integration/18-SPEC.md`
+
+**Depends on:** Phase 17 (extends the same source-extension surface area: `TraceSource` union, schema CHECK constraints, BFF tool registry, source switcher).
+
+**Success criteria:**
+1. Qoder sessions appear in `/qoder/sessions`, `/qoder/dashboard`, `/qoder/activity` with correct data.
+2. Source switcher includes qoder as a formal option alongside openclaw, claude-code, codex, opencode.
+3. Turn replay renders user text, assistant text, tool calls, tool results, and error tools for Qoder sessions assembled by `chat_record.request_id`.
+4. Subagent `Agent` tool calls in a parent session link to child Qoder sessions via `parent_session_id` / `parent_tool_call_id` mapping.
+5. Overview aggregates include qoder data in both `source=qoder` and `source=all` queries; token totals attribute `prompt_tokens`/`completion_tokens`/`cached_tokens` correctly without double-counting.
+6. Qoder model column displays `ultimate` / `experts-ultimate` (or the specific model name when Qoder records one); cost column shows `—` / `unknown` and Qoder rows are excluded from cost-based ranking.
+7. SQLite schema migrates cleanly to widen source CHECK constraints to five values; existing four sources unaffected.
+8. Parser opens Qoder `local.db` readonly, never writes PRAGMAs, never reads `machine_token.json` / `secret://` keys / auth tables; locked DB / WAL contention does not crash ingest.
+9. Sync uses a session-scoped fingerprint (session_id + gmt_modified + message_count + max message gmt) so unchanged Qoder sessions are skipped instead of triggering whole-DB re-index.
+10. Existing parser, API, BFF, replay, sync, and migration tests still pass.
 
 ## Future Enhancements
 
