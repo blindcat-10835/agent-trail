@@ -26,9 +26,24 @@ describe('OpenClaw parser — malformed lines', () => {
     expect(result.messages.length).toBeGreaterThanOrEqual(1);
     // Should not crash
     expect(result.session).toBeDefined();
-    // parserMalformedLines should be zero (missing role is a warning, not a crash)
-    // OpenClaw parser skips non-message types but messages without role still parse
-    // The parser doesn't validate role field — it passes through as-is
+    // Missing roles are rejected as malformed so they cannot violate DB role checks.
+    expect(result.errors.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('normalizes OpenClaw toolResult role to canonical tool_result', async () => {
+    const content = [
+      '{"type":"message","message":{"role":"assistant","content":"calling tool"},"session":"test","timestamp":"2025-01-01T00:00:00Z"}',
+      '{"type":"message","message":{"role":"toolResult","content":"tool output"},"session":"test","timestamp":"2025-01-01T00:00:01Z"}',
+    ].join('\n');
+    tempPath = createTempFixture(content);
+
+    const result = await parseOpenClawSession(tempPath, 'test-project');
+
+    expect(result.errors).toEqual([]);
+    expect(result.messages.map((message) => message.role)).toEqual([
+      'assistant',
+      'tool_result',
+    ]);
   });
 
   it('handles completely invalid JSON lines (not JSON at all)', async () => {

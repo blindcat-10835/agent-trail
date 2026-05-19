@@ -28,6 +28,14 @@ import {
   SessionContext,
 } from './types';
 
+const OPENCLAW_ROLE_ALIASES: Record<string, MessageRole> = {
+  user: 'user',
+  assistant: 'assistant',
+  system: 'system',
+  tool_result: 'tool_result',
+  toolResult: 'tool_result',
+};
+
 /**
  * Parse an OpenClaw session file and return structured trace data
  *
@@ -104,8 +112,18 @@ export async function parseOpenClawSession(
         endedAt = parsed.timestamp;
       }
 
+      const role = normalizeOpenClawRole(parsed.message.role);
+      if (!role) {
+        errors.push({
+          line: lineNum,
+          raw: line.substring(0, 200),
+          error: `Unsupported message role: ${String(parsed.message.role)}`,
+        });
+        continue;
+      }
+
       // Parse message
-      const message = parseMessage(parsed.message, ordinal, context, lineNum);
+      const message = parseMessage(parsed.message, ordinal, context, lineNum, role);
       messages.push(message);
 
       // Extract tool calls from assistant messages
@@ -242,7 +260,8 @@ function parseMessage(
   msg: any,
   ordinal: number,
   context: SessionContext,
-  lineNum: number
+  lineNum: number,
+  role: MessageRole
 ): TraceMessage {
   // Extract content from message
   let content = '';
@@ -263,7 +282,7 @@ function parseMessage(
   return {
     id: `${context.uuid}-${ordinal}`,
     ordinal,
-    role: msg.role as MessageRole,
+    role,
     content,
     timestamp: msg.timestamp,
     model: msg.model,
@@ -275,6 +294,11 @@ function parseMessage(
       : undefined,
     sourceMetadata,
   };
+}
+
+function normalizeOpenClawRole(role: unknown): MessageRole | null {
+  if (typeof role !== 'string') return null;
+  return OPENCLAW_ROLE_ALIASES[role] ?? null;
 }
 
 /**
@@ -343,7 +367,9 @@ export function parseOpenClawMessage(
   try {
     const parsed: OpenClawJsonlLine = JSON.parse(line);
     if (parsed.type !== 'message' || !parsed.message) return null;
-    return parseMessage(parsed.message, 0, context, 0);
+    const role = normalizeOpenClawRole(parsed.message.role);
+    if (!role) return null;
+    return parseMessage(parsed.message, 0, context, 0, role);
   } catch {
     return null;
   }

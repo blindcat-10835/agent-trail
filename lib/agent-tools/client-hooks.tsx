@@ -264,11 +264,30 @@ async function fetchToolApi<T>(
 ): Promise<T> {
   const params = query ? '?' + new URLSearchParams(query).toString() : ''
   const res = await fetch(`/api/agent-tools/${toolId}${path}${params}`)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `Request failed: ${res.status}`)
+  const text = await res.text()
+  let body: unknown = {}
+
+  if (text.trim() !== '') {
+    try {
+      body = JSON.parse(text)
+    } catch {
+      throw new Error(`Invalid JSON from ${path}`)
+    }
+  } else if (res.ok) {
+    throw new Error(`Empty response from ${path}`)
   }
-  return res.json() as T
+
+  if (!res.ok) {
+    const error =
+      typeof body === 'object' &&
+      body !== null &&
+      'error' in body &&
+      typeof body.error === 'string'
+        ? body.error
+        : `Request failed: ${res.status}`
+    throw new Error(error)
+  }
+  return body as T
 }
 
 /**

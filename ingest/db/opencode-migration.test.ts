@@ -1,5 +1,5 @@
 /**
- * OpenCode Migration Tests — Schema v13 → v14
+ * OpenCode Migration Tests — Schema v13 → current
  *
  * Tests migration adds 'opencode' to CHECK constraints on 3 tables,
  * adds source_cost_usd / cost_source / cost_pricing_status columns,
@@ -42,10 +42,10 @@ afterAll(() => {
   rmSync(`${dbPath}-wal`, { force: true });
 });
 
-describe('OpenCode migration v13 → v14', () => {
-  it('should apply migration v14 cleanly on a fresh DB', () => {
+describe('OpenCode migration v13 → current', () => {
+  it('should apply current migrations cleanly on a fresh DB', () => {
     const version = db!.pragma('user_version', { simple: true }) as number;
-    expect(version).toBe(14);
+    expect(version).toBe(15);
 
     const tables = (db!.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"

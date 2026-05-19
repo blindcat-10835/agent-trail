@@ -191,6 +191,19 @@ export function sanitizeError(err: unknown): { error: string; code: number } {
 const INGEST_FETCH_TIMEOUT_MS = 5_000
 export const INGEST_OVERVIEW_FETCH_TIMEOUT_MS = 20_000
 
+async function parseJsonResponse<T>(res: Response, context: string): Promise<T> {
+  const text = await res.text()
+  if (text.trim() === '') {
+    throw new Error(`${context} returned an empty response body`)
+  }
+
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(`${context} returned invalid JSON`)
+  }
+}
+
 export async function fetchIngest<T>(
   path: string,
   options?: {
@@ -237,7 +250,7 @@ export async function fetchIngest<T>(
   if (!res.ok) {
     let body: Record<string, unknown> = {}
     try {
-      body = (await res.json()) as Record<string, unknown>
+      body = await parseJsonResponse<Record<string, unknown>>(res, `Ingest ${res.status}`)
     } catch {
       // Response body is not JSON — use status text
     }
@@ -248,7 +261,7 @@ export async function fetchIngest<T>(
     throw new Error(errorMsg)
   }
 
-  return res.json() as T
+  return parseJsonResponse<T>(res, 'Ingest service')
 }
 
 // ============================================================================

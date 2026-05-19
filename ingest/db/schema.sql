@@ -222,6 +222,7 @@ CREATE TABLE IF NOT EXISTS turns (
 -- Sessions indexes
 CREATE INDEX IF NOT EXISTS idx_sessions_source_project ON sessions(source, project);
 CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_source_started_at ON sessions(source, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_root_session_id ON sessions(root_session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_session_id);
 

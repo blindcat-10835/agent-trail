@@ -85,6 +85,7 @@ describe('ingest database migrations', () => {
     const columns = db.prepare('PRAGMA table_info(messages)').all() as { name: string }[];
     const indexes = db.prepare('PRAGMA index_list(messages)').all() as { name: string }[];
     const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all() as { name: string }[];
+    const sessionIndexes = db.prepare('PRAGMA index_list(sessions)').all() as { name: string }[];
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")
       .all() as { name: string }[];
@@ -105,7 +106,9 @@ describe('ingest database migrations', () => {
         'total_tokens',
       ])
     );
-    expect(version).toBe(14);
+    expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
+    expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
+    expect(version).toBe(15);
   });
 
   it('initializes ingest file cursor schema idempotently', () => {
@@ -122,6 +125,9 @@ describe('ingest database migrations', () => {
       .all() as { name: string }[];
     const indexes = db
       .prepare('PRAGMA index_list(ingest_file_cursors)')
+      .all() as { name: string }[];
+    const sessionIndexes = db
+      .prepare('PRAGMA index_list(sessions)')
       .all() as { name: string }[];
     const version = db.pragma('user_version', { simple: true });
     db.close();
@@ -145,7 +151,9 @@ describe('ingest database migrations', () => {
       ])
     );
     expect(indexes.map((index) => index.name)).toContain('idx_ingest_file_cursors_session_id');
-    expect(version).toBe(14);
+    expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
+    expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
+    expect(version).toBe(15);
   });
 
   it('enforces append writer idempotency constraints', () => {

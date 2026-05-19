@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildSourceScopedSessionParams,
+  fetchIngest,
   getSourceScopedSession,
   requireSourceScopedSession,
   SessionValidationError,
@@ -74,5 +75,25 @@ describe('source-scoped session helpers', () => {
     await expect(requireSourceScopedSession('session-1', 'openclaw')).rejects.toMatchObject({
       code: 404,
     } satisfies Partial<SessionValidationError>)
+  })
+})
+
+describe('fetchIngest', () => {
+  it('rejects successful upstream responses with empty bodies', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 200 })))
+
+    await expect(fetchIngest('/health')).rejects.toThrow('empty response body')
+  })
+
+  it('rejects successful upstream responses with invalid JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('not json', { status: 200 })))
+
+    await expect(fetchIngest('/health')).rejects.toThrow('invalid JSON')
+  })
+
+  it('uses JSON error messages from non-2xx upstream responses', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ error: 'Upstream failed' }, 500)))
+
+    await expect(fetchIngest('/health')).rejects.toThrow('Upstream failed')
   })
 })

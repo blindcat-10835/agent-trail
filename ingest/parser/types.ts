@@ -41,7 +41,7 @@ export interface OpenClawJsonlLine {
  * Content can be a string or an array of content blocks (text, tool_use, etc.)
  */
 export interface OpenClawMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool_result';
+  role?: string;
   content: string | Array<ContentBlock>;
   model?: string;
   usage?: {
