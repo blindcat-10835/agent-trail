@@ -23,7 +23,7 @@ import type {
   TraceSystemEvent,
   TraceSubagentLink,
 } from '@/types/trace';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 
 const fixtures: TestOpencodeFixture[] = [];
 
@@ -809,5 +809,37 @@ describe('computeOpencodeSkipKey', () => {
     const key2 = computeOpencodeSkipKey(session, 11, 25);
 
     expect(key1).not.toBe(key2);
+  });
+
+  it('does not match legacy unversioned skip keys', () => {
+    const session = {
+      id: 'test-id',
+      project_id: null,
+      parent_id: null,
+      slug: null,
+      directory: null,
+      title: null,
+      version: null,
+      agent: null,
+      model: null,
+      cost: 0,
+      tokens_input: 0,
+      tokens_output: 0,
+      tokens_reasoning: 0,
+      tokens_cache_read: 0,
+      tokens_cache_write: 0,
+      time_created: null,
+      time_updated: '2026-05-17T01:00:00Z',
+      time_archived: null,
+      path: null,
+      workspace_id: null,
+    } satisfies OpencodeSessionRow;
+
+    const current = computeOpencodeSkipKey(session, 10, 25);
+    const legacy = createHash('sha256')
+      .update(`opencode:${session.id}:${session.time_updated}:10:25`)
+      .digest('hex');
+
+    expect(current).not.toBe(legacy);
   });
 });

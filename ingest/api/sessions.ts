@@ -38,7 +38,8 @@ function updatedAtExpr(alias?: string): string {
 }
 
 function sessionTotalTokensExpr(alias?: string): string {
-  return `CASE WHEN COALESCE(${column(alias, 'total_tokens')}, 0) > 0 THEN ${column(alias, 'total_tokens')} ELSE COALESCE(${column(alias, 'total_input_tokens')}, 0) + COALESCE(${column(alias, 'total_output_tokens')}, 0) + COALESCE(${column(alias, 'total_cache_read_tokens')}, 0) + COALESCE(${column(alias, 'total_cache_write_tokens')}, 0) + COALESCE(${column(alias, 'total_reasoning_tokens')}, 0) END`;
+  const channelTotal = `COALESCE(${column(alias, 'total_input_tokens')}, 0) + COALESCE(${column(alias, 'total_output_tokens')}, 0) + COALESCE(${column(alias, 'total_cache_read_tokens')}, 0) + COALESCE(${column(alias, 'total_cache_write_tokens')}, 0) + COALESCE(${column(alias, 'total_reasoning_tokens')}, 0)`;
+  return `CASE WHEN ${column(alias, 'source')} = 'opencode' THEN ${channelTotal} WHEN COALESCE(${column(alias, 'total_tokens')}, 0) > 0 THEN ${column(alias, 'total_tokens')} ELSE ${channelTotal} END`;
 }
 
 function isValidSource(source: string): source is typeof VALID_SOURCES[number] {
@@ -458,7 +459,10 @@ function parseSessionRow(row: SessionRow): TraceSession {
   const cacheReadTokens = row.total_cache_read_tokens || 0;
   const cacheWriteTokens = row.total_cache_write_tokens || 0;
   const reasoningTokens = row.total_reasoning_tokens || 0;
-  const totalTokens = row.total_tokens || row.computed_total_tokens || inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
+  const channelTotal = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
+  const totalTokens = row.source === 'opencode'
+    ? channelTotal
+    : row.total_tokens || row.computed_total_tokens || channelTotal;
 
   let estimatedCost: number | null;
   let pricingStatus: string | undefined;

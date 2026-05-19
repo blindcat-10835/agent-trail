@@ -31,7 +31,8 @@ const UPDATED_AT_EXPR =
 
 function sessionTotalTokensExpr(alias?: string): string {
   const prefix = alias ? `${alias}.` : '';
-  return `CASE WHEN COALESCE(${prefix}total_tokens, 0) > 0 THEN ${prefix}total_tokens ELSE COALESCE(${prefix}total_input_tokens, 0) + COALESCE(${prefix}total_output_tokens, 0) END`;
+  const channelTotal = `COALESCE(${prefix}total_input_tokens, 0) + COALESCE(${prefix}total_output_tokens, 0) + COALESCE(${prefix}total_cache_read_tokens, 0) + COALESCE(${prefix}total_cache_write_tokens, 0) + COALESCE(${prefix}total_reasoning_tokens, 0)`;
+  return `CASE WHEN ${prefix}source = 'opencode' THEN ${channelTotal} WHEN COALESCE(${prefix}total_tokens, 0) > 0 THEN ${prefix}total_tokens ELSE ${channelTotal} END`;
 }
 
 type IngestDatabase = ReturnType<typeof getDatabase>;
@@ -140,7 +141,7 @@ function getSessionCostRows(
 
 function rollUpSessionCosts(rows: SessionCostRow[]): CostRollup {
   const estimates = rows
-    .filter((row) => row.totalTokens > 0)
+    .filter((row) => row.sourceCostUsd != null || row.totalTokens > 0)
     .map((row) => {
       if (row.sourceCostUsd != null) {
         return {

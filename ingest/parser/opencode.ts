@@ -28,6 +28,7 @@ import { ParseResult, ParseError } from './types';
 const BUSY_RETRIES = 3;
 const BUSY_DELAY_MS = 100;
 const REQUIRED_TABLES = ['session', 'message', 'part', 'project'] as const;
+const OPENCODE_SKIP_KEY_VERSION = 'opencode-parser-v2-cost-token-channels';
 type OpencodeTimestamp = string | number | null;
 
 export interface OpencodeSessionRow {
@@ -692,6 +693,6 @@ export function computeOpencodeSkipKey(
   messageCount: number,
   partCount: number,
 ): string {
-  const composite = `opencode:${session.id}:${session.time_updated}:${messageCount}:${partCount}`;
+  const composite = `${OPENCODE_SKIP_KEY_VERSION}:opencode:${session.id}:${session.time_updated}:${messageCount}:${partCount}`;
   return crypto.createHash('sha256').update(composite).digest('hex');
 }

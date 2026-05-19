@@ -337,6 +337,57 @@ describe('overview endpoints', () => {
       expect(body.projectCount).toBe(2);
     });
 
+    it('uses OpenCode source-reported cost and cache-inclusive token totals', async () => {
+      const db = getDatabase();
+      db.prepare(`
+        INSERT INTO sessions (
+          id, source, project, name, started_at, ended_at, status,
+          message_count, user_message_count, total_output_tokens, total_input_tokens,
+          total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens,
+          total_tokens, has_tool_calls, file_path, source_cost_usd,
+          cost_source, cost_pricing_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'opencode-cost-token-test',
+        'opencode',
+        'opencode-project',
+        'OpenCode cost/token test',
+        '2026-01-01 00:00:00',
+        '2026-01-01 00:01:00',
+        'idle',
+        2,
+        1,
+        100,
+        1000,
+        7000,
+        0,
+        300,
+        1100,
+        0,
+        '/tmp/opencode.db#opencode-cost-token-test',
+        1.23,
+        'source-reported',
+        'priced',
+      );
+
+      try {
+        const res = await app.request('/api/v1/overview/aggregates?source=opencode&window=all');
+        expect(res.status).toBe(200);
+        const body = await res.json();
+
+        expect(body.sessionCount).toBe(1);
+        expect(body.inputTokens).toBe(1000);
+        expect(body.outputTokens).toBe(100);
+        expect(body.cacheReadTokens).toBe(7000);
+        expect(body.reasoningTokens).toBe(300);
+        expect(body.totalTokens).toBe(8400);
+        expect(body.totalCost).toBe(1.23);
+        expect(body.pricingStatus).toBe('priced');
+      } finally {
+        db.prepare('DELETE FROM sessions WHERE id = ?').run('opencode-cost-token-test');
+      }
+    });
+
     it('returns all data when source is omitted (no source filter)', async () => {
       const res = await app.request('/api/v1/overview/aggregates?window=30d');
       expect(res.status).toBe(200);
