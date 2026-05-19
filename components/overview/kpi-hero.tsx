@@ -178,8 +178,9 @@ function PulsePanel({
 const C_W = 320
 const C_H = 126
 const C_PAD_X = 12
+const C_PAD_X_R = 20  // extra right margin to keep last point away from Y-axis labels
 const C_PAD_Y = 14
-const C_USABLE_W = C_W - C_PAD_X * 2
+const C_USABLE_W = C_W - C_PAD_X - C_PAD_X_R
 const C_USABLE_H = C_H - C_PAD_Y * 2
 const C_BASELINE = C_H - C_PAD_Y
 
@@ -303,14 +304,6 @@ function DailyTokenChart({
                 strokeWidth="2"
                 vectorEffect="non-scaling-stroke"
               />
-              {/* End dot (hidden when hovering) */}
-              {hoverIdx === null && (
-                <circle
-                  cx={chart.lastX} cy={chart.lastY} r="3"
-                  fill="var(--accent)"
-                  style={{ filter: 'drop-shadow(0 0 6px var(--accent))' }}
-                />
-              )}
               {/* Crosshair */}
               {hovSvgX !== null && hovSvgY !== null && (
                 <line
@@ -324,6 +317,32 @@ function DailyTokenChart({
                 />
               )}
             </svg>
+
+            {/* Y-axis labels — HTML to avoid SVG distortion under non-uniform scaling */}
+            {[22, 52, 82, 112].map((y) => {
+              const value = maxValue * (1 - (y - C_PAD_Y) / C_USABLE_H)
+              return (
+                <div
+                  key={y}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: `${(y / C_H) * 100}%`,
+                    transform: 'translateY(-50%)',
+                    fontSize: 7.5,
+                    fontFamily: 'var(--font-mono)',
+                    letterSpacing: '0.04em',
+                    lineHeight: 1,
+                    color: 'color-mix(in oklch, var(--muted-foreground) 65%, transparent)',
+                    background: 'color-mix(in oklch, var(--card) 80%, transparent)',
+                    paddingLeft: 2,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {fmtTokens(value)}
+                </div>
+              )
+            })}
 
             {/* Hover dot — rendered as HTML div to stay circular under non-uniform SVG scaling */}
             {hovSvgX !== null && hovSvgY !== null && (
