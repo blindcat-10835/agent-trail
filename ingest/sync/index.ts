@@ -96,7 +96,10 @@ export type CursorFallbackReason =
   | 'file_identity_changed'
   | 'parser_version_changed'
   | 'invalid_offset'
-  | 'rewrite_detected';
+  | 'rewrite_detected'
+  | 'missing_cursor_session'
+  | 'missing_cursor_session_row'
+  | 'derived_rows_missing';
 
 export type CursorDecision =
   | {
@@ -594,6 +597,38 @@ export function getIngestFileCursor(
   return row ? rowToCursor(row) : undefined;
 }
 
+function getSessionDerivedRowsReparseReason(
+  database: Database.Database,
+  sessionId: string | null
+): CursorFallbackReason | null {
+  if (!sessionId) return 'missing_cursor_session';
+
+  try {
+    const session = database.prepare(`
+      SELECT message_count
+      FROM sessions
+      WHERE id = ?
+    `).get(sessionId) as { message_count: number | null } | undefined;
+
+    if (!session) return 'missing_cursor_session_row';
+
+    const expectedMessages = Number(session.message_count ?? 0);
+    if (expectedMessages <= 0) return null;
+
+    const actual = database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM messages
+      WHERE session_id = ?
+    `).get(sessionId) as { count: number };
+
+    return Number(actual.count ?? 0) < expectedMessages
+      ? 'derived_rows_missing'
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function findLastCompleteJsonlOffset(
   filePath: string,
   startOffset: number,
@@ -648,6 +683,14 @@ export function decideCursorSync(
   const cursor = getIngestFileCursor(sourceType, filePath, database ?? getDatabase());
   if (!cursor) {
     return { type: 'full_reparse', reason: 'no_cursor', snapshot };
+  }
+
+  const derivedRowsReason = getSessionDerivedRowsReparseReason(
+    database ?? getDatabase(),
+    cursor.sessionId
+  );
+  if (derivedRowsReason) {
+    return { type: 'full_reparse', reason: derivedRowsReason, cursor, snapshot };
   }
 
   if (cursor.parserVersion !== PARSER_CACHE_VERSION) {
@@ -863,17 +906,23 @@ function shouldSkipBeforeParse(
   if (opts.force) return false;
 
   try {
-    const existing = getDatabase().prepare(`
-      SELECT file_size, file_mtime, file_hash
+    const database = getDatabase();
+    const existing = database.prepare(`
+      SELECT id, file_size, file_mtime, file_hash
       FROM sessions
       WHERE file_path = ?
       ORDER BY last_sync_at DESC
       LIMIT 1
     `).get(filePath) as {
+      id: string;
       file_size: number | null;
       file_mtime: string | null;
       file_hash: string | null;
     } | undefined;
+
+    if (existing && getSessionDerivedRowsReparseReason(database, existing.id)) {
+      return false;
+    }
 
     return Boolean(
       existing &&
