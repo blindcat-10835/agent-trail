@@ -64,6 +64,7 @@ const definition: AgentToolDefinition = {
     brand: {
       name: 'OpenClaw',
       versionLabel: 'v3.2.1',
+      color: 'oklch(0.78 0.15 35)',
     },
     sessionColumns: [
       { id: 'label', header: 'SESSION', accessor: 'label', sortable: true },

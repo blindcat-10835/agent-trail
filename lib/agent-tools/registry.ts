@@ -79,3 +79,19 @@ export function assertSourceToolId(raw: string): SourceToolId {
     `Invalid source tool ID: "${raw}". Expected one of: ${TOOL_IDS.join(', ')}.`,
   )
 }
+
+/**
+ * Returns the brand color for a given tool ID.
+ * Falls back to 'var(--muted-foreground)' for tools without a defined color (e.g. 'all').
+ */
+export function getSourceColor(toolId: string): string {
+  return AGENT_TOOL_DEFINITIONS[toolId as AgentToolId]?.ui.brand.color ?? 'var(--muted-foreground)'
+}
+
+/**
+ * Returns the display name for a given tool ID.
+ * Falls back to the raw toolId string for unknown tools.
+ */
+export function getSourceName(toolId: string): string {
+  return AGENT_TOOL_DEFINITIONS[toolId as AgentToolId]?.ui.brand.name ?? toolId
+}

@@ -46,6 +46,7 @@ const definition: AgentToolDefinition = {
     brand: {
       name: 'Claude Code',
       versionLabel: 'CLAUDE',
+      color: 'oklch(0.80 0.17 75)',
     },
     sessionColumns: [
       { id: 'label', header: 'SESSION', accessor: 'label', sortable: true },

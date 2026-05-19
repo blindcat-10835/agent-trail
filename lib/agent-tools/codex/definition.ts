@@ -46,6 +46,7 @@ const definition: AgentToolDefinition = {
     brand: {
       name: 'Codex',
       versionLabel: 'CODEX',
+      color: 'oklch(0.78 0.10 250)',
     },
     sessionColumns: [
       { id: 'label', header: 'SESSION', accessor: 'label', sortable: true },

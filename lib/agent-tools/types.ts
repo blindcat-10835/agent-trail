@@ -115,6 +115,8 @@ export interface AgentToolUIProfile {
     versionLabel?: string
     /** Optional accent color token for theme customization */
     accentToken?: string
+    /** Source identity color used for badges, labels, and chart accents (oklch string) */
+    color?: string
   }
   /** Column definitions for the Session Explorer table */
   sessionColumns: SessionColumnDef[]

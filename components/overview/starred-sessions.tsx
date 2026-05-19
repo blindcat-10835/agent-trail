@@ -1,20 +1,11 @@
 'use client'
 
 import { shortPath } from '@/lib/utils'
+import { getSourceColor } from '@/lib/agent-tools/registry'
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import type { StarredSession } from '@/types/overview'
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const SOURCE_COLORS: Record<string, string> = {
-  openclaw: 'var(--accent)',
-  'claude-code': 'oklch(0.78 0.15 35)',
-  codex: 'oklch(0.85 0.05 220)',
-}
 
 // ============================================================================
 // Helpers
@@ -51,7 +42,7 @@ function StarThread({ items }: { items: StarredSession[] }) {
   return (
     <ol className="list-none p-0 m-0 flex flex-col">
       {items.map((session, i) => {
-        const color = SOURCE_COLORS[session.source] ?? 'var(--accent)'
+        const color = getSourceColor(session.source)
         const isFirst = i === 0
         const isLast = i === items.length - 1
 

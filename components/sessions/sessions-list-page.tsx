@@ -3,16 +3,11 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToolSessions, useAggregateSessions, useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
 import { useStarredStore } from '@/stores/starred-store'
 import { shortPath, projectColor } from '@/lib/utils'
 import type { TraceSession } from '@/types/trace'
 import type { AgentToolId } from '@/lib/agent-tools/types'
-
-const SOURCE_META: Record<string, { short_text: string; color: string }> = {
-  'openclaw':    { short_text: 'OpenClaw', color: 'oklch(0.80 0.17 75)' },
-  'claude-code': { short_text: 'Claude',   color: 'oklch(0.78 0.15 35)' },
-  'codex':       { short_text: 'Codex',    color: 'oklch(0.78 0.10 250)' },
-}
 
 const STATUS_COLORS: Record<string, string> = {
   LIVE: 'var(--status-success)',
@@ -77,10 +72,6 @@ function relativeTime(dateStr: string | null | undefined): string {
   return `${Math.floor(days / 30)}mo ago`
 }
 
-function getSourceColor(source: string): string {
-  return SOURCE_META[source]?.color || 'var(--muted-foreground)'
-}
-
 function StatusCell({ status }: { status: string }) {
   const c = STATUS_COLORS[status] || 'var(--muted-foreground)'
   const pulse = status === 'LIVE'
@@ -95,11 +86,9 @@ function StatusCell({ status }: { status: string }) {
 }
 
 function SourceBadge({ source }: { source: string }) {
-  const m = SOURCE_META[source]
-  if (!m) return null
   return (
-    <span className="src-badge" style={{ '--src-c': m.color } as React.CSSProperties}>
-      <span className="src-badge-label">{m.short_text}</span>
+    <span className="src-badge" style={{ '--src-c': getSourceColor(source) } as React.CSSProperties}>
+      <span className="src-badge-label">{getSourceName(source)}</span>
     </span>
   )
 }
@@ -278,7 +267,7 @@ export function SessionsListPage() {
           <select className="sl-select" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
             <option value="ALL">SOURCE {'·'} ALL</option>
             {SOURCE_IDS.map((source) => (
-              <option key={source} value={source}>{SOURCE_META[source].short_text.toUpperCase()}</option>
+              <option key={source} value={source}>{getSourceName(source).toUpperCase()}</option>
             ))}
           </select>
         )}

@@ -39,6 +39,7 @@ const definition: AgentToolDefinition = {
     brand: {
       name: 'OpenCode',
       versionLabel: 'OPENCODE',
+      color: 'oklch(0.78 0.15 200)',
     },
     sessionColumns: [
       { id: 'label', header: 'SESSION', accessor: 'label', sortable: true },

@@ -14,15 +14,10 @@ import {
 import { useToolStore } from '@/stores/tool-store'
 import { useStarredStore } from '@/stores/starred-store'
 import { useUIStore } from '@/stores/ui-store'
+import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
 import { shortPath, projectColor } from '@/lib/utils'
 import type { AgentToolId, SourceToolId } from '@/lib/agent-tools/types'
 import type { TraceSession } from '@/types/trace'
-
-const SOURCE_META: Record<string, { short_text: string; color: string }> = {
-  'openclaw':    { short_text: 'OpenClaw', color: 'oklch(0.80 0.17 75)' },
-  'claude-code': { short_text: 'Claude',   color: 'oklch(0.78 0.15 35)' },
-  'codex':       { short_text: 'Codex',    color: 'oklch(0.78 0.10 250)' },
-}
 
 const RR_STATUS: Record<string, string> = {
   LIVE:      'var(--status-success)',
@@ -341,8 +336,8 @@ function SessionRailRow({
   const pc = projectColor(session.project)
   const displayStatus = deriveDisplayStatus(session)
   const sc = RR_STATUS[displayStatus] || 'var(--muted-foreground)'
-  const sm = SOURCE_META[session.source]
-  const srcC = sm?.color || 'var(--muted-foreground)'
+  const srcC = getSourceColor(session.source)
+  const srcName = getSourceName(session.source)
   const cost = session.estimatedCost != null ? `$${session.estimatedCost.toFixed(2)}` : null
 
   return (
@@ -388,9 +383,9 @@ function SessionRailRow({
             </>
           )}
         </div>
-        {sm && (
-          <span className="rr-src-corner mono" title={sm.short_text}>
-            {sm.short_text}
+        {srcName && (
+          <span className="rr-src-corner mono" title={srcName}>
+            {srcName}
           </span>
         )}
       </div>
