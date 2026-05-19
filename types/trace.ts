@@ -141,6 +141,9 @@ export interface TraceSession {
   inputTokens?: number;
   outputTokens?: number;
   estimatedCost?: number | null;
+  sourceCostUsd?: number | null;
+  costSource?: string | null;
+  costPricingStatus?: string | null;
 }
 
 // ============================================================================

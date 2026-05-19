@@ -532,6 +532,9 @@ function parseSessionRow(row: SessionRow): TraceSession {
     inputTokens,
     outputTokens,
     estimatedCost: estimatedCost,
+    sourceCostUsd: row.source_cost_usd ?? undefined,
+    costSource: row.cost_source ?? undefined,
+    costPricingStatus: row.cost_pricing_status ?? pricingStatus,
   };
 }
 

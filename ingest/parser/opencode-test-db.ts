@@ -16,7 +16,7 @@ export interface TestOpencodePart {
   sessionId: string;
   type: string;
   data: Record<string, unknown>;
-  timeCreated?: string;
+  timeCreated?: string | number;
 }
 
 export interface TestOpencodeMessage {
@@ -24,7 +24,7 @@ export interface TestOpencodeMessage {
   sessionId: string;
   role: string;
   data?: Record<string, unknown>;
-  timeCreated?: string;
+  timeCreated?: string | number;
   parts?: TestOpencodePart[];
 }
 
@@ -51,9 +51,9 @@ export interface TestOpencodeSession {
   tokensReasoning?: number;
   tokensCacheRead?: number;
   tokensCacheWrite?: number;
-  timeCreated?: string;
-  timeUpdated?: string;
-  timeArchived?: string;
+  timeCreated?: string | number;
+  timeUpdated?: string | number;
+  timeArchived?: string | number;
   path?: string;
   workspaceId?: string;
   messages?: TestOpencodeMessage[];

@@ -175,6 +175,80 @@ describe('parseOpencodeSession', () => {
     expect(byName('task').category).toBe('Task');
   });
 
+  it('maps current OpenCode tool state parts with stable unique call IDs', async () => {
+    const sessionId = randomUUID();
+
+    const fixture = track(createOpencodeTestDB([
+      makeSession({
+        id: sessionId,
+        messages: [
+          {
+            sessionId,
+            role: 'user',
+            timeCreated: 1778954907000,
+            parts: [],
+          },
+          {
+            sessionId,
+            role: 'assistant',
+            timeCreated: 1778954908000,
+            parts: [
+              {
+                id: 'prt-tool-1',
+                messageId: 'auto',
+                sessionId,
+                type: 'tool',
+                data: {
+                  type: 'tool',
+                  tool: 'bash',
+                  callID: 'call_00_abc',
+                  state: {
+                    status: 'completed',
+                    input: { command: 'pwd' },
+                    output: '/tmp/project',
+                    time: { start: 1778954908100, end: 1778954908300 },
+                  },
+                },
+                timeCreated: 1778954908000,
+              },
+              {
+                id: 'prt-tool-2',
+                messageId: 'auto',
+                sessionId,
+                type: 'tool',
+                data: {
+                  type: 'tool',
+                  tool: 'read',
+                  callID: 'call_01_def',
+                  state: {
+                    status: 'completed',
+                    input: { filePath: '/tmp/project/package.json' },
+                    output: '{"name":"demo"}',
+                  },
+                },
+                timeCreated: 1778954909000,
+              },
+            ],
+          },
+        ],
+      }),
+    ]));
+
+    const result = await parseOpencodeSession(fixture.dbPath, sessionId);
+    const toolCalls = result.activities.filter(
+      (a): a is TraceToolCall => a.type === 'tool_call',
+    );
+
+    expect(result.errors).toHaveLength(0);
+    expect(toolCalls).toHaveLength(2);
+    expect(toolCalls.map((tc) => tc.id)).toEqual(['call_00_abc', 'call_01_def']);
+    expect(toolCalls.map((tc) => tc.name)).toEqual(['bash', 'read']);
+    expect(JSON.parse(toolCalls[0].inputJson)).toEqual({ command: 'pwd' });
+    expect(toolCalls[0].resultEvents[0].content).toBe('/tmp/project');
+    expect(toolCalls[0].status).toBe('success');
+    expect(toolCalls[0].durationMs).toBe(200);
+  });
+
   it('maps reasoning parts to TraceThinkingBlock', async () => {
     const sessionId = randomUUID();
 
@@ -262,6 +336,73 @@ describe('parseOpencodeSession', () => {
     const input = JSON.parse(patches[0].inputJson);
     expect(input).toHaveLength(1);
     expect(input[0].path).toBe('/test/foo.ts');
+  });
+
+  it('uses part IDs for duplicate patch hashes without collapsing calls', async () => {
+    const sessionId = randomUUID();
+
+    const fixture = track(createOpencodeTestDB([
+      makeSession({
+        id: sessionId,
+        messages: [
+          {
+            sessionId,
+            role: 'assistant',
+            parts: [
+              {
+                id: 'prt-patch-1',
+                messageId: 'auto',
+                sessionId,
+                type: 'patch',
+                data: { type: 'patch', hash: 'same-hash', files: ['/tmp/a.ts'] },
+              },
+              {
+                id: 'prt-patch-2',
+                messageId: 'auto',
+                sessionId,
+                type: 'patch',
+                data: { type: 'patch', hash: 'same-hash', files: ['/tmp/b.ts'] },
+              },
+            ],
+          },
+        ],
+      }),
+    ]));
+
+    const result = await parseOpencodeSession(fixture.dbPath, sessionId);
+    const patches = result.activities.filter(
+      (a): a is TraceToolCall => a.type === 'tool_call' && a.name === 'patch',
+    );
+
+    expect(patches).toHaveLength(2);
+    expect(patches.map((p) => p.id)).toEqual(['prt-patch-1', 'prt-patch-2']);
+  });
+
+  it('normalizes OpenCode millisecond timestamps to ISO strings', async () => {
+    const sessionId = randomUUID();
+
+    const fixture = track(createOpencodeTestDB([
+      makeSession({
+        id: sessionId,
+        timeCreated: 1778954907678,
+        timeUpdated: 1778955506770,
+        messages: [
+          {
+            sessionId,
+            role: 'user',
+            timeCreated: 1778954907678,
+            parts: [],
+          },
+        ],
+      }),
+    ]));
+
+    const result = await parseOpencodeSession(fixture.dbPath, sessionId);
+
+    expect(result.session.startedAt).toBe(new Date(1778954907678).toISOString());
+    expect(result.session.endedAt).toBe(new Date(1778954907678).toISOString());
+    expect(result.session.updatedAt).toBe(new Date(1778955506770).toISOString());
+    expect(result.messages[0].timestamp).toBe(new Date(1778954907678).toISOString());
   });
 
   it('maps step-start/step-finish to TraceSystemEvent', async () => {
@@ -354,7 +495,10 @@ describe('parseOpencodeSession', () => {
     expect(result.session.metrics.inputTokens).toBe(500);
     expect(result.session.metrics.outputTokens).toBe(200);
     expect(result.session.metrics.reasoningTokens).toBe(50);
-    expect(result.session.metrics.totalTokens).toBe(700);
+    expect(result.session.metrics.totalTokens).toBe(750);
+    expect(result.session.sourceCostUsd).toBe(0);
+    expect(result.session.costSource).toBe('source-reported');
+    expect(result.session.costPricingStatus).toBe('reported_zero');
   });
 
   it('returns error for non-existent session', async () => {

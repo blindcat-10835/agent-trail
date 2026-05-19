@@ -28,6 +28,7 @@ import { ParseResult, ParseError } from './types';
 const BUSY_RETRIES = 3;
 const BUSY_DELAY_MS = 100;
 const REQUIRED_TABLES = ['session', 'message', 'part', 'project'] as const;
+type OpencodeTimestamp = string | number | null;
 
 export interface OpencodeSessionRow {
   id: string;
@@ -45,9 +46,9 @@ export interface OpencodeSessionRow {
   tokens_reasoning: number | null;
   tokens_cache_read: number | null;
   tokens_cache_write: number | null;
-  time_created: string | null;
-  time_updated: string | null;
-  time_archived: string | null;
+  time_created: OpencodeTimestamp;
+  time_updated: OpencodeTimestamp;
+  time_archived: OpencodeTimestamp;
   path: string | null;
   workspace_id: string | null;
 }
@@ -62,8 +63,8 @@ interface OpencodeProjectRow {
 interface OpencodeMessageRow {
   id: string;
   session_id: string;
-  time_created: string | null;
-  time_updated: string | null;
+  time_created: OpencodeTimestamp;
+  time_updated: OpencodeTimestamp;
   data: string | null;
 }
 
@@ -71,8 +72,8 @@ interface OpencodePartRow {
   id: string;
   message_id: string;
   session_id: string;
-  time_created: string | null;
-  time_updated: string | null;
+  time_created: OpencodeTimestamp;
+  time_updated: OpencodeTimestamp;
   data: string | null;
 }
 
@@ -185,12 +186,104 @@ function parseJsonData(dataStr: string | null): Record<string, unknown> | null {
   }
 }
 
-function safeTimestamp(val: string | null): string | null {
-  return val || null;
+function safeTimestamp(val: OpencodeTimestamp): string | null {
+  if (val == null) return null;
+
+  if (typeof val === 'number') {
+    return timestampNumberToIso(val);
+  }
+
+  const trimmed = val.trim();
+  if (!trimmed) return null;
+
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    return timestampNumberToIso(Number(trimmed));
+  }
+
+  const parsed = Date.parse(trimmed);
+  if (Number.isFinite(parsed)) {
+    return new Date(parsed).toISOString();
+  }
+
+  return trimmed;
 }
 
-function safeNumber(val: number | null): number {
-  return typeof val === 'number' && Number.isFinite(val) && val > 0 ? val : 0;
+function timestampNumberToIso(value: number): string | null {
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const millis = value > 1_000_000_000_000 ? value : value * 1000;
+  const date = new Date(millis);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function safeNumber(val: unknown): number {
+  if (typeof val === 'number' && Number.isFinite(val) && val > 0) return val;
+  if (typeof val === 'string') {
+    const parsed = Number(val);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+  return 0;
+}
+
+function safeNullableNumber(val: unknown): number | null {
+  if (typeof val === 'number' && Number.isFinite(val)) return val;
+  if (typeof val === 'string' && val.trim()) {
+    const parsed = Number(val);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function asRecord(val: unknown): Record<string, unknown> | undefined {
+  if (val && typeof val === 'object' && !Array.isArray(val)) {
+    return val as Record<string, unknown>;
+  }
+  return undefined;
+}
+
+function pickString(
+  source: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+function stringifyValue(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return fallback;
+
+  try {
+    return JSON.stringify(value) ?? fallback;
+  } catch {
+    return String(value);
+  }
+}
+
+function opencodeToolStatus(
+  rawStatus: unknown,
+  hasOutput: boolean,
+): TraceToolCall['status'] {
+  if (typeof rawStatus === 'string') {
+    const status = rawStatus.toLowerCase();
+    if (status === 'completed' || status === 'success') return 'success';
+    if (status === 'error' || status === 'failed') return 'error';
+  }
+  return hasOutput ? 'success' : 'pending';
+}
+
+function opencodeDurationMs(
+  state: Record<string, unknown> | undefined,
+): number | undefined {
+  const time = asRecord(state?.time);
+  const start = safeNullableNumber(time?.start);
+  const end = safeNullableNumber(time?.end);
+  if (start == null || end == null || end < start) return undefined;
+  return end - start;
 }
 
 export async function parseOpencodeSession(
@@ -321,30 +414,30 @@ export async function parseOpencodeSession(
 
           case 'tool': {
             hasToolCalls = true;
+            const state = asRecord(partData.state);
             const toolName =
-              typeof partData.name === 'string' ? partData.name : 'unknown';
+              pickString(partData, ['tool', 'name']) ?? 'unknown';
             const callId =
-              typeof partData.id === 'string'
-                ? partData.id
-                : `tool-${ordinal}`;
-            const input =
-              typeof partData.input === 'object'
-                ? JSON.stringify(partData.input)
-                : typeof partData.input === 'string'
-                  ? partData.input
-                  : '{}';
-            const output =
-              typeof partData.output === 'string'
-                ? partData.output
-                : partData.output !== undefined
-                  ? JSON.stringify(partData.output)
-                  : '';
+              pickString(partData, ['callID', 'callId', 'call_id', 'id']) ??
+              partRow.id;
+            const input = stringifyValue(
+              state && 'input' in state ? state.input : partData.input,
+              '{}',
+            );
+            const outputValue = state && 'output' in state
+              ? state.output
+              : partData.output;
+            const output = stringifyValue(outputValue);
+            const hasOutput = outputValue != null && output.length > 0;
+            const resultTimestamp =
+              safeTimestamp(partRow.time_updated) ??
+              safeTimestamp(partRow.time_created);
 
-            const resultEvents: TraceToolResultEvent[] = output
+            const resultEvents: TraceToolResultEvent[] = hasOutput
               ? [
                   {
                     type: 'result_event',
-                    timestamp: safeTimestamp(partRow.time_created) ?? undefined,
+                    timestamp: resultTimestamp ?? undefined,
                     content: output,
                     isPartial: false,
                   },
@@ -358,7 +451,8 @@ export async function parseOpencodeSession(
               category: inferOpencodeToolCategory(toolName),
               inputJson: input,
               resultEvents,
-              status: output ? 'success' : 'pending',
+              status: opencodeToolStatus(state?.status ?? partData.status, hasOutput),
+              durationMs: opencodeDurationMs(state),
               messageOrdinal: ordinal,
             };
 
@@ -382,10 +476,10 @@ export async function parseOpencodeSession(
             const patchCallId =
               typeof partData.id === 'string'
                 ? partData.id
-                : `patch-${ordinal}`;
+                : partRow.id;
             const files = partData.files ?? partData.patches;
             const patchInput =
-              typeof files === 'object' ? JSON.stringify(files) : '{}';
+              files !== undefined ? stringifyValue(files, '{}') : '{}';
 
             const toolCall: TraceToolCall = {
               type: 'tool_call',
@@ -500,6 +594,15 @@ export async function parseOpencodeSession(
       ordinal++;
     }
 
+    const inputTokens = safeNumber(sessionRow.tokens_input);
+    const outputTokens = safeNumber(sessionRow.tokens_output);
+    const cacheReadTokens = safeNumber(sessionRow.tokens_cache_read);
+    const cacheWriteTokens = safeNumber(sessionRow.tokens_cache_write);
+    const reasoningTokens = safeNumber(sessionRow.tokens_reasoning);
+    const totalTokens =
+      inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
+    const sourceCostUsd = safeNullableNumber(sessionRow.cost);
+
     const session: TraceSession = {
       id: sessionId,
       source: 'opencode',
@@ -516,19 +619,22 @@ export async function parseOpencodeSession(
       sourceSessionId: rawSessionId,
       cwd: sessionRow.directory ?? undefined,
       model,
+      sourceCostUsd,
+      costSource: sourceCostUsd == null ? null : 'source-reported',
+      costPricingStatus: sourceCostUsd == null
+        ? null
+        : sourceCostUsd === 0 && totalTokens > 0
+          ? 'reported_zero'
+          : 'priced',
       metrics: {
         messageCount: messages.length,
         userMessageCount: messages.filter((m) => m.role === 'user').length,
-        inputTokens: safeNumber(sessionRow.tokens_input) || undefined,
-        outputTokens: safeNumber(sessionRow.tokens_output) || undefined,
-        cacheReadTokens: safeNumber(sessionRow.tokens_cache_read) || undefined,
-        cacheWriteTokens:
-          safeNumber(sessionRow.tokens_cache_write) || undefined,
-        reasoningTokens:
-          safeNumber(sessionRow.tokens_reasoning) || undefined,
-        totalTokens:
-          safeNumber(sessionRow.tokens_input) +
-            safeNumber(sessionRow.tokens_output) || undefined,
+        inputTokens: inputTokens || undefined,
+        outputTokens: outputTokens || undefined,
+        cacheReadTokens: cacheReadTokens || undefined,
+        cacheWriteTokens: cacheWriteTokens || undefined,
+        reasoningTokens: reasoningTokens || undefined,
+        totalTokens: totalTokens || undefined,
         hasToolCalls,
         parserMalformedLines: errors.length,
         isTruncated: false,

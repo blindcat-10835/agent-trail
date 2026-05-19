@@ -1043,6 +1043,9 @@ export function writeSessionToDatabase(
             source_session_id = ?,
             source_version = ?,
             agent_name = ?,
+            source_cost_usd = ?,
+            cost_source = ?,
+            cost_pricing_status = ?,
             file_path = ?,
             file_size = ?,
             file_mtime = ?,
@@ -1075,6 +1078,9 @@ export function writeSessionToDatabase(
           parseResult.session.sourceSessionId || null,
           parseResult.session.sourceVersion || null,
           parseResult.session.agentName || null,
+          parseResult.session.sourceCostUsd ?? null,
+          parseResult.session.costSource ?? null,
+          parseResult.session.costPricingStatus ?? null,
           sourceFile || parseResult.session.id,
           fileSize,
           fileMtime,
@@ -1094,8 +1100,9 @@ export function writeSessionToDatabase(
             has_tool_calls,
             parser_malformed_lines, is_truncated, termination_status,
             file_path, file_size, file_mtime, file_hash, last_sync_at,
-            cwd, git_branch, source_session_id, source_version, agent_name
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cwd, git_branch, source_session_id, source_version, agent_name,
+            source_cost_usd, cost_source, cost_pricing_status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           parseResult.session.id,
           parseResult.session.source,
@@ -1128,7 +1135,10 @@ export function writeSessionToDatabase(
           parseResult.session.gitBranch || null,
           parseResult.session.sourceSessionId || null,
           parseResult.session.sourceVersion || null,
-          parseResult.session.agentName || null
+          parseResult.session.agentName || null,
+          parseResult.session.sourceCostUsd ?? null,
+          parseResult.session.costSource ?? null,
+          parseResult.session.costPricingStatus ?? null
         );
         sessionsInserted++;
       }

@@ -71,6 +71,10 @@ describe('syncOpencodeSource', () => {
         id: parentSessionId,
         title: 'Parent session',
         directory: '/test/project',
+        cost: 1.23,
+        tokensInput: 500,
+        tokensOutput: 200,
+        tokensReasoning: 50,
         messages: [
           {
             sessionId: parentSessionId,
@@ -89,6 +93,60 @@ describe('syncOpencodeSource', () => {
                 type: 'text',
                 data: { type: 'text', text: 'I will help you' },
                 timeCreated: '2026-05-17T10:00:02Z',
+              },
+              {
+                messageId: 'auto',
+                sessionId: parentSessionId,
+                type: 'tool',
+                data: {
+                  type: 'tool',
+                  tool: 'bash',
+                  callID: 'call_00_parent',
+                  state: {
+                    status: 'completed',
+                    input: { command: 'pwd' },
+                    output: '/test/project',
+                  },
+                },
+                timeCreated: '2026-05-17T10:00:03Z',
+              },
+              {
+                messageId: 'auto',
+                sessionId: parentSessionId,
+                type: 'tool',
+                data: {
+                  type: 'tool',
+                  tool: 'read',
+                  callID: 'call_01_parent',
+                  state: {
+                    status: 'completed',
+                    input: { filePath: '/test/project/package.json' },
+                    output: '{}',
+                  },
+                },
+                timeCreated: '2026-05-17T10:00:04Z',
+              },
+              {
+                messageId: 'auto',
+                sessionId: parentSessionId,
+                type: 'patch',
+                data: {
+                  type: 'patch',
+                  hash: 'same-hash',
+                  files: ['/test/project/a.ts'],
+                },
+                timeCreated: '2026-05-17T10:00:05Z',
+              },
+              {
+                messageId: 'auto',
+                sessionId: parentSessionId,
+                type: 'patch',
+                data: {
+                  type: 'patch',
+                  hash: 'same-hash',
+                  files: ['/test/project/b.ts'],
+                },
+                timeCreated: '2026-05-17T10:00:06Z',
               },
             ],
           },
@@ -149,6 +207,9 @@ describe('syncOpencodeSource', () => {
     expect(parent!.source).toBe('opencode');
     expect(parent!.name).toBe('Parent session');
     expect(parent!.relationship_type).toBe('root');
+    expect(parent!.source_cost_usd).toBe(1.23);
+    expect(parent!.cost_source).toBe('source-reported');
+    expect(parent!.cost_pricing_status).toBe('priced');
 
     const child = database.prepare(
       'SELECT * FROM sessions WHERE id = ?'
@@ -163,6 +224,11 @@ describe('syncOpencodeSource', () => {
       'SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?'
     ).get(`opencode:${parentSessionId}`) as { cnt: number };
     expect(messages.cnt).toBe(2);
+
+    const toolCalls = database.prepare(
+      'SELECT COUNT(*) as cnt FROM tool_calls WHERE session_id = ?'
+    ).get(`opencode:${parentSessionId}`) as { cnt: number };
+    expect(toolCalls.cnt).toBe(4);
   });
 
   it('is idempotent on re-sync', async () => {
@@ -183,6 +249,11 @@ describe('syncOpencodeSource', () => {
       "SELECT COUNT(*) as cnt FROM messages WHERE session_id IN (SELECT id FROM sessions WHERE source = 'opencode')"
     ).get() as { cnt: number };
     expect(totalMessages.cnt).toBe(4);
+
+    const totalToolCalls = database.prepare(
+      "SELECT COUNT(*) as cnt FROM tool_calls WHERE session_id IN (SELECT id FROM sessions WHERE source = 'opencode')"
+    ).get() as { cnt: number };
+    expect(totalToolCalls.cnt).toBe(4);
   });
 
   it('verifies subagent parent-child relationship', async () => {
