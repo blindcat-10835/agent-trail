@@ -26,6 +26,8 @@ import type { TimeWindow } from '@/types/overview'
 // Component — Overview v3 layout: Hero Band → Agents → Row A → Row B
 // ============================================================================
 
+const OVERVIEW_SCROLL_CLASS = 'h-full min-h-0 min-w-0 overflow-y-auto p-[18px_22px_26px] flex flex-col gap-[14px]'
+
 export function OverviewPage() {
   const { toolId } = useAgentTool()
   const [window, setWindow] = useState<TimeWindow>('30d')
@@ -47,7 +49,7 @@ export function OverviewPage() {
 
   if (aggError && !aggLoading && !aggregates) {
     return (
-      <div className="p-[18px_22px_26px] flex flex-col gap-[14px] min-h-0 overflow-y-auto">
+      <div className={OVERVIEW_SCROLL_CLASS}>
         <KpiHero
           toolId={toolId}
           aggregates={null}
@@ -66,7 +68,7 @@ export function OverviewPage() {
   }
 
   return (
-    <div className="p-[18px_22px_26px] flex flex-col gap-[14px] min-h-0 overflow-y-auto">
+    <div className={OVERVIEW_SCROLL_CLASS}>
 
       {/* ═══ HERO BAND ═══ */}
       <KpiHero
