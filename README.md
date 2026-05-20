@@ -34,16 +34,27 @@ Open any session and step through every turn exactly as it happened. The replay 
 
 ## Install
 
-### Option 1 — curl (requires Node.js 22)
+### Option 1 — npm (any Node.js 22+)
+
+```bash
+npm install -g @camtrik/agents-tracing-dashboard
+agents-tracing
+```
+
+Works across Node 22, 24, and newer — `npm install` resolves native modules (better-sqlite3) for your local ABI. First install takes ~30s while deps are fetched.
+
+### Option 2 — curl (pinned to Node.js 22 prebuilds)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/camtrik/agents-tracing-dashboard/refs/heads/main/install.sh | bash
 agents-tracing
 ```
 
+Faster than npm (no dep install), but requires exactly Node 22 because the release bundles prebuilt native modules.
+
 Open [http://localhost:3030](http://localhost:3030).
 
-### Option 2 — Docker (no Node.js required)
+### Option 3 — Docker (no Node.js required)
 
 ```bash
 # Download docker-compose.yml from the repo, then:

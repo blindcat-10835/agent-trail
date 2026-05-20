@@ -9,6 +9,8 @@
     "dev:ingest": "tsx watch ingest/index.ts",
     "build": "next build --webpack",
     "build:ingest": "tsup ingest/index.ts --format cjs --out-dir ingest/dist --no-splitting --external better-sqlite3 --shims && cp ingest/db/schema.sql ingest/dist/schema.sql",
+    "build:all": "pnpm build && pnpm build:ingest",
+    "pack:npm": "pnpm build:all && node scripts/prepare-npm-package.mjs",
     "start": "next start",
     "start:ingest": "NODE_ENV=production node ingest/dist/index.js",
     "start:all": "concurrently -k --names \"INGEST,NEXT\" --prefix-colors \"green,blue\" \"npm:start:ingest\" \"npm:start\"",
