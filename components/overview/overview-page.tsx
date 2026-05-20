@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import {
   useOverviewAggregates,
@@ -10,6 +10,7 @@ import {
   useTimeline,
   useOverviewCapabilities,
   useDailyTokens,
+  prefetchOverviewData,
 } from '@/lib/agent-tools/client-hooks'
 import { KpiHero } from '@/components/overview/kpi-hero'
 import { TimeWindowSelector } from '@/components/overview/time-window-selector'
@@ -49,30 +50,51 @@ const OVERVIEW_SCROLL_CLASS = 'h-full min-h-0 min-w-0 overflow-y-auto p-[18px_22
 
 export function OverviewPage() {
   const { toolId } = useAgentTool()
-  const [window, setWindow] = useState<TimeWindow>('30d')
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>('30d')
   const [modelSortBy, setModelSortBy] = useState<string>('tokens')
   const [projectSortBy, setProjectSortBy] = useState<string>('tokens')
 
-  const { aggregates, loading: aggLoading, error: aggError } = useOverviewAggregates(toolId, window)
-  const { dailyTokens, loading: dailyTokensLoading, error: dailyTokensError } = useDailyTokens(toolId, window)
+  const { aggregates, loading: aggLoading, error: aggError } = useOverviewAggregates(toolId, timeWindow)
+  const { dailyTokens, loading: dailyTokensLoading, error: dailyTokensError } = useDailyTokens(toolId, timeWindow)
 
   // Row A: window-dependent
-  const { models, loading: modelsLoading, error: modelsError } = useTopModels(toolId, window, modelSortBy)
-  const { projects, loading: projectsLoading, error: projectsError } = useTopProjects(toolId, window, projectSortBy)
+  const { models, loading: modelsLoading, error: modelsError } = useTopModels(toolId, timeWindow, modelSortBy)
+  const { projects, loading: projectsLoading, error: projectsError } = useTopProjects(toolId, timeWindow, projectSortBy)
 
   // Non-window data
   const { starred, loading: starredLoading, error: starredError } = useStarredSessions(toolId)
   const { timeline, loading: timelineLoading, error: timelineError } = useTimeline(toolId)
   const { capabilities, loading: capsLoading } = useOverviewCapabilities(toolId)
 
-  const wLabel = WINDOW_META[window] ?? '30D'
+  useEffect(() => {
+    const windows: TimeWindow[] = ['today', '7d', '30d', 'all']
+    const timer = globalThis.setTimeout(() => {
+      for (const candidate of windows) {
+        if (candidate === timeWindow) continue
+        void prefetchOverviewData(toolId, candidate, { modelSortBy, projectSortBy })
+      }
+    }, 250)
+
+    return () => globalThis.clearTimeout(timer)
+  }, [toolId, timeWindow, modelSortBy, projectSortBy])
+
+  const handleWindowPreview = (nextWindow: TimeWindow) => {
+    if (nextWindow === timeWindow) return
+    void prefetchOverviewData(toolId, nextWindow, { modelSortBy, projectSortBy })
+  }
+
+  const wLabel = WINDOW_META[timeWindow] ?? '30D'
   const srcLabel = SOURCE_LABELS[toolId] ?? toolId.toUpperCase()
 
   if (aggError && !aggLoading && !aggregates) {
     return (
       <div className={OVERVIEW_SCROLL_CLASS}>
         <div className="ov3-toolbar">
-          <TimeWindowSelector value={window} onChange={setWindow} />
+          <TimeWindowSelector
+            value={timeWindow}
+            onChange={setTimeWindow}
+            onPreview={handleWindowPreview}
+          />
           <span className="ov3-toolbar-rule" />
           <span className="ov3-toolbar-meta">SHOWING <b>{wLabel}</b> · {srcLabel}</span>
         </div>
@@ -82,7 +104,7 @@ export function OverviewPage() {
           dailyTokens={dailyTokens}
           dailyTokensLoading={dailyTokensLoading}
           dailyTokensError={dailyTokensError}
-          window={window}
+          window={timeWindow}
           loading={false}
           error={aggError}
         />
@@ -99,7 +121,11 @@ export function OverviewPage() {
 
       {/* ═══ TIME WINDOW TOOLBAR ═══ */}
       <div className="ov3-toolbar">
-        <TimeWindowSelector value={window} onChange={setWindow} />
+        <TimeWindowSelector
+          value={timeWindow}
+          onChange={setTimeWindow}
+          onPreview={handleWindowPreview}
+        />
         <span className="ov3-toolbar-rule" />
         <span className="ov3-toolbar-meta">SHOWING <b>{wLabel}</b> · {srcLabel}</span>
       </div>
@@ -111,7 +137,7 @@ export function OverviewPage() {
         dailyTokens={dailyTokens}
         dailyTokensLoading={dailyTokensLoading}
         dailyTokensError={dailyTokensError}
-        window={window}
+        window={timeWindow}
         loading={aggLoading}
         error={aggError}
       />

@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
-import { useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { prefetchOverviewData, useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { getAllDefinitions } from '@/lib/agent-tools/registry'
 import { buildSourceSwitchHref } from './source-switcher-routing'
 import type { AgentToolId } from '@/lib/agent-tools/types'
@@ -12,6 +12,12 @@ export function SourceSwitcher() {
   const pathname = usePathname()
 
   const tools = getAllDefinitions()
+
+  function prefetchTarget(targetToolId: AgentToolId) {
+    const href = buildSourceSwitchHref(pathname, targetToolId, tools)
+    router.prefetch(href)
+    void prefetchOverviewData(targetToolId, '30d')
+  }
 
   function handleSwitch(targetToolId: AgentToolId) {
     if (targetToolId === currentToolId) return
@@ -25,6 +31,8 @@ export function SourceSwitcher() {
         return (
           <button
             key={def.id}
+            onFocus={() => prefetchTarget(def.id)}
+            onMouseEnter={() => prefetchTarget(def.id)}
             onClick={() => handleSwitch(def.id)}
             className={`hud-clip-sm border px-2.5 py-1 text-xs tracking-[0.14em] font-semibold transition-all ${
               isActive

@@ -5,6 +5,7 @@ import type { TimeWindow } from '@/types/overview'
 interface TimeWindowSelectorProps {
   value: TimeWindow
   onChange: (value: TimeWindow) => void
+  onPreview?: (value: TimeWindow) => void
 }
 
 const WINDOWS: { id: TimeWindow; label: string }[] = [
@@ -14,13 +15,15 @@ const WINDOWS: { id: TimeWindow; label: string }[] = [
   { id: 'all', label: 'ALL' },
 ]
 
-export function TimeWindowSelector({ value, onChange }: TimeWindowSelectorProps) {
+export function TimeWindowSelector({ value, onChange, onPreview }: TimeWindowSelectorProps) {
   return (
     <div className="range-toggle">
       {WINDOWS.map((w) => (
         <button
           key={w.id}
           type="button"
+          onFocus={() => onPreview?.(w.id)}
+          onMouseEnter={() => onPreview?.(w.id)}
           onClick={() => onChange(w.id)}
           className={`range-tab${value === w.id ? ' active' : ''}`}
         >

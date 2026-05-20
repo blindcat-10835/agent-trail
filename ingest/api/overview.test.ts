@@ -481,7 +481,7 @@ describe('overview endpoints', () => {
       expect(day).toMatchObject({ sessionCount: 3, totalTokens: 12300 });
     });
 
-    it('returns all recorded token days for the all-time overview window', async () => {
+    it('returns a continuous earliest-to-latest token series for the all-time overview window', async () => {
       const res = await app.request('/api/v1/overview/daily-tokens?window=all');
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -489,19 +489,31 @@ describe('overview endpoints', () => {
       const today = new Date().toISOString().slice(0, 10);
       const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
       const fifteenDaysAgo = new Date(Date.now() - 15 * 86400000).toISOString().slice(0, 10);
+      const thirtyNineDaysAgo = new Date(Date.now() - 39 * 86400000).toISOString().slice(0, 10);
       const fortyDaysAgo = new Date(Date.now() - 40 * 86400000).toISOString().slice(0, 10);
 
       const byDate = new Map(
-        body.days.map((day: { date: string; sessionCount: number; totalTokens: number }) => [day.date, day]),
+        body.days.map((day: {
+          date: string;
+          sessionCount: number;
+          totalTokens: number;
+          cost: number | null;
+          pricingStatus: string;
+        }) => [day.date, day]),
       );
 
-      expect(body.days.map((day: { date: string }) => day.date)).toEqual([
-        fortyDaysAgo,
-        fifteenDaysAgo,
-        fiveDaysAgo,
-        today,
-      ]);
+      expect(body.days).toHaveLength(41);
+      expect(body.days[0].date).toBe(fortyDaysAgo);
+      expect(body.days[body.days.length - 1].date).toBe(today);
       expect(byDate.get(fortyDaysAgo)).toMatchObject({ sessionCount: 1, totalTokens: 6000 });
+      expect(byDate.get(thirtyNineDaysAgo)).toMatchObject({
+        sessionCount: 0,
+        totalTokens: 0,
+        cost: null,
+        pricingStatus: 'unknown',
+      });
+      expect(byDate.get(fifteenDaysAgo)).toMatchObject({ sessionCount: 1, totalTokens: 3000 });
+      expect(byDate.get(fiveDaysAgo)).toMatchObject({ sessionCount: 4, totalTokens: 30300 });
       expect(byDate.get(today)).toMatchObject({ sessionCount: 2, totalTokens: 11000 });
     });
 

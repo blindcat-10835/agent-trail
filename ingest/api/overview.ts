@@ -49,6 +49,17 @@ interface SessionCostRow extends TokenUsageForPricing {
   costPricingStatus: string | null;
 }
 
+interface DailyTokenRow {
+  date: string;
+  session_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  reasoning_tokens: number;
+  total_tokens: number;
+}
+
 // ============================================================================
 // Shared Helpers
 // ============================================================================
@@ -152,6 +163,44 @@ function rollUpSessionCosts(rows: SessionCostRow[]): CostRollup {
       return estimateModelCost(row.model, row);
     });
   return rollUpCosts(estimates);
+}
+
+function emptyDailyTokenRow(date: string): DailyTokenRow {
+  return {
+    date,
+    session_count: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
+    reasoning_tokens: 0,
+    total_tokens: 0,
+  };
+}
+
+function fillDailyTokenDateRange(rows: DailyTokenRow[]): DailyTokenRow[] {
+  if (rows.length === 0) return [];
+
+  const firstDate = rows[0].date;
+  const lastDate = rows[rows.length - 1].date;
+  const start = new Date(`${firstDate}T00:00:00.000Z`);
+  const end = new Date(`${lastDate}T00:00:00.000Z`);
+
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) {
+    return rows;
+  }
+
+  const byDate = new Map(rows.map((row) => [row.date, row]));
+  const filled: DailyTokenRow[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    const date = cursor.toISOString().slice(0, 10);
+    filled.push(byDate.get(date) ?? emptyDailyTokenRow(date));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return filled;
 }
 
 // ============================================================================
@@ -283,16 +332,7 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
         ${sourceFilter}
       GROUP BY date(started_at)
       ORDER BY date(started_at) ASC
-    `).all(...(source ? [source] : [])) as Array<{
-      date: string;
-      session_count: number;
-      input_tokens: number;
-      output_tokens: number;
-      cache_read_tokens: number;
-      cache_write_tokens: number;
-      reasoning_tokens: number;
-      total_tokens: number;
-    }>
+    `).all(...(source ? [source] : [])) as DailyTokenRow[]
     : (() => {
       const sinceModifier = `-${boundedDays - 1} days`;
       const params: Array<string | number> = [
@@ -338,17 +378,9 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
         FROM day_series ds
         LEFT JOIN session_daily sd ON sd.day = ds.day
         ORDER BY ds.day ASC
-      `).all(...params) as Array<{
-        date: string;
-        session_count: number;
-        input_tokens: number;
-        output_tokens: number;
-        cache_read_tokens: number;
-        cache_write_tokens: number;
-        reasoning_tokens: number;
-        total_tokens: number;
-      }>;
+      `).all(...params) as DailyTokenRow[];
     })();
+  const responseRows = allTime ? fillDailyTokenDateRange(rows) : rows;
 
   const costParams: SqlParam[] = allTime
     ? [...(source ? [source] : [])]
@@ -385,7 +417,7 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
   }
 
   return c.json({
-    days: rows.map((row) => {
+    days: responseRows.map((row) => {
       const costSummary = costByDate.get(row.date);
       return {
         date: row.date,

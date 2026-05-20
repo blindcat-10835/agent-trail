@@ -264,16 +264,30 @@ async function fetchToolApi<T>(
 ): Promise<T> {
   const params = query ? '?' + new URLSearchParams(query).toString() : ''
   const res = await fetch(`/api/agent-tools/${toolId}${path}${params}`)
-  const text = await res.text()
   let body: unknown = {}
+  let parsedFromJson = false
 
-  if (text.trim() !== '') {
+  if (typeof res.text === 'function') {
+    const text = await res.text()
+    if (text.trim() !== '') {
+      try {
+        body = JSON.parse(text)
+      } catch {
+        throw new Error(`Invalid JSON from ${path}`)
+      }
+    } else if (res.ok) {
+      throw new Error(`Empty response from ${path}`)
+    }
+  } else {
     try {
-      body = JSON.parse(text)
+      body = await res.json()
+      parsedFromJson = true
     } catch {
       throw new Error(`Invalid JSON from ${path}`)
     }
-  } else if (res.ok) {
+  }
+
+  if (!parsedFromJson && typeof res.text !== 'function' && res.ok) {
     throw new Error(`Empty response from ${path}`)
   }
 
@@ -288,6 +302,180 @@ async function fetchToolApi<T>(
     throw new Error(error)
   }
   return body as T
+}
+
+const toolApiCache = new Map<string, unknown>()
+const toolApiInflight = new Map<string, Promise<unknown>>()
+
+function buildToolApiCacheKey(
+  toolId: string,
+  path: string,
+  query?: Record<string, string>,
+): string {
+  const params = new URLSearchParams()
+  for (const key of Object.keys(query ?? {}).sort()) {
+    const value = query?.[key]
+    if (value !== undefined) params.set(key, value)
+  }
+  const queryKey = params.toString()
+  return queryKey ? `${toolId}${path}?${queryKey}` : `${toolId}${path}`
+}
+
+function getCachedToolApi<T>(cacheKey: string): T | undefined {
+  return toolApiCache.has(cacheKey)
+    ? toolApiCache.get(cacheKey) as T
+    : undefined
+}
+
+function fetchCachedToolApi<T>(
+  cacheKey: string,
+  toolId: string,
+  path: string,
+  query?: Record<string, string>,
+): Promise<T> {
+  const pending = toolApiInflight.get(cacheKey)
+  if (pending) return pending as Promise<T>
+
+  const request = fetchToolApi<T>(toolId, path, query)
+    .then((data) => {
+      toolApiCache.set(cacheKey, data)
+      return data
+    })
+    .finally(() => {
+      toolApiInflight.delete(cacheKey)
+    })
+
+  toolApiInflight.set(cacheKey, request)
+  return request
+}
+
+function prefetchToolApi<T>(
+  toolId: string,
+  path: string,
+  query?: Record<string, string>,
+): Promise<T | undefined> {
+  const cacheKey = buildToolApiCacheKey(toolId, path, query)
+  const cached = getCachedToolApi<T>(cacheKey)
+  if (cached !== undefined) return Promise.resolve(cached)
+
+  return fetchCachedToolApi<T>(cacheKey, toolId, path, query)
+    .catch(() => undefined)
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback
+}
+
+function useCachedToolApi<T>(
+  toolId: string,
+  path: string,
+  query: Record<string, string> | undefined,
+  emptyData: T,
+  fallbackError: string,
+) {
+  const cacheKey = buildToolApiCacheKey(toolId, path, query)
+  const [state, setState] = useState<{
+    cacheKey: string
+    data: T
+    loading: boolean
+    error: string | null
+  }>(() => {
+    const cached = getCachedToolApi<T>(cacheKey)
+    return {
+      cacheKey,
+      data: cached ?? emptyData,
+      loading: cached === undefined,
+      error: null,
+    }
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    const cached = getCachedToolApi<T>(cacheKey)
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- query changes need to synchronously expose cached or empty state before async revalidation completes
+    setState((prev) => ({
+      cacheKey,
+      data: cached ?? (prev.cacheKey === cacheKey ? prev.data : emptyData),
+      loading: cached === undefined,
+      error: null,
+    }))
+
+    fetchCachedToolApi<T>(cacheKey, toolId, path, query)
+      .then((data) => {
+        if (cancelled) return
+        setState({
+          cacheKey,
+          data,
+          loading: false,
+          error: null,
+        })
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setState((prev) => ({
+          cacheKey,
+          data: prev.cacheKey === cacheKey ? prev.data : emptyData,
+          loading: false,
+          error: cached === undefined ? errorMessage(err, fallbackError) : null,
+        }))
+      })
+
+    return () => {
+      cancelled = true
+    }
+    // cacheKey fully represents path + query; avoiding query identity prevents
+    // repeated background requests when callers pass equivalent object literals.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheKey, toolId, path, emptyData, fallbackError])
+
+  return state.cacheKey === cacheKey
+    ? state
+    : { cacheKey, data: emptyData, loading: true, error: null }
+}
+
+const EMPTY_AGENTS: AgentInfo[] = []
+const EMPTY_DAILY_TOKENS: DailyTokensResponse['days'] = []
+const EMPTY_MODELS: TopModelsResponse['models'] = []
+const EMPTY_PROJECTS: TopProjectsResponse['projects'] = []
+const EMPTY_STARRED: StarredResponse['starred'] = []
+const EMPTY_TIMELINE: TimelineResponse['timeline'] = []
+const EMPTY_AUTOMATIONS: AutomationSummary[] = []
+const EMPTY_AGENTS_RESPONSE: { agents: AgentInfo[] } = { agents: EMPTY_AGENTS }
+const EMPTY_DAILY_TOKENS_RESPONSE: DailyTokensResponse = { days: EMPTY_DAILY_TOKENS }
+const EMPTY_MODELS_RESPONSE: TopModelsResponse = { models: EMPTY_MODELS }
+const EMPTY_PROJECTS_RESPONSE: TopProjectsResponse = { projects: EMPTY_PROJECTS }
+const EMPTY_STARRED_RESPONSE: StarredResponse = { starred: EMPTY_STARRED }
+const EMPTY_TIMELINE_RESPONSE: TimelineResponse = { timeline: EMPTY_TIMELINE }
+const EMPTY_AUTOMATIONS_RESPONSE: AutomationsResponse = { automations: EMPTY_AUTOMATIONS }
+
+function dailyTokensQuery(window: TimeWindow): Record<string, string> {
+  return window === 'all'
+    ? { window: 'all' }
+    : { days: String(window === 'today' ? 1 : window === '7d' ? 7 : 30) }
+}
+
+export function prefetchOverviewData(
+  toolId: AgentToolId,
+  window: TimeWindow = '30d',
+  options?: { modelSortBy?: string; projectSortBy?: string },
+): Promise<unknown[]> {
+  const modelSortBy = options?.modelSortBy ?? 'tokens'
+  const projectSortBy = options?.projectSortBy ?? 'tokens'
+
+  return Promise.all([
+    prefetchToolApi<OverviewAggregates>(toolId, '/overview/aggregates', { window }),
+    prefetchToolApi<DailyTokensResponse>(toolId, '/overview/daily-tokens', dailyTokensQuery(window)),
+    prefetchToolApi<TopModelsResponse>(toolId, '/overview/top-models', { window, limit: '10', sortBy: modelSortBy }),
+    prefetchToolApi<TopProjectsResponse>(toolId, '/overview/top-projects', { window, limit: '10', sortBy: projectSortBy }),
+    prefetchToolApi<StarredResponse>(toolId, '/overview/starred', { limit: '20' }),
+    prefetchToolApi<TimelineResponse>(toolId, '/overview/timeline', { limit: '50' }),
+    prefetchToolApi<CapabilitiesResponse>(toolId, '/overview/capabilities'),
+    prefetchToolApi<AutomationsResponse>(toolId, '/overview/automations'),
+    toolId === 'all'
+      ? Promise.resolve(undefined)
+      : prefetchToolApi<{ agents: AgentInfo[] }>(toolId, '/agents'),
+  ])
 }
 
 /**
@@ -477,23 +665,15 @@ export function useSourceStatus(toolId: AgentToolId) {
  * @returns { agents, loading, error }
  */
 export function useToolAgents(toolId: AgentToolId) {
-  const [agents, setAgents] = useState<AgentInfo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error } = useCachedToolApi<{ agents: AgentInfo[] }>(
+    toolId,
+    '/agents',
+    undefined,
+    EMPTY_AGENTS_RESPONSE,
+    'Failed to load agents',
+  )
 
-  useEffect(() => {
-    fetchToolApi<{ agents: AgentInfo[] }>(toolId, '/agents')
-      .then((data) => {
-        setAgents(data.agents)
-        setError(null)
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load agents'),
-      )
-      .finally(() => setLoading(false))
-  }, [toolId])
-
-  return { agents, loading, error }
+  return { agents: data.agents, loading, error }
 }
 
 /**
@@ -976,25 +1156,15 @@ export function useSessionTurns(
  * @returns { aggregates, loading, error }
  */
 export function useOverviewAggregates(toolId: AgentToolId, window: TimeWindow) {
-  const [aggregates, setAggregates] = useState<OverviewAggregates | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error } = useCachedToolApi<OverviewAggregates | null>(
+    toolId,
+    '/overview/aggregates',
+    { window },
+    null,
+    'Failed to load aggregates',
+  )
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchToolApi<OverviewAggregates>(toolId, '/overview/aggregates', { window })
-      .then((data) => {
-        setAggregates(data)
-        setError(null)
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load aggregates'),
-      )
-      .finally(() => setLoading(false))
-  }, [toolId, window])
-
-  return { aggregates, loading, error }
+  return { aggregates: data, loading, error }
 }
 
 /**
@@ -1008,58 +1178,15 @@ export function useOverviewAggregates(toolId: AgentToolId, window: TimeWindow) {
  * @returns { dailyTokens, loading, error }
  */
 export function useDailyTokens(toolId: AgentToolId, window: TimeWindow = '30d') {
-  const requestKey = `${toolId}:${window}`
-  const [state, setState] = useState<{
-    requestKey: string
-    dailyTokens: DailyTokensResponse['days']
-    loading: boolean
-    error: string | null
-  }>({
-    requestKey,
-    dailyTokens: [],
-    loading: true,
-    error: null,
-  })
+  const { data, loading, error } = useCachedToolApi<DailyTokensResponse>(
+    toolId,
+    '/overview/daily-tokens',
+    dailyTokensQuery(window),
+    EMPTY_DAILY_TOKENS_RESPONSE,
+    'Failed to load daily tokens',
+  )
 
-  useEffect(() => {
-    let cancelled = false
-    const query: Record<string, string> =
-      window === 'all'
-        ? { window: 'all' }
-        : { days: String(window === 'today' ? 1 : window === '7d' ? 7 : 30) }
-
-    fetchToolApi<DailyTokensResponse>(toolId, '/overview/daily-tokens', query)
-      .then((data) => {
-        if (cancelled) return
-        setState({
-          requestKey,
-          dailyTokens: data.days,
-          loading: false,
-          error: null,
-        })
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setState((prev) => ({
-          requestKey,
-          dailyTokens: prev.requestKey === requestKey ? prev.dailyTokens : [],
-          loading: false,
-          error: err instanceof Error ? err.message : 'Failed to load daily tokens',
-        }))
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [toolId, window, requestKey])
-
-  const stale = state.requestKey !== requestKey
-
-  return {
-    dailyTokens: stale ? [] : state.dailyTokens,
-    loading: stale || state.loading,
-    error: stale ? null : state.error,
-  }
+  return { dailyTokens: data.days, loading, error }
 }
 
 /**
@@ -1073,25 +1200,15 @@ export function useDailyTokens(toolId: AgentToolId, window: TimeWindow = '30d') 
  * @returns { models, loading, error }
  */
 export function useTopModels(toolId: AgentToolId, window: TimeWindow, sortBy: string = 'tokens') {
-  const [models, setModels] = useState<TopModelsResponse['models']>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error } = useCachedToolApi<TopModelsResponse>(
+    toolId,
+    '/overview/top-models',
+    { window, limit: '10', sortBy },
+    EMPTY_MODELS_RESPONSE,
+    'Failed to load models',
+  )
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchToolApi<TopModelsResponse>(toolId, '/overview/top-models', { window, limit: '10', sortBy })
-      .then((data) => {
-        setModels(data.models)
-        setError(null)
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load models'),
-      )
-      .finally(() => setLoading(false))
-  }, [toolId, window, sortBy])
-
-  return { models, loading, error }
+  return { models: data.models, loading, error }
 }
 
 /**
@@ -1105,25 +1222,15 @@ export function useTopModels(toolId: AgentToolId, window: TimeWindow, sortBy: st
  * @returns { projects, loading, error }
  */
 export function useTopProjects(toolId: AgentToolId, window: TimeWindow, sortBy: string = 'tokens') {
-  const [projects, setProjects] = useState<TopProjectsResponse['projects']>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error } = useCachedToolApi<TopProjectsResponse>(
+    toolId,
+    '/overview/top-projects',
+    { window, limit: '10', sortBy },
+    EMPTY_PROJECTS_RESPONSE,
+    'Failed to load projects',
+  )
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchToolApi<TopProjectsResponse>(toolId, '/overview/top-projects', { window, limit: '10', sortBy })
-      .then((data) => {
-        setProjects(data.projects)
-        setError(null)
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load projects'),
-      )
-      .finally(() => setLoading(false))
-  }, [toolId, window, sortBy])
-
-  return { projects, loading, error }
+  return { projects: data.projects, loading, error }
 }
 
 /**
@@ -1135,25 +1242,15 @@ export function useTopProjects(toolId: AgentToolId, window: TimeWindow, sortBy: 
  * @returns { starred, loading, error }
  */
 export function useStarredSessions(toolId: AgentToolId) {
-  const [starred, setStarred] = useState<StarredResponse['starred']>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error } = useCachedToolApi<StarredResponse>(
+    toolId,
+    '/overview/starred',
+    { limit: '20' },
+    EMPTY_STARRED_RESPONSE,
+    'Failed to load starred sessions',
+  )
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchToolApi<StarredResponse>(toolId, '/overview/starred', { limit: '20' })
-      .then((data) => {
-        setStarred(data.starred)
-        setError(null)
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load starred sessions'),
-      )
-      .finally(() => setLoading(false))
-  }, [toolId])
-
-  return { starred, loading, error }
+  return { starred: data.starred, loading, error }
 }
 
 /**
@@ -1165,25 +1262,15 @@ export function useStarredSessions(toolId: AgentToolId) {
  * @returns { timeline, loading, error }
  */
 export function useTimeline(toolId: AgentToolId) {
-  const [timeline, setTimeline] = useState<TimelineResponse['timeline']>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error } = useCachedToolApi<TimelineResponse>(
+    toolId,
+    '/overview/timeline',
+    { limit: '50' },
+    EMPTY_TIMELINE_RESPONSE,
+    'Failed to load timeline',
+  )
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchToolApi<TimelineResponse>(toolId, '/overview/timeline', { limit: '50' })
-      .then((data) => {
-        setTimeline(data.timeline)
-        setError(null)
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load timeline'),
-      )
-      .finally(() => setLoading(false))
-  }, [toolId])
-
-  return { timeline, loading, error }
+  return { timeline: data.timeline, loading, error }
 }
 
 /**
@@ -1195,25 +1282,15 @@ export function useTimeline(toolId: AgentToolId) {
  * @returns { capabilities, loading, error }
  */
 export function useOverviewCapabilities(toolId: AgentToolId) {
-  const [capabilities, setCapabilities] = useState<CapabilitiesResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error } = useCachedToolApi<CapabilitiesResponse | null>(
+    toolId,
+    '/overview/capabilities',
+    undefined,
+    null,
+    'Failed to load capabilities',
+  )
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchToolApi<CapabilitiesResponse>(toolId, '/overview/capabilities')
-      .then((data) => {
-        setCapabilities(data)
-        setError(null)
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load capabilities'),
-      )
-      .finally(() => setLoading(false))
-  }, [toolId])
-
-  return { capabilities, loading, error }
+  return { capabilities: data, loading, error }
 }
 
 /**
@@ -1226,25 +1303,15 @@ export function useOverviewCapabilities(toolId: AgentToolId) {
  * @returns { automations, loading, error }
  */
 export function useOverviewAutomations(toolId: AgentToolId) {
-  const [automations, setAutomations] = useState<AutomationSummary[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error } = useCachedToolApi<AutomationsResponse>(
+    toolId,
+    '/overview/automations',
+    undefined,
+    EMPTY_AUTOMATIONS_RESPONSE,
+    'Failed to load automations',
+  )
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchToolApi<AutomationsResponse>(toolId, '/overview/automations')
-      .then((data) => {
-        setAutomations(data.automations)
-        setError(null)
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load automations'),
-      )
-      .finally(() => setLoading(false))
-  }, [toolId])
-
-  return { automations, loading, error }
+  return { automations: data.automations, loading, error }
 }
 
 // ============================================================================

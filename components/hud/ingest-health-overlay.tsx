@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { useIngestHealthStore } from '@/stores/ingest-health-store'
 import { cn } from '@/lib/utils'
@@ -9,6 +9,7 @@ const POLL_INTERVAL_MS = 1000
 const TIMEOUT_MS = 30000
 const HEALTH_FETCH_TIMEOUT_MS = 5000
 const HEALTH_ENDPOINT = '/api/ingest/health'
+const INITIAL_CHECK_GRACE_MS = 700
 
 export function IngestHealthOverlay() {
   const status = useIngestHealthStore((s) => s.status)
@@ -20,7 +21,11 @@ export function IngestHealthOverlay() {
   const startedAtRef = useRef<number>(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const statusRef = useRef(status)
-  statusRef.current = status
+  const [showInitialCheck, setShowInitialCheck] = useState(false)
+
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
 
   const stopPolling = useCallback(() => {
     if (intervalRef.current) {
@@ -79,17 +84,26 @@ export function IngestHealthOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (status !== 'checking' || hasConnectedOnce) return
+
+    const timer = setTimeout(() => setShowInitialCheck(true), INITIAL_CHECK_GRACE_MS)
+    return () => clearTimeout(timer)
+  }, [status, hasConnectedOnce])
+
   if (status === 'connected') return null
 
-  // If we've connected before (page refresh), show a compact non-blocking bar
-  if (hasConnectedOnce && status !== 'timeout') {
+  if (status === 'checking' && !hasConnectedOnce && !showInitialCheck) return null
+
+  // During initial checks and reconnects, avoid blocking the dashboard.
+  if (status !== 'timeout') {
     return (
       <div
         className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-center gap-2 bg-muted/80 px-4 py-1.5 text-sm text-muted-foreground backdrop-blur-sm"
         aria-live="polite"
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-        <span>Reconnecting to data service...</span>
+        <span>{hasConnectedOnce ? 'Reconnecting to data service...' : 'Connecting to data service...'}</span>
       </div>
     )
   }
