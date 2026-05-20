@@ -272,8 +272,6 @@ function TodayTokenDisplay({
 }) {
   const today = dailyTokens[0]
   const totalTokens = today?.totalTokens ?? 0
-  const inputTokens = today?.inputTokens ?? 0
-  const outputTokens = today?.outputTokens ?? 0
   const cost = today?.cost ?? null
   const hasData = totalTokens > 0
 
@@ -289,7 +287,7 @@ function TodayTokenDisplay({
 
   return (
     <HudFrame
-      label="TOKEN BURNED · TODAY"
+      label="TOKENS · TODAY"
       glow
       className="flex flex-col"
       bodyClassName="flex-1 min-h-0 flex flex-col"
@@ -307,29 +305,19 @@ function TodayTokenDisplay({
       ) : (
         <>
           <TokenBigNumber n={totalTokens} />
-          {/* Sub-stats row */}
-          <div className="bn-substats pb-3 justify-center">
-            <div className="bn-substat">
-              <span className="bn-substat-val" style={{ color: 'oklch(0.78 0.12 220)' }}>{fmtTokens(inputTokens)}</span>
-              <span className="bn-substat-key">Input</span>
+          {cost != null && (
+            <div className="flex justify-center pb-4">
+              <div className="bn-substat">
+                <span
+                  className="bn-substat-val"
+                  style={{ color: 'oklch(0.75 0.17 340)', fontSize: 16 }}
+                >
+                  ${cost < 0.01 ? cost.toFixed(4) : cost < 1 ? cost.toFixed(3) : cost.toFixed(2)}
+                </span>
+                <span className="bn-substat-key">Cost</span>
+              </div>
             </div>
-            <span className="bn-substat-sep">/</span>
-            <div className="bn-substat">
-              <span className="bn-substat-val" style={{ color: 'oklch(0.78 0.15 45)' }}>{fmtTokens(outputTokens)}</span>
-              <span className="bn-substat-key">Output</span>
-            </div>
-            {cost != null && (
-              <>
-                <span className="bn-substat-sep">/</span>
-                <div className="bn-substat">
-                  <span className="bn-substat-val" style={{ color: 'oklch(0.75 0.17 340)' }}>
-                    ${cost < 0.01 ? cost.toFixed(4) : cost < 1 ? cost.toFixed(3) : cost.toFixed(2)}
-                  </span>
-                  <span className="bn-substat-key">Cost</span>
-                </div>
-              </>
-            )}
-          </div>
+          )}
         </>
       )}
     </HudFrame>

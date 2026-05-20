@@ -4,8 +4,11 @@ import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import { useOverviewAutomations } from '@/lib/agent-tools/client-hooks'
+import { getSourceColor } from '@/lib/agent-tools/registry'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 import type { SourceCapabilitySet, AutomationSummary } from '@/types/overview'
+
+const MAX_AUTOMATIONS = 10
 
 // ============================================================================
 // Helpers
@@ -25,12 +28,59 @@ function relativeTime(iso: string | null): string {
   return `${Math.floor(days / 30)}mo ago`
 }
 
-function a2Color(status: string): string {
-  const s = status?.toLowerCase()
-  if (s === 'running' || s === 'live') return 'var(--status-warning)'
-  if (s === 'error' || s === 'aborted') return 'var(--destructive)'
-  if (s === 'paused' || s === 'disabled') return 'var(--muted-foreground)'
-  return 'var(--status-success)'
+// Parse RRULE/cron strings into short human-readable labels
+function parseScheduleShort(schedule: string | undefined, sessionCount: number): string {
+  if (!schedule) return `${sessionCount}x`
+
+  // RRULE format (e.g. "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8;BYMINUTE=0")
+  if (schedule.includes('FREQ=')) {
+    const parts: Record<string, string> = {}
+    schedule.split(';').forEach((p) => {
+      const eq = p.indexOf('=')
+      if (eq > 0) parts[p.slice(0, eq)] = p.slice(eq + 1)
+    })
+    const freq = parts['FREQ'] ?? 'CUSTOM'
+    const hourStr = parts['BYHOUR']
+    const minuteStr = parts['BYMINUTE']
+    const byDay = parts['BYDAY']
+
+    let freqLabel: string
+    if (freq === 'DAILY') {
+      freqLabel = 'DAILY'
+    } else if (freq === 'WEEKLY') {
+      if (byDay) {
+        const days = byDay.split(',').length
+        if (days >= 7) freqLabel = 'DAILY'
+        else if (byDay === 'MO,TU,WE,TH,FR') freqLabel = 'WKDAY'
+        else if (byDay === 'SA,SU' || byDay === 'SU,SA') freqLabel = 'WKEND'
+        else freqLabel = `WKLY·${days}D`
+      } else {
+        freqLabel = 'WEEKLY'
+      }
+    } else if (freq === 'MONTHLY') {
+      freqLabel = 'MTHLY'
+    } else if (freq === 'HOURLY') {
+      freqLabel = 'HOURLY'
+    } else {
+      freqLabel = freq.slice(0, 6)
+    }
+
+    if (hourStr != null) {
+      const hh = hourStr.split(',')[0].padStart(2, '0')
+      const mm = (minuteStr ?? '0').split(',')[0].padStart(2, '0')
+      return `${freqLabel} ${hh}:${mm}`
+    }
+    return freqLabel
+  }
+
+  // Unix cron format "m h d M w" — keep as-is if short enough
+  const cronParts = schedule.trim().split(/\s+/)
+  if (cronParts.length === 5) {
+    // Compact: replace common wildcards
+    return cronParts.map((p) => (p === '*' ? '✱' : p)).join(' ')
+  }
+
+  return schedule.slice(0, 14)
 }
 
 function a2StatusClass(status: string): 'ok' | 'run' | 'err' {
@@ -47,24 +97,43 @@ function a2StatusText(automation: AutomationSummary): string {
   return `OK · ${relativeTime(automation.lastActiveAt)}`
 }
 
+function sourceLabel(source: string): string {
+  if (source === 'claude-code') return 'CLAUDE'
+  if (source === 'openclaw') return 'CLAW'
+  if (source === 'opencode') return 'OC'
+  if (source === 'qoder') return 'QDR'
+  return source.toUpperCase().slice(0, 6)
+}
+
 // ============================================================================
 // Row
 // ============================================================================
 
 function AutomRow({ automation, showSource }: { automation: AutomationSummary; showSource: boolean }) {
-  const color = a2Color(automation.latestStatus)
+  const sourceColor = automation.source
+    ? getSourceColor(automation.source)
+    : 'var(--muted-foreground)'
   const cls = a2StatusClass(automation.latestStatus)
-  const scheduleLabel = automation.schedule ? `${automation.schedule} ✱` : `${automation.sessionCount}x ✱`
+  const schedLabel = parseScheduleShort(automation.schedule, automation.sessionCount)
 
   return (
-    <div className="a2-row" style={{ '--a2-color': color } as React.CSSProperties}>
+    <div className="a2-row" style={{ '--a2-color': sourceColor } as React.CSSProperties}>
       <span className="a2-cron" title={automation.schedule ?? undefined}>
-        {scheduleLabel}
+        {schedLabel}
       </span>
       <span className="a2-name">
         {showSource && automation.source && (
-          <span style={{ fontSize: '8px', fontWeight: 700, letterSpacing: '.12em', color: 'var(--muted-foreground)', marginRight: 6 }}>
-            {automation.source === 'claude-code' ? 'CLAUDE' : automation.source.toUpperCase()}
+          <span
+            style={{
+              fontSize: '8px',
+              fontWeight: 700,
+              letterSpacing: '.12em',
+              color: sourceColor,
+              marginRight: 6,
+              opacity: 0.85,
+            }}
+          >
+            {sourceLabel(automation.source)}
           </span>
         )}
         {automation.name}
@@ -213,16 +282,25 @@ export function OverviewAutomations({ capabilities, toolId, capsLoading }: Overv
     )
   }
 
+  const visibleAutomations = automations.slice(0, MAX_AUTOMATIONS)
+
   return (
     <HudFrame label={frameLabel} right={pill} bodyClassName="p-0">
       <div className="autom2">
-        {automations.map((autom) => (
+        {visibleAutomations.map((autom) => (
           <AutomRow
             key={`${autom.source ?? toolId}:${autom.id ?? autom.name}`}
             automation={autom}
             showSource={isAll}
           />
         ))}
+        {automations.length > MAX_AUTOMATIONS && (
+          <div
+            className="text-center text-[9px] font-mono tracking-[0.12em] text-muted-foreground/50 py-1"
+          >
+            +{automations.length - MAX_AUTOMATIONS} more
+          </div>
+        )}
       </div>
     </HudFrame>
   )
