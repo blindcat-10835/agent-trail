@@ -12,6 +12,8 @@ import { ThinkingBlock } from './thinking-block'
 import { SystemEventBlock } from './system-event-block'
 import { getActivityKey, getMessageKey } from './key-utils'
 import { MarkdownContent } from './markdown-content'
+import { InjectedContextBlock } from './injected-context-block'
+import { parseUserMessage, getCleanPreview } from '@/lib/replay/parse-user-message'
 
 interface TurnCardProps {
   turn: TraceTurn
@@ -85,7 +87,9 @@ export function TurnCard({ turn }: TurnCardProps) {
 
         {/* User message preview (truncated, 1 line) */}
         <span className="flex-1 text-[12px] text-muted-foreground truncate min-w-0">
-          {turn.userMessage?.content || '(no user input)'}
+          {turn.userMessage?.content
+            ? getCleanPreview(turn.userMessage.content)
+            : '(no user input)'}
         </span>
 
         {/* Activity badges */}
@@ -121,21 +125,31 @@ export function TurnCard({ turn }: TurnCardProps) {
       {isExpanded && (
         <div className="border-t border-border">
           {/* User message block */}
-          {turn.userMessage?.content && (
-            <div className="px-4 py-3 border-b border-border/50">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  USER
-                </span>
-                <CopyMessageButton content={turn.userMessage.content} />
+          {turn.userMessage?.content && (() => {
+            const parsed = parseUserMessage(turn.userMessage.content)
+            return (
+              <div className="border-b border-border/50">
+                <div className="px-4 py-3">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      USER
+                    </span>
+                    <CopyMessageButton content={parsed.userText} />
+                  </div>
+                  {parsed.userText && (
+                    <MarkdownContent
+                      content={parsed.userText}
+                      searchQuery={searchQuery}
+                      className="text-[12px] leading-relaxed text-foreground"
+                    />
+                  )}
+                </div>
+                {parsed.injectedParts.map((part, i) => (
+                  <InjectedContextBlock key={i} part={part} />
+                ))}
               </div>
-              <MarkdownContent
-                content={turn.userMessage.content}
-                searchQuery={searchQuery}
-                className="text-[12px] leading-relaxed text-foreground"
-              />
-            </div>
-          )}
+            )
+          })()}
 
           {/* Unanchored activity blocks — system events without a message ordinal */}
           {unanchoredActivityEntries.map(({ activity, idx }) => (
