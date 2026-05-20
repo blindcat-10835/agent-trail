@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # agents-tracing-dashboard installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/camtrik/agents-tracing-dashboard/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/camtrik/agents-tracing-dashboard/refs/heads/main/install.sh | bash
 set -e
 
 REPO="camtrik/agents-tracing-dashboard"

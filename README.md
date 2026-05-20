@@ -37,7 +37,7 @@ Open any session and step through every turn exactly as it happened. The replay 
 ### Option 1 — curl (requires Node.js 20+)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/camtrik/agents-tracing-dashboard/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/camtrik/agents-tracing-dashboard/refs/heads/main/install.sh | bash
 agents-tracing
 ```
 
