@@ -30,7 +30,7 @@ import type { TimeWindow } from '@/types/overview'
 const SOURCE_LABELS: Record<string, string> = {
   all: 'ALL SOURCES',
   openclaw: 'OPENCLAW',
-  'claude-code': 'CLAUDE:CODE',
+  'claude-code': 'CLAUDE',
   codex: 'CODEX',
   opencode: 'OPENCODE',
 }

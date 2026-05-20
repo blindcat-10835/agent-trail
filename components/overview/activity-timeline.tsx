@@ -35,7 +35,7 @@ function getTimelineEventKey(event: TimelineEvent): string {
 function sourceTag(source: string): string {
   switch (source) {
     case 'openclaw': return 'OPENCLAW'
-    case 'claude-code': return 'CLAUDE:CODE'
+    case 'claude-code': return 'CLAUDE'
     case 'codex': return 'CODEX'
     default: return (source ?? '').toUpperCase()
   }

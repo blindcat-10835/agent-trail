@@ -10,7 +10,7 @@ function sourceLabel(toolId: AggregateSourceStatus['toolId']): string {
     case 'openclaw':
       return 'OPENCLAW'
     case 'claude-code':
-      return 'CLAUDE:CODE'
+      return 'CLAUDE'
     case 'codex':
       return 'CODEX'
     case 'opencode':

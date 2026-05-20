@@ -45,7 +45,7 @@ function fmtShortDate(date: string): string {
 const SOURCE_LABELS: Record<string, string> = {
   all: 'ALL SOURCES',
   openclaw: 'OPENCLAW',
-  'claude-code': 'CLAUDE:CODE',
+  'claude-code': 'CLAUDE',
   codex: 'CODEX',
   opencode: 'OPENCODE',
   qoder: 'QODER',

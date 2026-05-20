@@ -28,7 +28,7 @@ function relativeTime(iso: string | null): string {
 function sourceLabel(source: string): string {
   switch (source) {
     case 'openclaw': return 'OPENCLAW'
-    case 'claude-code': return 'CLAUDE:CODE'
+    case 'claude-code': return 'CLAUDE'
     case 'codex': return 'CODEX'
     case 'opencode': return 'OPENCODE'
     case 'qoder': return 'QODER'

@@ -10,7 +10,7 @@ import type { AgentToolDefinition } from '../types'
 const definition: AgentToolDefinition = {
   id: 'claude-code',
   label: 'Claude Code',
-  shortLabel: 'CLAUDE:CODE',
+  shortLabel: 'CLAUDE',
   defaultRoute: '/dashboard',
   capabilities: {
     sessions: true,
@@ -44,7 +44,7 @@ const definition: AgentToolDefinition = {
   ],
   ui: {
     brand: {
-      name: 'Claude Code',
+      name: 'Claude',
       versionLabel: 'CLAUDE',
       color: 'oklch(0.80 0.17 75)',
     },

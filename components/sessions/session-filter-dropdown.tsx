@@ -25,7 +25,7 @@ export interface SessionFilterState {
 // ============================================================================
 
 const SOURCE_LABELS: Record<TraceSource, string> = {
-  'claude-code': 'Claude Code',
+  'claude-code': 'Claude',
   openclaw: 'OpenClaw',
   codex: 'Codex',
   opencode: 'OpenCode',
