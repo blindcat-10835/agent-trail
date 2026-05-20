@@ -1,7 +1,11 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
-import { prefetchOverviewData, useAgentTool } from '@/lib/agent-tools/client-hooks'
+import {
+  prefetchOverviewData,
+  prefetchSessionsRailData,
+  useAgentTool,
+} from '@/lib/agent-tools/client-hooks'
 import { getAllDefinitions } from '@/lib/agent-tools/registry'
 import { buildSourceSwitchHref } from './source-switcher-routing'
 import type { AgentToolId } from '@/lib/agent-tools/types'
@@ -17,6 +21,7 @@ export function SourceSwitcher() {
     const href = buildSourceSwitchHref(pathname, targetToolId, tools)
     router.prefetch(href)
     void prefetchOverviewData(targetToolId, '30d')
+    void prefetchSessionsRailData(targetToolId)
   }
 
   function handleSwitch(targetToolId: AgentToolId) {
