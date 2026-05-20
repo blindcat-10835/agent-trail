@@ -7,6 +7,7 @@ import {
   useAgentTool,
   useAggregateSessions,
   useToolSessions,
+  DEFAULT_SESSIONS_RAIL_QUERY,
   notifySessionsRefresh,
   syncToolSessions,
   syncAllSessions,
@@ -69,7 +70,7 @@ function AggregateSessionsRightRail({
   const { href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const { sessions, totalCount, loading, error, hasMore, isLoadingMore, loadMore } = useAggregateSessions({ limit: '100' })
+  const { sessions, totalCount, loading, error, hasMore, isLoadingMore, loadMore } = useAggregateSessions(DEFAULT_SESSIONS_RAIL_QUERY)
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
 
@@ -121,7 +122,7 @@ function SourceSessionsRightRail({
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
   const { sessions, pagination, loading, error, isLoadingMore, loadMore, refetch } = useToolSessions(
     sourceToolId,
-    { limit: '100', sort: 'updated_at', order: 'desc' },
+    DEFAULT_SESSIONS_RAIL_QUERY,
   )
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)

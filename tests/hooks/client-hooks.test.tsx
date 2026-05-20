@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 
 import {
+  clearToolApiCacheForTests,
   SESSION_REFRESH_EVENT,
   notifySessionsRefresh,
   syncAllSessions,
@@ -23,6 +24,7 @@ import type { TraceSession, TraceTurn } from '@/types/trace'
 const fetchMock = vi.fn()
 
 beforeEach(() => {
+  clearToolApiCacheForTests()
   fetchMock.mockReset()
   fetchMock.mockResolvedValue({
     ok: true,
@@ -36,6 +38,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  clearToolApiCacheForTests()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
 })
@@ -147,6 +150,73 @@ describe('useAggregateSessions', () => {
       ]),
     )
     expect(urls.join('\n')).not.toMatch(/localhost:8078|127\.0\.0\.1|\/api\/v1/)
+  })
+
+  it('reuses aggregate source cache when switching from all sessions to one source', async () => {
+    const railQuery = { limit: '100', sort: 'updated_at', order: 'desc' }
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [sessionFixture('openclaw-1', 'openclaw', { startedAt: '2026-05-10T00:00:00.000Z' })],
+          pagination: { total: 1, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [sessionFixture('claude-1', 'claude-code', { startedAt: '2026-05-10T00:01:00.000Z' })],
+          pagination: { total: 1, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [sessionFixture('codex-1', 'codex', { startedAt: '2026-05-10T00:02:00.000Z' })],
+          pagination: { total: 1, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [],
+          pagination: { total: 0, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sessions: [],
+          pagination: { total: 0, limit: 100, offset: 0, hasMore: false },
+        }),
+      })
+
+    let aggregateLatest: AggregateHookResult | undefined
+    function AggregateConsumer() {
+      aggregateLatest = useAggregateSessions(railQuery)
+      return null
+    }
+
+    render(<AggregateConsumer />)
+    await waitFor(() => expect(aggregateLatest?.loading).toBe(false))
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+
+    cleanup()
+    fetchMock.mockClear()
+
+    let sourceLatest: ReturnType<typeof useToolSessions> | undefined
+    function SourceConsumer() {
+      sourceLatest = useToolSessions('claude-code', railQuery)
+      return null
+    }
+
+    render(<SourceConsumer />)
+
+    expect(sourceLatest?.loading).toBe(false)
+    expect(sourceLatest?.sessions.map((session) => session.id)).toEqual(['claude-1'])
+
+    await act(async () => {})
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('uses source pagination totals for aggregate totalCount', async () => {
