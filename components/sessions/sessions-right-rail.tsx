@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Star } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import {
   useAgentTool,
@@ -363,15 +363,15 @@ function SessionRailRow({
                   ? '⚠'
                   : null}
           </span>
-          {isStarred && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleStar() }}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', lineHeight: 1 }}
-              aria-label="Unstar session"
-            >
-              <span className="rr-star">★</span>
-            </button>
-          )}
+          <button
+            type="button"
+            className={`rr-star-toggle${isStarred ? ' active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); onToggleStar() }}
+            aria-label={isStarred ? 'Unstar session' : 'Star session'}
+            title={isStarred ? 'Unstar session' : 'Star session'}
+          >
+            <Star aria-hidden="true" />
+          </button>
         </div>
         <div className="rr-label">{session.displayTitle || session.name || session.id}</div>
         <div className="rr-line2 mono">

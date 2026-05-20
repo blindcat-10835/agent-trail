@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { Star } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useToolSessions, useAggregateSessions, useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
@@ -131,6 +132,7 @@ export function SessionsListPage() {
   const [starredOnly, setStarredOnly] = useState(false)
 
   const isStarred = useStarredStore((s) => s.isStarred)
+  const toggleStar = useStarredStore((s) => s.toggle)
 
   const query = useMemo(() => {
     const next: Record<string, string> = {
@@ -164,6 +166,10 @@ export function SessionsListPage() {
   const isLoadingMore = isAll ? aggResult.isLoadingMore : toolResult.isLoadingMore
   const loadMore = isAll ? aggResult.loadMore : toolResult.loadMore
   const groupCounts = isAll ? aggResult.groupCounts : toolResult.groupCounts
+
+  function openSession(sessionId: string) {
+    router.push(href('/sessions/' + sessionId))
+  }
 
   const totals = useMemo(() => ({
     count: sourceFilter === 'ALL' ? (paginationTotal ?? filtered.length) : filtered.length,
@@ -310,18 +316,38 @@ export function SessionsListPage() {
             const subagentCount = s.activityCounts?.subagents ?? 0
             const summary = s.summary || s.gitBranch || s.id
             const model = s.model || '—'
+            const starred = isStarred(s.id)
 
             return (
-              <button
+              <div
                 key={s.id}
+                role="button"
+                tabIndex={0}
                 className={`sl-row ${status === 'ERROR' ? 'err' : ''}`}
                 style={{ '--src-c': srcC, '--proj-c': pc } as React.CSSProperties}
-                onClick={() => router.push(href('/sessions/' + s.id))}
+                onClick={() => openSession(s.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    openSession(s.id)
+                  }
+                }}
               >
                 <span className="sl-proj-rail" />
                 <span className="sl-cell sl-cell-label">
                   <span className="sl-label-row">
-                    {isStarred(s.id) && <span className="sl-star">{'★'}</span>}
+                    <button
+                      type="button"
+                      className={`sl-star-toggle${starred ? ' active' : ''}`}
+                      aria-label={starred ? 'Unstar session' : 'Star session'}
+                      title={starred ? 'Unstar session' : 'Star session'}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleStar(s.id)
+                      }}
+                    >
+                      <Star aria-hidden="true" />
+                    </button>
                     <span className="sl-label">{label}</span>
                   </span>
                   <span className="sl-summary">{summary}</span>
@@ -354,7 +380,7 @@ export function SessionsListPage() {
                 <span className="sl-cell mono sl-num">{fmtDuration(s.durationMs)}</span>
                 <span className="sl-cell mono sl-num sl-cost">{cost}</span>
                 <span className="sl-cell mono sl-num sl-updated">{relativeTime(s.updatedAt || s.startedAt)}</span>
-              </button>
+              </div>
             )
           })
         )}

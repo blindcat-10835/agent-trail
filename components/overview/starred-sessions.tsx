@@ -30,6 +30,7 @@ function sourceLabel(source: string): string {
     case 'openclaw': return 'OPENCLAW'
     case 'claude-code': return 'CLAUDE:CODE'
     case 'codex': return 'CODEX'
+    case 'opencode': return 'OPENCODE'
     default: return (source ?? '').toUpperCase()
   }
 }
