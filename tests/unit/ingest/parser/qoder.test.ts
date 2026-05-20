@@ -249,6 +249,136 @@ describe('parseQoderSession', () => {
         }
       }
     });
+
+    it('extracts only <user_query> text from Qoder injected user wrappers', async () => {
+      const wrappedFixturePath = path.join(TMPDIR, 'wrapped-user-query-qoder.db');
+      buildQoderFixture(wrappedFixturePath);
+
+      const historyRoot = path.join(TMPDIR, 'qoder-wrapped-history-root');
+      const shortSessionId = ROOT_SESSION_ID.split('-')[0];
+      const historyDir = path.join(
+        historyRoot,
+        'fixture-project-local',
+        'conversation-history',
+        shortSessionId
+      );
+      fs.mkdirSync(historyDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(historyDir, `${shortSessionId}.jsonl`),
+        [
+          JSON.stringify({
+            role: 'user',
+            message: {
+              content: [{
+                type: 'text',
+                text: [
+                  '<system-reminder>',
+                  '[IMPORTANT] You must always respond in 中文.',
+                  '</system-reminder>',
+                  '',
+                  '<user_query>',
+                  '分析一下这个项目，总结一下他的功能和架构，以及在实现上有没有什么漏洞。不要更改代码或者源文件。',
+                  '</user_query><system_reminder>',
+                  "You need to determine whether the user's task requires switching to plan mode.",
+                  '</system_reminder>',
+                ].join('\n'),
+              }],
+            },
+          }),
+          JSON.stringify({
+            role: 'assistant',
+            message: { content: [{ type: 'text', text: 'OK' }] },
+          }),
+        ].join('\n') + '\n',
+        'utf8'
+      );
+
+      const previousHistoryRoot = process.env.QODER_HISTORY_ROOT;
+      process.env.QODER_HISTORY_ROOT = historyRoot;
+      try {
+        const result = await parseQoderSession(wrappedFixturePath, ROOT_SESSION_ID);
+        const userMessage = result.messages.find((msg) => msg.role === 'user');
+
+        expect(userMessage?.content).toBe(
+          '分析一下这个项目，总结一下他的功能和架构，以及在实现上有没有什么漏洞。不要更改代码或者源文件。'
+        );
+        expect(userMessage?.content).not.toContain('<system-reminder>');
+        expect(userMessage?.content).not.toContain('<system_reminder>');
+        expect(userMessage?.content).not.toContain('<user_query>');
+      } finally {
+        if (previousHistoryRoot == null) {
+          delete process.env.QODER_HISTORY_ROOT;
+        } else {
+          process.env.QODER_HISTORY_ROOT = previousHistoryRoot;
+        }
+      }
+    });
+
+    it('renders Qoder command wrappers as the invoked command and arguments', async () => {
+      const commandFixturePath = path.join(TMPDIR, 'command-wrapper-qoder.db');
+      buildQoderFixture(commandFixturePath);
+
+      const historyRoot = path.join(TMPDIR, 'qoder-command-history-root');
+      const shortSessionId = ROOT_SESSION_ID.split('-')[0];
+      const historyDir = path.join(
+        historyRoot,
+        'fixture-project-local',
+        'conversation-history',
+        shortSessionId
+      );
+      fs.mkdirSync(historyDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(historyDir, `${shortSessionId}.jsonl`),
+        [
+          JSON.stringify({
+            role: 'user',
+            message: {
+              content: [{
+                type: 'text',
+                text: [
+                  '<system-reminder>',
+                  '[IMPORTANT] You must always respond in 中文.',
+                  '</system-reminder>',
+                  '',
+                  '<command-message>gsd-plan-phase</command-message>',
+                  '<command-name>/gsd-plan-phase</command-name>',
+                  '<command-args>18',
+                  '确保cd .claude/worktrees/phase-18-qoder-source-integration并在worktree上进行变更</command-args>',
+                  '',
+                  'Base directory for this skill: /tmp/.qoder/skills/gsd-plan-phase',
+                  '<objective>internal workflow text</objective>',
+                ].join('\n'),
+              }],
+            },
+          }),
+          JSON.stringify({
+            role: 'assistant',
+            message: { content: [{ type: 'text', text: 'OK' }] },
+          }),
+        ].join('\n') + '\n',
+        'utf8'
+      );
+
+      const previousHistoryRoot = process.env.QODER_HISTORY_ROOT;
+      process.env.QODER_HISTORY_ROOT = historyRoot;
+      try {
+        const result = await parseQoderSession(commandFixturePath, ROOT_SESSION_ID);
+        const userMessage = result.messages.find((msg) => msg.role === 'user');
+
+        expect(userMessage?.content).toBe(
+          '/gsd-plan-phase\n\n18\n确保cd .claude/worktrees/phase-18-qoder-source-integration并在worktree上进行变更'
+        );
+        expect(userMessage?.content).not.toContain('<system-reminder>');
+        expect(userMessage?.content).not.toContain('<objective>');
+        expect(userMessage?.content).not.toContain('Base directory');
+      } finally {
+        if (previousHistoryRoot == null) {
+          delete process.env.QODER_HISTORY_ROOT;
+        } else {
+          process.env.QODER_HISTORY_ROOT = previousHistoryRoot;
+        }
+      }
+    });
   });
 
   describe('subagent link', () => {

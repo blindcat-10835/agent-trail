@@ -108,7 +108,7 @@ describe('ingest database migrations', () => {
     );
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(17);
+    expect(version).toBe(18);
   });
 
   it('initializes ingest file cursor schema idempotently', () => {
@@ -153,7 +153,7 @@ describe('ingest database migrations', () => {
     expect(indexes.map((index) => index.name)).toContain('idx_ingest_file_cursors_session_id');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(17);
+    expect(version).toBe(18);
   });
 
   it('repairs v15 databases whose source CHECK constraints only include opencode', () => {
@@ -274,7 +274,7 @@ describe('ingest database migrations', () => {
       `SELECT COUNT(*) as c FROM subagent_links WHERE session_id = 'codex:legacy-parent'`
     ).get() as { c: number };
 
-    expect(version).toBe(17);
+    expect(version).toBe(18);
     expect(sessionSql.sql).toContain("'qoder'");
     expect(linkSql.sql).toContain("'qoder'");
     expect(cursorSql.sql).toContain("'qoder'");
@@ -517,7 +517,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(17);
+    expect(version).toBe(18);
     // All three pre-existing rows survive the rebuild.
     const ids = sessionRows.map((r) => r.id);
     expect(ids).toEqual(

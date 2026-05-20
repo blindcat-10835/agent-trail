@@ -144,7 +144,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 17;
+  const targetVersion = 18;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -583,6 +583,10 @@ export function runMigrations(): void {
     },
     {
       desc: 'Invalidate Qoder parser cache to backfill plaintext history content',
+      sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'qoder'",
+    },
+    {
+      desc: 'Invalidate Qoder parser cache to strip injected user-context wrappers',
       sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'qoder'",
     },
   ];

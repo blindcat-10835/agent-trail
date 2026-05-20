@@ -117,6 +117,22 @@ interface QoderPlaintextMessage {
   content: string;
 }
 
+const QODER_USER_QUERY_TAGS = ['user_query'];
+const QODER_COMMAND_NAME_TAGS = ['command-name', 'command_name', 'command-message', 'command_message'];
+const QODER_COMMAND_ARGS_TAGS = ['command-args', 'command_args'];
+
+const QODER_INJECTED_CONTEXT_TAGS = [
+  'attached_files',
+  'current_open_file',
+  'file',
+  'system-reminder',
+  'system_reminder',
+  'local-command-caveat',
+  'local_command_caveat',
+  'local-command-stdout',
+  'local_command_stdout',
+];
+
 // ============================================================================
 // Retry helper for SQLITE_BUSY
 // ============================================================================
@@ -893,14 +909,66 @@ function createPlaintextResolver(historyMessages: QoderPlaintextMessage[]) {
 
   return (role: QoderPlaintextMessage['role'], rawContent: string | null | undefined): string => {
     const plaintextContent = queues[role].shift();
-    if (plaintextContent != null) return plaintextContent;
-    return sanitizeQoderContent(rawContent);
+    const content = plaintextContent != null ? plaintextContent : sanitizeQoderContent(rawContent);
+    return role === 'user' ? normalizeQoderUserContent(content) : content;
   };
 }
 
 function sanitizeQoderContent(content: string | null | undefined): string {
   if (!content) return '';
   return isLikelyEncryptedQoderContent(content) ? '' : content;
+}
+
+function normalizeQoderUserContent(content: string): string {
+  const userQueries = extractTaggedTexts(content, QODER_USER_QUERY_TAGS);
+  if (userQueries.length > 0) {
+    return userQueries.join('\n\n').trim();
+  }
+
+  const commandName = extractFirstTaggedText(content, QODER_COMMAND_NAME_TAGS);
+  const commandArgs = extractFirstTaggedText(content, QODER_COMMAND_ARGS_TAGS);
+  if (commandName || commandArgs) {
+    return [commandName, commandArgs].filter(Boolean).join('\n\n').trim();
+  }
+
+  const stripped = stripTaggedBlocks(content, QODER_INJECTED_CONTEXT_TAGS)
+    .replace(/^\s*Base directory for this skill:[^\n]*(?:\n|$)/gim, '')
+    .replace(/^\s*ARGUMENTS:\s*/gim, '')
+    .trim();
+
+  return stripped || content.trim();
+}
+
+function extractFirstTaggedText(content: string, tagNames: string[]): string | null {
+  return extractTaggedTexts(content, tagNames)[0] ?? null;
+}
+
+function extractTaggedTexts(content: string, tagNames: string[]): string[] {
+  const texts: string[] = [];
+
+  for (const tagName of tagNames) {
+    const pattern = new RegExp(`<${escapeRegExp(tagName)}\\b[^>]*>([\\s\\S]*?)<\\/${escapeRegExp(tagName)}>`, 'gi');
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(content)) !== null) {
+      const text = match[1].trim();
+      if (text) texts.push(text);
+    }
+  }
+
+  return texts;
+}
+
+function stripTaggedBlocks(content: string, tagNames: string[]): string {
+  let stripped = content;
+  for (const tagName of tagNames) {
+    const pattern = new RegExp(`<${escapeRegExp(tagName)}\\b[^>]*>[\\s\\S]*?<\\/${escapeRegExp(tagName)}>`, 'gi');
+    stripped = stripped.replace(pattern, '');
+  }
+  return stripped;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function isLikelyEncryptedQoderContent(value: string): boolean {
