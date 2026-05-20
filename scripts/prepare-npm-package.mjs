@@ -77,16 +77,23 @@ if (existsSync(standalonePkg)) {
   rmSync(standalonePkg);
 }
 
-// .next/static (client assets)
-log("copying .next/static");
-cpSync(join(repoRoot, ".next", "static"), join(stageDir, ".next", "static"), {
-  recursive: true,
-});
+// .next/static must live INSIDE the standalone dir so server.js (which runs
+// with cwd=standalone) can serve /_next/static/* from <cwd>/.next/static.
+log("copying .next/static → standalone/.next/static");
+cpSync(
+  join(repoRoot, ".next", "static"),
+  join(stageDir, ".next", "standalone", ".next", "static"),
+  { recursive: true },
+);
 
-// public/
+// public/ likewise must be at standalone/public so Next.js can serve it.
 if (existsSync(join(repoRoot, "public"))) {
-  log("copying public/");
-  cpSync(join(repoRoot, "public"), join(stageDir, "public"), { recursive: true });
+  log("copying public/ → standalone/public/");
+  cpSync(
+    join(repoRoot, "public"),
+    join(stageDir, ".next", "standalone", "public"),
+    { recursive: true },
+  );
 }
 
 // ingest/dist (only the two files the runtime needs)
