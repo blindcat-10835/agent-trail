@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -28,6 +29,8 @@ import {
   buildQoderFixture,
   ROOT_SESSION_ID,
   SUBAGENT_SESSION_ID,
+  USER_MSG_ID,
+  ASSISTANT_MSG_ID,
   TC_READ_FILE,
   TC_SEARCH_FILE,
   TC_GREP_CODE,
@@ -178,6 +181,73 @@ describe('parseQoderSession', () => {
       expect(result.session.metrics.outputTokens).toBe(80);
       expect(result.session.metrics.cacheReadTokens).toBe(40);
       expect(result.session.metrics.totalTokens).toBe(200);
+    });
+  });
+
+  describe('plaintext conversation history fallback', () => {
+    it('uses Qoder conversation-history text when chat_message.content is encrypted', async () => {
+      const encryptedFixturePath = path.join(TMPDIR, 'encrypted-qoder.db');
+      buildQoderFixture(encryptedFixturePath);
+
+      const encryptedUserContent = Buffer.from(
+        Array.from({ length: 160 }, (_, index) => (17 + index * 47) % 256)
+      ).toString('base64');
+      const encryptedAssistantContent = Buffer.from(
+        Array.from({ length: 160 }, (_, index) => (83 + index * 41) % 256)
+      ).toString('base64');
+
+      const fixtureDb = new Database(encryptedFixturePath);
+      try {
+        fixtureDb.prepare('UPDATE chat_message SET content = ? WHERE id = ?')
+          .run(encryptedUserContent, USER_MSG_ID);
+        fixtureDb.prepare('UPDATE chat_message SET content = ? WHERE id = ?')
+          .run(encryptedAssistantContent, ASSISTANT_MSG_ID);
+      } finally {
+        fixtureDb.close();
+      }
+
+      const historyRoot = path.join(TMPDIR, 'qoder-history-root');
+      const shortSessionId = ROOT_SESSION_ID.split('-')[0];
+      const historyDir = path.join(
+        historyRoot,
+        'fixture-project-local',
+        'conversation-history',
+        shortSessionId
+      );
+      fs.mkdirSync(historyDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(historyDir, `${shortSessionId}.jsonl`),
+        [
+          JSON.stringify({
+            role: 'user',
+            message: { content: [{ type: 'text', text: 'Plain user text from history' }] },
+          }),
+          JSON.stringify({
+            role: 'assistant',
+            message: { content: [{ type: 'text', text: 'Plain assistant text from history' }] },
+          }),
+        ].join('\n') + '\n',
+        'utf8'
+      );
+
+      const previousHistoryRoot = process.env.QODER_HISTORY_ROOT;
+      process.env.QODER_HISTORY_ROOT = historyRoot;
+      try {
+        const result = await parseQoderSession(encryptedFixturePath, ROOT_SESSION_ID);
+        const userMessage = result.messages.find((msg) => msg.role === 'user');
+        const assistantMessage = result.messages.find((msg) => msg.role === 'assistant');
+
+        expect(userMessage?.content).toBe('Plain user text from history');
+        expect(assistantMessage?.content).toBe('Plain assistant text from history');
+        expect(result.messages.map((msg) => msg.content).join('\n')).not.toContain(encryptedUserContent);
+        expect(result.messages.map((msg) => msg.content).join('\n')).not.toContain(encryptedAssistantContent);
+      } finally {
+        if (previousHistoryRoot == null) {
+          delete process.env.QODER_HISTORY_ROOT;
+        } else {
+          process.env.QODER_HISTORY_ROOT = previousHistoryRoot;
+        }
+      }
     });
   });
 

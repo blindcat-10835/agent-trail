@@ -8,7 +8,8 @@
  *   - DB opened with { readonly: true, fileMustExist: true }
  *   - Only ONE new Database() call per parseQoderSession invocation
  *   - Never reads credential/token/auth files (privacy hardline)
- *   - Never calls fs.readFile/readFileSync/fs.openSync against any other path
+ *   - Only reads Qoder conversation-history JSONL under ~/.qoder/cache/projects
+ *     as plaintext fallback for encrypted chat_message.content
  *   - No INSERT/UPDATE/DELETE/PRAGMA writes against the Qoder DB
  *
  * Token attribution (SPEC §8):
@@ -21,6 +22,9 @@
 
 import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type {
   TraceSession,
   TraceMessage,
@@ -106,6 +110,11 @@ interface QoderToolResult {
   errorMsg?: string;
   error?: string;
   [key: string]: unknown;
+}
+
+interface QoderPlaintextMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 // ============================================================================
@@ -311,6 +320,10 @@ export async function parseQoderSession(
       warnings.push(`Failed to load messages for session ${rawSessionId}: ${msg}`);
     }
 
+    const plaintextResolver = createPlaintextResolver(
+      loadQoderConversationHistory(rawSessionId, sessionRow, warnings)
+    );
+
     // ------------------------------------------------------------------
     // 4. Iterate messages
     // ------------------------------------------------------------------
@@ -326,7 +339,7 @@ export async function parseQoderSession(
           id: msg.id,
           ordinal: messageOrdinal,
           role: 'user' as MessageRole,
-          content: msg.content || '',
+          content: plaintextResolver('user', msg.content),
           timestamp: msgTimestamp ?? undefined,
           sourceMetadata: buildSourceMetadata(dbPath, rawSessionId),
         });
@@ -443,7 +456,7 @@ export async function parseQoderSession(
           id: msg.id,
           ordinal: messageOrdinal,
           role: 'assistant' as MessageRole,
-          content: msg.content || '',
+          content: plaintextResolver('assistant', msg.content),
           timestamp: msgTimestamp ?? undefined,
           model: msgModel,
           tokenUsage,
@@ -472,7 +485,7 @@ export async function parseQoderSession(
         if (!matchedToolCallId && isMalformed) {
           matchedToolCallId = `qoder-tool:${msg.id}`;
         }
-        let matchedToolCall = matchedToolCallId ? pendingToolCalls.get(matchedToolCallId) : undefined;
+        const matchedToolCall = matchedToolCallId ? pendingToolCalls.get(matchedToolCallId) : undefined;
 
         if (matchedToolCall) {
           // Determine status
@@ -592,7 +605,7 @@ export async function parseQoderSession(
             ) as Array<{ id: string }>;
 
             const toolMsgId = parentMsgs[0].id;
-            let idx = allParentMsgs.findIndex(m => m.id === toolMsgId);
+            const idx = allParentMsgs.findIndex(m => m.id === toolMsgId);
             if (idx >= 0) {
               parentMessageOrdinal = idx;
             }
@@ -736,6 +749,195 @@ function buildSourceMetadata(dbPath: string, sessionId: string): SourceMetadata 
     sourceType: 'qoder',
     sourceFile: dbPath,
   };
+}
+
+function loadQoderConversationHistory(
+  rawSessionId: string,
+  session: QoderChatSession,
+  warnings: string[]
+): QoderPlaintextMessage[] {
+  const historyRoot = process.env.QODER_HISTORY_ROOT
+    || path.join(os.homedir(), '.qoder', 'cache', 'projects');
+  const shortSessionId = getQoderShortSessionId(rawSessionId);
+
+  if (!shortSessionId || !existsSync(historyRoot)) {
+    return [];
+  }
+
+  const directProjectHistory = path.join(
+    historyRoot,
+    'conversation-history',
+    shortSessionId,
+    `${shortSessionId}.jsonl`
+  );
+  if (existsSync(directProjectHistory)) {
+    return parseQoderHistoryFile(directProjectHistory, warnings);
+  }
+
+  let projectDirs: string[];
+  try {
+    projectDirs = readdirSync(historyRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    warnings.push(`Failed to scan Qoder conversation-history root ${historyRoot}: ${msg}`);
+    return [];
+  }
+
+  const preferredProject = session.project_name || extractProject(session);
+  const preferredDirs = new Set(
+    preferredProject
+      ? projectDirs.filter((dir) => dir === preferredProject || dir.startsWith(`${preferredProject}-`))
+      : []
+  );
+  const orderedProjectDirs = [
+    ...projectDirs.filter((dir) => preferredDirs.has(dir)),
+    ...projectDirs.filter((dir) => !preferredDirs.has(dir)),
+  ];
+
+  for (const projectDir of orderedProjectDirs) {
+    const historyFile = path.join(
+      historyRoot,
+      projectDir,
+      'conversation-history',
+      shortSessionId,
+      `${shortSessionId}.jsonl`
+    );
+    if (existsSync(historyFile)) {
+      return parseQoderHistoryFile(historyFile, warnings);
+    }
+  }
+
+  return [];
+}
+
+function getQoderShortSessionId(rawSessionId: string): string {
+  const [firstSegment] = rawSessionId.split('-');
+  return firstSegment || rawSessionId.slice(0, 8);
+}
+
+function parseQoderHistoryFile(historyFile: string, warnings: string[]): QoderPlaintextMessage[] {
+  let rawHistory: string;
+  try {
+    rawHistory = readFileSync(historyFile, 'utf8');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    warnings.push(`Failed to read Qoder conversation history ${historyFile}: ${msg}`);
+    return [];
+  }
+
+  const plaintextMessages: QoderPlaintextMessage[] = [];
+  const lines = rawHistory.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index].trim();
+    if (!line) continue;
+
+    try {
+      const parsed = JSON.parse(line) as {
+        role?: unknown;
+        message?: unknown;
+        content?: unknown;
+      };
+      if (parsed.role !== 'user' && parsed.role !== 'assistant') continue;
+
+      const messageObject = isPlainObject(parsed.message) ? parsed.message : undefined;
+      const contentSource = messageObject && 'content' in messageObject
+        ? messageObject.content
+        : parsed.content ?? parsed.message;
+      const content = extractQoderHistoryText(contentSource);
+
+      if (content.trim()) {
+        plaintextMessages.push({ role: parsed.role, content });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push(`Malformed Qoder conversation history JSON at ${historyFile}:${index + 1}: ${msg}`);
+    }
+  }
+
+  return plaintextMessages;
+}
+
+function extractQoderHistoryText(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => extractQoderHistoryText(entry))
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (isPlainObject(value)) {
+    if (typeof value.text === 'string') return value.text;
+    if ('content' in value) return extractQoderHistoryText(value.content);
+    if ('message' in value) return extractQoderHistoryText(value.message);
+  }
+  return '';
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function createPlaintextResolver(historyMessages: QoderPlaintextMessage[]) {
+  const queues: Record<QoderPlaintextMessage['role'], string[]> = {
+    user: [],
+    assistant: [],
+  };
+
+  for (const message of historyMessages) {
+    queues[message.role].push(message.content);
+  }
+
+  return (role: QoderPlaintextMessage['role'], rawContent: string | null | undefined): string => {
+    const plaintextContent = queues[role].shift();
+    if (plaintextContent != null) return plaintextContent;
+    return sanitizeQoderContent(rawContent);
+  };
+}
+
+function sanitizeQoderContent(content: string | null | undefined): string {
+  if (!content) return '';
+  return isLikelyEncryptedQoderContent(content) ? '' : content;
+}
+
+function isLikelyEncryptedQoderContent(value: string): boolean {
+  const normalized = value.trim().replace(/\s+/g, '');
+  if (normalized.length < 80 || normalized.length % 4 === 1) return false;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) return false;
+
+  let decoded: Buffer;
+  try {
+    decoded = Buffer.from(normalized, 'base64');
+  } catch {
+    return false;
+  }
+
+  if (decoded.length < 48) return false;
+
+  const inputWithoutPadding = normalized.replace(/=+$/, '');
+  const outputWithoutPadding = decoded.toString('base64').replace(/=+$/, '');
+  if (inputWithoutPadding !== outputWithoutPadding) return false;
+
+  const decodedText = decoded.toString('utf8');
+  if (!decodedText.includes('\uFFFD')) {
+    const chars = Array.from(decodedText);
+    const readableChars = chars.filter((char) => /[\p{L}\p{N}\p{P}\p{S}\s]/u.test(char)).length;
+    if (chars.length > 0 && readableChars / chars.length > 0.85) {
+      return false;
+    }
+  }
+
+  let printableBytes = 0;
+  for (const byte of decoded) {
+    if (byte === 9 || byte === 10 || byte === 13 || (byte >= 32 && byte <= 126)) {
+      printableBytes++;
+    }
+  }
+
+  return printableBytes / decoded.length < 0.65;
 }
 
 function extractProject(session: QoderChatSession): string {

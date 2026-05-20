@@ -144,7 +144,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 16;
+  const targetVersion = 17;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -580,6 +580,10 @@ export function runMigrations(): void {
         CREATE INDEX IF NOT EXISTS idx_sessions_source_started_at ON sessions(source, started_at DESC);
         CREATE INDEX IF NOT EXISTS idx_sessions_source_agent_name ON sessions(source, agent_name)
       `,
+    },
+    {
+      desc: 'Invalidate Qoder parser cache to backfill plaintext history content',
+      sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'qoder'",
     },
   ];
 
