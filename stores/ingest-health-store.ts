@@ -24,6 +24,7 @@ interface IngestHealthState {
   status: 'checking' | 'connected' | 'timeout'
   /** True once a successful connection has been established at least once */
   hasConnectedOnce: boolean
+  hydrateConnectedOnce: () => void
   retry: () => void
   setConnected: () => void
   setTimeout: () => void
@@ -31,7 +32,8 @@ interface IngestHealthState {
 
 export const useIngestHealthStore = create<IngestHealthState>((set) => ({
   status: 'checking',
-  hasConnectedOnce: readHasConnectedOnce(),
+  hasConnectedOnce: false,
+  hydrateConnectedOnce: () => set({ hasConnectedOnce: readHasConnectedOnce() }),
   retry: () => set({ status: 'checking' }),
   setConnected: () => {
     writeHasConnectedOnce()

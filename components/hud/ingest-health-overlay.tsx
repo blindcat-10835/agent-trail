@@ -17,6 +17,7 @@ export function IngestHealthOverlay() {
   const retry = useIngestHealthStore((s) => s.retry)
   const setConnected = useIngestHealthStore((s) => s.setConnected)
   const setTimeout_ = useIngestHealthStore((s) => s.setTimeout)
+  const hydrateConnectedOnce = useIngestHealthStore((s) => s.hydrateConnectedOnce)
 
   const startedAtRef = useRef<number>(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -80,6 +81,7 @@ export function IngestHealthOverlay() {
   }, [status, startPolling, stopPolling])
 
   useEffect(() => {
+    hydrateConnectedOnce()
     retry()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
