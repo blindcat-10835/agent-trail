@@ -47,7 +47,7 @@ export interface QoderParseOptions {
 }
 
 interface QoderChatSession {
-  id: string;
+  session_id: string;
   session_title: string | null;
   project_id: string | null;
   project_uri: string | null;
@@ -65,9 +65,8 @@ interface QoderChatSession {
 }
 
 interface QoderChatRecord {
-  id: string;
+  request_id: string;
   session_id: string;
-  request_id: string | null;
   question: string | null;
   answer: string | null;
   reasoning_content: string | null;
@@ -78,17 +77,17 @@ interface QoderChatRecord {
 interface QoderChatMessage {
   id: string;
   session_id: string;
-  record_id: string | null;
+  request_id: string | null;
   role: string;
   content: string | null;
   summary: string | null;
   gmt_create: number;
   model_info: string | null;
   token_info: string | null;
-  tool_calls: string | null;
-  tool_call_id: string | null;
+  tool_calls?: string | null;
+  tool_call_id?: string | null;
   tool_result: string | null;
-  tool_call_status: string | null;
+  tool_call_status?: string | null;
   extra: string | null;
 }
 
@@ -152,6 +151,10 @@ export function inferQoderToolCategory(toolName: string): ToolCategory {
     case 'grep_code':
     case 'search_codebase':
       return 'Grep';
+    case 'create_file':
+    case 'delete_file':
+    case 'search_replace':
+      return 'Edit';
     case 'run_in_terminal':
       return 'Bash';
     case 'Agent':
@@ -204,7 +207,7 @@ function epochToIso(epochMs: number | null): string | null {
  * Privacy: only ONE new Database() call; no writes to Qoder DB.
  *
  * @param dbPath - Path to the Qoder SQLite database file
- * @param rawSessionId - The raw session ID from chat_session.id
+ * @param rawSessionId - The raw session ID from chat_session.session_id
  * @param options - Optional parse options
  * @returns ParseResult with canonical session, messages, activities
  */
@@ -243,7 +246,7 @@ export async function parseQoderSession(
     let sessionRow: QoderChatSession | undefined;
     try {
       sessionRow = withRetry(() =>
-        db.prepare('SELECT * FROM chat_session WHERE id = ?').get(rawSessionId)
+        db.prepare('SELECT * FROM chat_session WHERE session_id = ?').get(rawSessionId)
       ) as QoderChatSession | undefined;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -286,10 +289,12 @@ export async function parseQoderSession(
       warnings.push(`Failed to load records for session ${rawSessionId}: ${msg}`);
     }
 
-    // Build record_id → record lookup for model fallback
-    const recordById = new Map<string, QoderChatRecord>();
+    // Build request_id → record lookup for model fallback.
+    // Real Qoder DBs use request_id as chat_record's primary key and the
+    // chat_message join key; there is no chat_message.record_id column.
+    const recordByRequestId = new Map<string, QoderChatRecord>();
     for (const rec of records) {
-      recordById.set(rec.id, rec);
+      recordByRequestId.set(rec.request_id, rec);
     }
 
     // ------------------------------------------------------------------
@@ -387,8 +392,8 @@ export async function parseQoderSession(
             // ignore malformed model_info
           }
         }
-        if (!msgModel && msg.record_id) {
-          const record = recordById.get(msg.record_id);
+        if (!msgModel && msg.request_id) {
+          const record = recordByRequestId.get(msg.request_id);
           if (record?.extra) {
             try {
               const extra = JSON.parse(record.extra) as { modelConfig?: { key?: string } };
@@ -460,13 +465,18 @@ export async function parseQoderSession(
         }
 
         // Find matching pending tool call
-        // Priority: match by msg.tool_call_id, then by parsedResult.toolCallId
-        let matchedToolCallId = msg.tool_call_id || parsedResult?.toolCallId || null;
+        // Real Qoder DBs keep tool call identity inside tool_result JSON.
+        // Older synthetic fixtures also had tool_call_id columns, so keep that
+        // as a compatibility fallback.
+        let matchedToolCallId = parsedResult?.toolCallId || msg.tool_call_id || null;
+        if (!matchedToolCallId && isMalformed) {
+          matchedToolCallId = `qoder-tool:${msg.id}`;
+        }
         let matchedToolCall = matchedToolCallId ? pendingToolCalls.get(matchedToolCallId) : undefined;
 
         if (matchedToolCall) {
           // Determine status
-          const statusStr = msg.tool_call_status || parsedResult?.toolCallStatus || 'FINISHED';
+          const statusStr = parsedResult?.toolCallStatus || msg.tool_call_status || 'FINISHED';
           const isError = statusStr === 'ERROR';
 
           matchedToolCall.status = isError ? 'error' : 'success';
@@ -480,7 +490,7 @@ export async function parseQoderSession(
             matchedToolCall.error = resultContent;
           } else {
             // Serialize results array
-            const results = parsedResult?.results || [];
+            const results = Array.isArray(parsedResult?.results) ? parsedResult.results : [];
             resultContent = results.map(r => r.text || JSON.stringify(r)).join('\n');
           }
 
@@ -494,7 +504,7 @@ export async function parseQoderSession(
         } else if (matchedToolCallId) {
           // Tool result without a matching tool call — create an ad-hoc one
           const toolName = parsedResult?.toolCallName || 'unknown';
-          const statusStr = msg.tool_call_status || parsedResult?.toolCallStatus || 'FINISHED';
+          const statusStr = parsedResult?.toolCallStatus || msg.tool_call_status || 'FINISHED';
           const isError = statusStr === 'ERROR';
           hasToolCalls = true;
 
@@ -518,7 +528,9 @@ export async function parseQoderSession(
             ? (msg.tool_result || '')
             : isError
               ? (parsedResult?.errorMsg || parsedResult?.error || 'Tool call failed')
-              : (parsedResult?.results || []).map(r => r.text || JSON.stringify(r)).join('\n');
+              : (Array.isArray(parsedResult?.results) ? parsedResult.results : [])
+                  .map(r => r.text || JSON.stringify(r))
+                  .join('\n');
 
           toolCall.resultEvents.push({
             type: 'result_event',
@@ -561,27 +573,25 @@ export async function parseQoderSession(
           // Find the parent's message ordering and locate the tool call
           const parentMsgs = withRetry(() =>
             db.prepare(
-              'SELECT id, tool_call_id FROM chat_message WHERE session_id = ? AND role = \'tool\' ORDER BY gmt_create, id'
-            ).all(sessionRow.parent_session_id)
-          ) as Array<{ id: string; tool_call_id: string | null }>;
+              `SELECT id
+               FROM chat_message
+               WHERE session_id = ?
+                 AND role = 'tool'
+                 AND tool_result IS NOT NULL
+                 AND json_valid(tool_result)
+                 AND json_extract(tool_result, '$.toolCallId') = ?
+               ORDER BY gmt_create, id`
+            ).all(sessionRow.parent_session_id, sessionRow.parent_tool_call_id)
+          ) as Array<{ id: string }>;
 
-          // Find matching tool message
-          let foundIdx = -1;
-          for (let i = 0; i < parentMsgs.length; i++) {
-            if (parentMsgs[i].tool_call_id === sessionRow.parent_tool_call_id) {
-              foundIdx = i;
-              break;
-            }
-          }
-
-          if (foundIdx >= 0) {
+          if (parentMsgs.length > 0) {
             // Count all messages before this tool message to get the ordinal
             const allParentMsgs = withRetry(() =>
               db.prepare('SELECT id FROM chat_message WHERE session_id = ? ORDER BY gmt_create, id')
                 .all(sessionRow.parent_session_id)
             ) as Array<{ id: string }>;
 
-            const toolMsgId = parentMsgs[foundIdx].id;
+            const toolMsgId = parentMsgs[0].id;
             let idx = allParentMsgs.findIndex(m => m.id === toolMsgId);
             if (idx >= 0) {
               parentMessageOrdinal = idx;
@@ -626,7 +636,12 @@ export async function parseQoderSession(
       parentSessionId: sessionRow.parent_session_id
         ? `qoder:${sessionRow.parent_session_id}`
         : undefined,
+      rootSessionId: sessionRow.parent_session_id
+        ? `qoder:${sessionRow.parent_session_id}`
+        : `qoder:${rawSessionId}`,
       relationshipType: sessionRow.parent_session_id ? 'subagent' : 'root',
+      sourceVersion: sessionRow.version == null ? undefined : String(sessionRow.version),
+      agentName: sessionRow.session_type || sessionRow.mode || undefined,
       model: resolvedModel,
       metrics: {
         messageCount: chatMessages.length,

@@ -146,6 +146,16 @@ export interface WriteSessionOptions {
    * Used when a parser fix has been applied and existing indexed sessions must be rebuilt.
    */
   force?: boolean;
+  /**
+   * Precomputed parser cache key to persist in sessions.file_hash.
+   * SQLite-backed sources use per-session fingerprints rather than file bytes.
+   */
+  cacheFileHash?: string;
+  /**
+   * Real filesystem path used only for file_size/file_mtime when sourceFile is
+   * a logical path such as "/path/local.db#session_id".
+   */
+  sourceFileStatsPath?: string;
 }
 
 function getSessionTokenTotals(parseResult: ParseResult): {
@@ -987,14 +997,17 @@ export function writeSessionToDatabase(
     let fileMtime: string | null = null;
     const lastSyncAt = new Date().toISOString();
     if (sourceFile) {
-      fileHash = computeFileHash(sourceFile);
-      const stats = fs.statSync(sourceFile);
+      const statsPath = options?.sourceFileStatsPath ?? sourceFile;
+      if (!options?.cacheFileHash) {
+        fileHash = computeFileHash(sourceFile);
+      }
+      const stats = fs.statSync(statsPath);
       fileSize = stats.size;
       fileMtime = new Date(stats.mtimeMs).toISOString();
     }
-    const cacheFileHash = fileHash
+    const cacheFileHash = options?.cacheFileHash ?? (fileHash
       ? buildParserCacheHash(parseResult.session.source, fileHash)
-      : null;
+      : null);
 
     // Check if session already exists
     const existing = database.prepare(
@@ -1949,24 +1962,51 @@ async function parseFullCandidate(
     return;
   }
 
+  // Qoder uses session-keyed rows from a SQLite database, not one JSONL file
+  // per session. This fallback supports logical candidates shaped as
+  // "<dbPath>#<rawSessionId>"; normal Qoder sync goes through syncQoderSource.
+  if (sourceType === 'qoder') {
+    const { parseQoderSession, computeQoderSessionFingerprint } = await import('../parser/qoder');
+    const [dbPath, rawSessionIdFromPath] = filePath.split('#');
+    const qoderSessionId = rawSessionIdFromPath || path.basename(filePath, path.extname(filePath));
+    const qoderResult = await parseQoderSession(dbPath, qoderSessionId);
+    recordFileParsed(totalResult, 'full');
+
+    let fingerprintRow: { gmt_modified: number; msg_count: number; max_msg_gmt: number | null } | undefined;
+    let qoderDb: Database.Database | null = null;
+    try {
+      qoderDb = new Database(dbPath, { readonly: true, fileMustExist: true });
+      fingerprintRow = qoderDb.prepare(
+        `SELECT gmt_modified,
+                (SELECT COUNT(*) FROM chat_message m WHERE m.session_id = chat_session.session_id) AS msg_count,
+                (SELECT MAX(gmt_create) FROM chat_message m WHERE m.session_id = chat_session.session_id) AS max_msg_gmt
+         FROM chat_session
+         WHERE session_id = ?`
+      ).get(qoderSessionId) as { gmt_modified: number; msg_count: number; max_msg_gmt: number | null } | undefined;
+    } finally {
+      qoderDb?.close();
+    }
+
+    const fingerprint = computeQoderSessionFingerprint({
+      id: qoderSessionId,
+      gmt_modified: fingerprintRow?.gmt_modified ?? 0,
+      msg_count: fingerprintRow?.msg_count ?? qoderResult.messages.length,
+      max_msg_gmt: fingerprintRow?.max_msg_gmt ?? null,
+    });
+    const writeResult = writeSessionToDatabase(qoderResult, undefined, filePath, {
+      force: opts.force,
+      cacheFileHash: buildParserCacheHash('qoder', fingerprint),
+      sourceFileStatsPath: dbPath,
+    });
+    mergeSyncResult(totalResult, writeResult);
+    return;
+  }
+
   const { parseCodexSession } = await import('../parser/codex');
   const parseResult = await parseCodexSession(filePath, candidate.project);
   recordFileParsed(totalResult, 'full');
   applyCodexRelationshipToSession(parseResult, relationshipsByChild);
   parseResult.session.name = extractSessionName(parseResult);
-
-  // Qoder dispatch — delegates to syncQoderSource; parseFullCandidate is not
-  // the primary entry for Qoder (it uses session-keyed iteration, not file-keyed).
-  // This branch handles the edge case where parseFullCandidate is called directly.
-  if (sourceType === 'qoder') {
-    const { parseQoderSession } = await import('../parser/qoder');
-    const qoderSessionId = path.basename(filePath, path.extname(filePath));
-    const qoderResult = await parseQoderSession(filePath, qoderSessionId);
-    recordFileParsed(totalResult, 'full');
-    const writeResult = writeSessionToDatabase(qoderResult, undefined, filePath, { force: opts.force });
-    mergeSyncResult(totalResult, writeResult);
-    return;
-  }
   parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
   const writeResult = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
   if (writeResult.errors.length === 0) {
@@ -2446,20 +2486,21 @@ async function syncQoderSource(opts: SyncSourceOptions): Promise<SyncResult> {
       // Enumerate sessions with fingerprint metadata
       const sessionRows = withSyncRetry(() =>
         db!.prepare(
-          `SELECT id, gmt_modified,
-                  (SELECT COUNT(*) FROM chat_message m WHERE m.session_id = chat_session.id) AS msg_count,
-                  (SELECT MAX(gmt_create) FROM chat_message m WHERE m.session_id = chat_session.id) AS max_msg_gmt
+          `SELECT session_id, gmt_modified,
+                  (SELECT COUNT(*) FROM chat_message m WHERE m.session_id = chat_session.session_id) AS msg_count,
+                  (SELECT MAX(gmt_create) FROM chat_message m WHERE m.session_id = chat_session.session_id) AS max_msg_gmt
            FROM chat_session ORDER BY gmt_modified DESC`
         ).all()
-      ) as Array<{ id: string; gmt_modified: number; msg_count: number; max_msg_gmt: number | null }>;
+      ) as Array<{ session_id: string; gmt_modified: number; msg_count: number; max_msg_gmt: number | null }>;
 
       const database = getDatabase();
 
       for (const row of sessionRows) {
         try {
+          const rawSessionId = row.session_id;
           // Compute per-session fingerprint (D-03)
           const fingerprint = computeQoderSessionFingerprint({
-            id: row.id,
+            id: rawSessionId,
             gmt_modified: row.gmt_modified,
             msg_count: row.msg_count,
             max_msg_gmt: row.max_msg_gmt,
@@ -2467,7 +2508,7 @@ async function syncQoderSource(opts: SyncSourceOptions): Promise<SyncResult> {
           const cacheKey = buildParserCacheHash('qoder', fingerprint);
 
           // Check skip cache — compare with existing file_hash (D-03)
-          const canonicalId = `qoder:${row.id}`;
+          const canonicalId = `qoder:${rawSessionId}`;
           const existing = database.prepare(
             'SELECT file_hash FROM sessions WHERE id = ?'
           ).get(canonicalId) as { file_hash: string | null } | undefined;
@@ -2478,25 +2519,32 @@ async function syncQoderSource(opts: SyncSourceOptions): Promise<SyncResult> {
           }
 
           // Parse the session
-          const parseResult = await parseQoderSession(source.path, row.id, { force: opts.force });
+          const parseResult = await parseQoderSession(source.path, rawSessionId, { force: opts.force });
 
-          // Write through canonical pipeline (without sourceFile — we set file_hash separately)
-          const filePath = `${source.path}#${row.id}`;
-          const writeResult = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
+          // Write through canonical pipeline with a logical per-session file path.
+          // The cache key is the Qoder session fingerprint, not a whole-DB hash.
+          const filePath = `${source.path}#${rawSessionId}`;
+          const writeResult = writeSessionToDatabase(parseResult, undefined, filePath, {
+            force: opts.force,
+            cacheFileHash: cacheKey,
+            sourceFileStatsPath: source.path,
+          });
 
-          // Update file_hash with the fingerprint-based cache key for future skip checks
-          database.prepare(
-            'UPDATE sessions SET file_hash = ? WHERE id = ?'
-          ).run(cacheKey, canonicalId);
+          if (writeResult.errors.length === 0) {
+            // Defensive backstop for existing rows written before cacheFileHash support.
+            database.prepare(
+              'UPDATE sessions SET file_hash = ? WHERE id = ?'
+            ).run(cacheKey, canonicalId);
+          }
 
           mergeSyncResult(totalResult, writeResult);
 
           // Track warnings from parser
           for (const w of parseResult.warnings) {
-            totalResult.errors.push(`Qoder parser warning [${row.id}]: ${w}`);
+            totalResult.errors.push(`Qoder parser warning [${rawSessionId}]: ${w}`);
           }
         } catch (err) {
-          totalResult.errors.push(`Failed to parse Qoder session ${row.id}: ${err}`);
+          totalResult.errors.push(`Failed to parse Qoder session ${row.session_id}: ${err}`);
         }
       }
     } catch (err) {

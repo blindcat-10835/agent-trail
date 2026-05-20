@@ -135,6 +135,15 @@ describe('parseQoderSession', () => {
   });
 
   describe('token attribution (SPEC §8)', () => {
+    it('resolves assistant and session model from chat_record.extra via request_id', async () => {
+      const result = await parseQoderSession(FIXTURE_PATH, ROOT_SESSION_ID);
+      const assistant = result.messages.find((msg) => msg.role === 'assistant');
+
+      expect(assistant).toBeDefined();
+      expect(assistant!.model).toBe('experts-ultimate');
+      expect(result.session.model).toBe('experts-ultimate');
+    });
+
     it('computes totalTokens = prompt_tokens + completion_tokens ONLY', async () => {
       const result = await parseQoderSession(FIXTURE_PATH, ROOT_SESSION_ID);
 
@@ -151,20 +160,18 @@ describe('parseQoderSession', () => {
       expect(metrics.totalTokens).not.toBe(240);
     });
 
-    it('session-level totals match per-message sums', async () => {
+    it('message token usage and session totals match', async () => {
       const result = await parseQoderSession(FIXTURE_PATH, ROOT_SESSION_ID);
+      const assistant = result.messages.find((msg) => msg.role === 'assistant');
 
-      // Walk messages and sum token usage
-      let sumInput = 0;
-      let sumOutput = 0;
-      let sumCacheRead = 0;
-      let sumTotal = 0;
-
-      for (const msg of result.messages) {
-        // Token usage is only on assistant messages in our fixture
-        // The messages array doesn't carry tokenUsage directly in TraceMessage
-        // — it's in the session.metrics
-      }
+      expect(assistant?.tokenUsage).toEqual({
+        inputTokens: 120,
+        outputTokens: 80,
+        cacheReadTokens: 40,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 200,
+      });
 
       // Session metrics reflect the sum of all assistant message token_info
       expect(result.session.metrics.inputTokens).toBe(120);
@@ -286,6 +293,12 @@ describe('inferQoderToolCategory', () => {
 
   it('maps run_in_terminal to Bash', () => {
     expect(inferQoderToolCategory('run_in_terminal')).toBe('Bash');
+  });
+
+  it('maps mutating file tools to Edit', () => {
+    expect(inferQoderToolCategory('create_file')).toBe('Edit');
+    expect(inferQoderToolCategory('delete_file')).toBe('Edit');
+    expect(inferQoderToolCategory('search_replace')).toBe('Edit');
   });
 
   it('maps Agent to Agent', () => {

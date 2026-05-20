@@ -13,7 +13,7 @@
  *   (a) 1 root session (session_type='task', no parent_session_id)
  *   (b) 1 subagent session (linked by parent_session_id + parent_tool_call_id)
  *   (c) 7 tool messages on root, one per observed Qoder tool
- *   (d) 1 tool message with tool_call_status='ERROR' (run_in_terminal)
+ *   (d) 1 tool message with tool_result.toolCallStatus='ERROR' (run_in_terminal)
  *   (e) 1 assistant message with full token_info (prompt/completion/cached/max_input)
  *   (f) 1 user message with realistic content
  *   (g) 1 tool message with malformed tool_result JSON
@@ -22,7 +22,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 // ============================================================================
@@ -70,6 +70,7 @@ export interface SessionManifest {
  */
 export function buildQoderFixture(outPath: string): { sessions: SessionManifest[] } {
   mkdirSync(dirname(outPath), { recursive: true });
+  rmSync(outPath, { force: true });
 
   const db = new Database(outPath);
 
@@ -81,7 +82,9 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
   // ========================================================================
   db.exec(`
     CREATE TABLE IF NOT EXISTS chat_session (
-      id TEXT PRIMARY KEY,
+      session_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
       session_title TEXT,
       project_id TEXT,
       project_uri TEXT,
@@ -99,30 +102,29 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     );
 
     CREATE TABLE IF NOT EXISTS chat_record (
-      id TEXT PRIMARY KEY,
+      request_id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
-      request_id TEXT,
+      chat_task TEXT,
+      chat_context TEXT,
       question TEXT,
       answer TEXT,
       reasoning_content TEXT,
       gmt_create INTEGER NOT NULL,
+      gmt_modified INTEGER,
       extra TEXT
     );
 
     CREATE TABLE IF NOT EXISTS chat_message (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
-      record_id TEXT,
+      request_id TEXT,
       role TEXT NOT NULL,
       content TEXT,
       summary TEXT,
       gmt_create INTEGER NOT NULL,
       model_info TEXT,
       token_info TEXT,
-      tool_calls TEXT,
-      tool_call_id TEXT,
       tool_result TEXT,
-      tool_call_status TEXT,
       extra TEXT
     );
   `);
@@ -146,12 +148,14 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
   // Root session
   // ========================================================================
   db.prepare(`
-    INSERT INTO chat_session (id, session_title, project_id, project_uri, project_name,
+    INSERT INTO chat_session (session_id, user_id, user_name, session_title, project_id, project_uri, project_name,
       gmt_create, gmt_modified, session_type, mode, version,
       preferred_model_info, stop_reason, extra, parent_session_id, parent_tool_call_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     ROOT_SESSION_ID,
+    'user-fixture-001',
+    'Fixture User',
     'Qoder fixture root session',
     'proj-fixture-001',
     'file:///home/user/project',
@@ -170,17 +174,19 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
 
   // Root session record
   db.prepare(`
-    INSERT INTO chat_record (id, session_id, request_id, question, answer, reasoning_content,
-      gmt_create, extra)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_record (request_id, session_id, chat_task, chat_context, question, answer, reasoning_content,
+      gmt_create, gmt_modified, extra)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     ROOT_RECORD_ID,
     ROOT_SESSION_ID,
-    'req-root-001',
+    'task-root-001',
+    null,
     'Show me the main entry point of this project',
     null,
     null,
     T0,
+    T10,
     JSON.stringify({
       modelConfig: { key: 'experts-ultimate' },
       ideModelConfigOverride: { max_input_tokens: 200000, reasoning_effort: 'high' },
@@ -193,7 +199,7 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
 
   // (f) User message
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(
     USER_MSG_ID,
@@ -206,9 +212,9 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
 
   // (e) Assistant message with full token_info
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      model_info, token_info, tool_calls)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      model_info, token_info)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     ASSISTANT_MSG_ID,
     ROOT_SESSION_ID,
@@ -216,32 +222,22 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     'assistant',
     'I will look at the project structure to find the main entry point.',
     T2,
-    JSON.stringify({ model_key: 'experts-ultimate' }),
+    null,
     JSON.stringify({
       prompt_tokens: 120,
       completion_tokens: 80,
       cached_tokens: 40,
       max_input_tokens: 200000,
-    }),
-    // Tool calls embedded in assistant message
-    JSON.stringify([
-      { toolCallId: TC_READ_FILE, name: 'read_file', parameters: { file_path: '/src/index.ts' } },
-      { toolCallId: TC_SEARCH_FILE, name: 'search_file', parameters: { query: 'main', path: '/src' } },
-      { toolCallId: TC_GREP_CODE, name: 'grep_code', parameters: { pattern: 'entry', path: '/src' } },
-      { toolCallId: TC_SEARCH_CODEBASE, name: 'search_codebase', parameters: { query: 'entry point' } },
-      { toolCallId: TC_LIST_DIR, name: 'list_dir', parameters: { path: '/src' } },
-      { toolCallId: TC_RUN_TERMINAL, name: 'run_in_terminal', parameters: { command: 'ls -la' } },
-      { toolCallId: TC_AGENT, name: 'Agent', parameters: { task: 'search deeper' } },
-    ])
+    })
   );
 
   // (c) Tool result messages — 7 tools, one per observed Qoder tool
 
   // read_file — FINISHED
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      tool_call_id, tool_result, tool_call_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      tool_result)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     TOOL_READ_FILE_MSG_ID,
     ROOT_SESSION_ID,
@@ -249,22 +245,20 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     'tool',
     null,
     T3,
-    TC_READ_FILE,
     JSON.stringify({
       toolCallId: TC_READ_FILE,
       toolCallName: 'read_file',
       toolCallStatus: 'FINISHED',
       parameters: { file_path: '/src/index.ts' },
       results: [{ type: 'text', text: 'export function main() { /* entry point */ }' }],
-    }),
-    'FINISHED'
+    })
   );
 
   // search_file — FINISHED
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      tool_call_id, tool_result, tool_call_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      tool_result)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     TOOL_SEARCH_FILE_MSG_ID,
     ROOT_SESSION_ID,
@@ -272,22 +266,20 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     'tool',
     null,
     T4,
-    TC_SEARCH_FILE,
     JSON.stringify({
       toolCallId: TC_SEARCH_FILE,
       toolCallName: 'search_file',
       toolCallStatus: 'FINISHED',
       parameters: { query: 'main', path: '/src' },
       results: [{ type: 'text', text: 'Found 3 files matching "main"' }],
-    }),
-    'FINISHED'
+    })
   );
 
   // grep_code — FINISHED
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      tool_call_id, tool_result, tool_call_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      tool_result)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     TOOL_GREP_CODE_MSG_ID,
     ROOT_SESSION_ID,
@@ -295,22 +287,20 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     'tool',
     null,
     T5,
-    TC_GREP_CODE,
     JSON.stringify({
       toolCallId: TC_GREP_CODE,
       toolCallName: 'grep_code',
       toolCallStatus: 'FINISHED',
       parameters: { pattern: 'entry', path: '/src' },
       results: [{ type: 'text', text: 'src/index.ts:1:export function main()' }],
-    }),
-    'FINISHED'
+    })
   );
 
   // search_codebase — FINISHED
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      tool_call_id, tool_result, tool_call_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      tool_result)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     TOOL_SEARCH_CODEBASE_MSG_ID,
     ROOT_SESSION_ID,
@@ -318,22 +308,20 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     'tool',
     null,
     T6,
-    TC_SEARCH_CODEBASE,
     JSON.stringify({
       toolCallId: TC_SEARCH_CODEBASE,
       toolCallName: 'search_codebase',
       toolCallStatus: 'FINISHED',
       parameters: { query: 'entry point' },
       results: [{ type: 'text', text: 'Found entry point in src/index.ts' }],
-    }),
-    'FINISHED'
+    })
   );
 
   // list_dir — FINISHED
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      tool_call_id, tool_result, tool_call_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      tool_result)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     TOOL_LIST_DIR_MSG_ID,
     ROOT_SESSION_ID,
@@ -341,22 +329,20 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     'tool',
     null,
     T7,
-    TC_LIST_DIR,
     JSON.stringify({
       toolCallId: TC_LIST_DIR,
       toolCallName: 'list_dir',
       toolCallStatus: 'FINISHED',
       parameters: { path: '/src' },
       results: [{ type: 'text', text: 'index.ts\nutils.ts\ncomponents/' }],
-    }),
-    'FINISHED'
+    })
   );
 
   // (d) run_in_terminal — ERROR
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      tool_call_id, tool_result, tool_call_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      tool_result)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     TOOL_RUN_TERMINAL_MSG_ID,
     ROOT_SESSION_ID,
@@ -364,7 +350,6 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     'tool',
     null,
     T8,
-    TC_RUN_TERMINAL,
     JSON.stringify({
       toolCallId: TC_RUN_TERMINAL,
       toolCallName: 'run_in_terminal',
@@ -372,15 +357,14 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
       parameters: { command: 'ls -la' },
       results: [],
       errorMsg: 'Permission denied: cannot execute ls in this context',
-    }),
-    'ERROR'
+    })
   );
 
   // Agent — FINISHED (this is the parent tool call for the subagent)
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      tool_call_id, tool_result, tool_call_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      tool_result)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     TOOL_AGENT_MSG_ID,
     ROOT_SESSION_ID,
@@ -388,22 +372,20 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     'tool',
     null,
     T9,
-    TC_AGENT,
     JSON.stringify({
       toolCallId: TC_AGENT,
       toolCallName: 'Agent',
       toolCallStatus: 'FINISHED',
       parameters: { task: 'search deeper' },
       results: [{ type: 'text', text: 'Subagent completed research task' }],
-    }),
-    'FINISHED'
+    })
   );
 
   // (g) Malformed tool_result JSON
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      tool_call_id, tool_result, tool_call_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      tool_result)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     TOOL_MALFORMED_MSG_ID,
     ROOT_SESSION_ID,
@@ -411,21 +393,21 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
     'tool',
     null,
     T9 + 500,
-    TC_MALFORMED,
-    '{not valid json',
-    'FINISHED'
+    '{not valid json'
   );
 
   // ========================================================================
   // Subagent session
   // ========================================================================
   db.prepare(`
-    INSERT INTO chat_session (id, session_title, project_id, project_uri, project_name,
+    INSERT INTO chat_session (session_id, user_id, user_name, session_title, project_id, project_uri, project_name,
       gmt_create, gmt_modified, session_type, mode, version,
       preferred_model_info, stop_reason, extra, parent_session_id, parent_tool_call_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     SUBAGENT_SESSION_ID,
+    'user-fixture-001',
+    'Fixture User',
     'Qoder fixture subagent session',
     'proj-fixture-001',
     'file:///home/user/project',
@@ -444,17 +426,19 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
 
   // Subagent record
   db.prepare(`
-    INSERT INTO chat_record (id, session_id, request_id, question, answer, reasoning_content,
-      gmt_create, extra)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_record (request_id, session_id, chat_task, chat_context, question, answer, reasoning_content,
+      gmt_create, gmt_modified, extra)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     SUBAGENT_RECORD_ID,
     SUBAGENT_SESSION_ID,
-    'req-sub-001',
+    'task-sub-001',
+    null,
     'Search deeper for entry points',
     'Found additional entry points in tests/',
     null,
     T9,
+    T10,
     JSON.stringify({
       modelConfig: { key: 'ultimate' },
     })
@@ -462,7 +446,7 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
 
   // Subagent user message
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(
     'msg-sub-user-001',
@@ -475,9 +459,9 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
 
   // Subagent assistant message (with token info)
   db.prepare(`
-    INSERT INTO chat_message (id, session_id, record_id, role, content, gmt_create,
-      model_info, token_info, tool_calls)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chat_message (id, session_id, request_id, role, content, gmt_create,
+      model_info, token_info)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     'msg-sub-asst-001',
     SUBAGENT_SESSION_ID,
@@ -491,8 +475,7 @@ export function buildQoderFixture(outPath: string): { sessions: SessionManifest[
       completion_tokens: 30,
       cached_tokens: 10,
       max_input_tokens: 200000,
-    }),
-    null // no tool calls in subagent
+    })
   );
 
   db.close();
