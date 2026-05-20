@@ -23,6 +23,25 @@ import { EmptyState } from '@/components/dashboard/empty-state'
 import type { TimeWindow } from '@/types/overview'
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+const SOURCE_LABELS: Record<string, string> = {
+  all: 'ALL SOURCES',
+  openclaw: 'OPENCLAW',
+  'claude-code': 'CLAUDE:CODE',
+  codex: 'CODEX',
+  opencode: 'OPENCODE',
+}
+
+const WINDOW_META: Record<TimeWindow, string> = {
+  today: 'TODAY',
+  '7d': '7D',
+  '30d': '30D',
+  all: 'ALL',
+}
+
+// ============================================================================
 // Component — Overview v3 layout: Hero Band → Agents → Row A → Row B
 // ============================================================================
 
@@ -46,12 +65,16 @@ export function OverviewPage() {
   const { timeline, loading: timelineLoading, error: timelineError } = useTimeline(toolId)
   const { capabilities, loading: capsLoading } = useOverviewCapabilities(toolId)
 
+  const wLabel = WINDOW_META[window] ?? '30D'
+  const srcLabel = SOURCE_LABELS[toolId] ?? toolId.toUpperCase()
+
   if (aggError && !aggLoading && !aggregates) {
     return (
       <div className={OVERVIEW_SCROLL_CLASS}>
-        {/* Time window selector */}
-        <div className="flex items-center">
+        <div className="ov3-toolbar">
           <TimeWindowSelector value={window} onChange={setWindow} />
+          <span className="ov3-toolbar-rule" />
+          <span className="ov3-toolbar-meta">SHOWING <b>{wLabel}</b> · {srcLabel}</span>
         </div>
         <KpiHero
           toolId={toolId}
@@ -74,9 +97,11 @@ export function OverviewPage() {
   return (
     <div className={OVERVIEW_SCROLL_CLASS}>
 
-      {/* ═══ TIME WINDOW SELECTOR ═══ */}
-      <div className="flex items-center">
+      {/* ═══ TIME WINDOW TOOLBAR ═══ */}
+      <div className="ov3-toolbar">
         <TimeWindowSelector value={window} onChange={setWindow} />
+        <span className="ov3-toolbar-rule" />
+        <span className="ov3-toolbar-meta">SHOWING <b>{wLabel}</b> · {srcLabel}</span>
       </div>
 
       {/* ═══ HERO BAND ═══ */}

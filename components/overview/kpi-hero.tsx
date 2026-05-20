@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
@@ -213,6 +213,53 @@ const WINDOW_LABELS: Record<TimeWindow, string> = {
   all: 'ALL',
 }
 
+// ============================================================================
+// Flicker Digit — Matrix-style character animation
+// ============================================================================
+
+function FlickerDigit({ ch, delay = 0, generation }: { ch: string; delay?: number; generation: number }) {
+  const [shown, setShown] = useState(ch)
+  useEffect(() => {
+    let alive = true
+    let iters = 0
+    const max = 3 + Math.floor(Math.random() * 3)
+    const startTimer = setTimeout(() => {
+      const tick = () => {
+        if (!alive) return
+        if (iters >= max) { setShown(ch); return }
+        setShown(String(Math.floor(Math.random() * 10)))
+        iters++
+        setTimeout(tick, 50 + Math.random() * 30)
+      }
+      tick()
+    }, delay)
+    return () => { alive = false; clearTimeout(startTimer) }
+  }, [ch, delay, generation])
+  return <span className="bn-digit">{shown}</span>
+}
+
+function TokenBigNumber({ n }: { n: number }) {
+  const formatted = n.toLocaleString('en-US')
+  const generation = n
+  let digitIdx = 0
+  return (
+    <div className="bn">
+      <div className="bn-frame">
+        <span className="bn-brk">⟨</span>
+        <div className="bn-digits">
+          {formatted.split('').map((ch, i) => {
+            if (ch === ',') return <span key={i} className="bn-sep">,</span>
+            const dIdx = digitIdx++
+            return <FlickerDigit key={i} ch={ch} delay={dIdx * 45} generation={generation} />
+          })}
+        </div>
+        <span className="bn-brk">⟩</span>
+      </div>
+      <div className="bn-label">TOKENS · TODAY</div>
+    </div>
+  )
+}
+
 function TodayTokenDisplay({
   dailyTokens,
   loading,
@@ -241,14 +288,14 @@ function TodayTokenDisplay({
 
   return (
     <HudFrame
-      label="TODAY · TOKEN USAGE"
+      label="TOKEN BURNED · TODAY"
       glow
       className="flex flex-col"
-      bodyClassName="flex-1 min-h-0 p-3"
+      bodyClassName="flex-1 min-h-0 flex flex-col"
       right={right}
     >
       {loading ? (
-        <div className="h-full flex flex-col items-center justify-center gap-3">
+        <div className="flex-1 flex flex-col items-center justify-center gap-3">
           <Skeleton className="h-14 w-40" />
           <Skeleton className="h-4 w-28" />
         </div>
@@ -257,51 +304,32 @@ function TodayTokenDisplay({
       ) : !hasData ? (
         <EmptyState heading="NO TOKEN DATA" body="No token usage recorded today." />
       ) : (
-        <div className="h-full flex flex-col items-center justify-center gap-2">
-          <div
-            className="font-bold font-mono tabular-nums leading-none"
-            style={{
-              fontSize: 52,
-              letterSpacing: '-0.035em',
-              color: 'var(--foreground)',
-              textShadow: '0 0 32px color-mix(in oklch, var(--accent) 35%, transparent)',
-            }}
-          >
-            {fmtTokens(totalTokens)}
-          </div>
-          <div
-            className="text-[9px] font-bold tracking-[0.22em] uppercase"
-            style={{ color: 'var(--accent)' }}
-          >
-            TOKENS TODAY
-          </div>
-          <div className="flex items-center gap-4 mt-1">
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="font-mono tabular-nums font-bold" style={{ fontSize: 15, color: 'oklch(0.78 0.12 220)' }}>
-                {fmtTokens(inputTokens)}
-              </span>
-              <span className="text-[8px] tracking-[0.18em] text-muted-foreground uppercase">Input</span>
+        <>
+          <TokenBigNumber n={totalTokens} />
+          {/* Sub-stats row */}
+          <div className="bn-substats pb-3 justify-center">
+            <div className="bn-substat">
+              <span className="bn-substat-val" style={{ color: 'oklch(0.78 0.12 220)' }}>{fmtTokens(inputTokens)}</span>
+              <span className="bn-substat-key">Input</span>
             </div>
-            <span className="text-muted-foreground/30 text-[10px]">/</span>
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="font-mono tabular-nums font-bold" style={{ fontSize: 15, color: 'oklch(0.78 0.15 45)' }}>
-                {fmtTokens(outputTokens)}
-              </span>
-              <span className="text-[8px] tracking-[0.18em] text-muted-foreground uppercase">Output</span>
+            <span className="bn-substat-sep">/</span>
+            <div className="bn-substat">
+              <span className="bn-substat-val" style={{ color: 'oklch(0.78 0.15 45)' }}>{fmtTokens(outputTokens)}</span>
+              <span className="bn-substat-key">Output</span>
             </div>
             {cost != null && (
               <>
-                <span className="text-muted-foreground/30 text-[10px]">/</span>
-                <div className="flex flex-col items-center gap-0.5">
-                  <span className="font-mono tabular-nums font-bold" style={{ fontSize: 15, color: 'oklch(0.75 0.17 340)' }}>
+                <span className="bn-substat-sep">/</span>
+                <div className="bn-substat">
+                  <span className="bn-substat-val" style={{ color: 'oklch(0.75 0.17 340)' }}>
                     ${cost < 0.01 ? cost.toFixed(4) : cost < 1 ? cost.toFixed(3) : cost.toFixed(2)}
                   </span>
-                  <span className="text-[8px] tracking-[0.18em] text-muted-foreground uppercase">Cost</span>
+                  <span className="bn-substat-key">Cost</span>
                 </div>
               </>
             )}
           </div>
-        </div>
+        </>
       )}
     </HudFrame>
   )

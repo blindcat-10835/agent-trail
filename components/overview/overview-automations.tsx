@@ -25,112 +25,101 @@ function relativeTime(iso: string | null): string {
   return `${Math.floor(days / 30)}mo ago`
 }
 
-function runStatusColor(status: string): string {
+function a2Color(status: string): string {
   const s = status?.toLowerCase()
-  if (s === 'running' || s === 'live') return 'var(--status-success)'
+  if (s === 'running' || s === 'live') return 'var(--status-warning)'
   if (s === 'error' || s === 'aborted') return 'var(--destructive)'
   if (s === 'paused' || s === 'disabled') return 'var(--muted-foreground)'
-  return 'var(--muted-foreground)'
+  return 'var(--status-success)'
 }
 
-function runStatusLabel(status: string): string {
+function a2StatusClass(status: string): 'ok' | 'run' | 'err' {
   const s = status?.toLowerCase()
-  if (s === 'running' || s === 'live') return 'RUN'
-  if (s === 'error' || s === 'aborted') return 'ERR'
-  if (s === 'paused' || s === 'disabled') return 'PAU'
-  return 'OK'
+  if (s === 'running' || s === 'live') return 'run'
+  if (s === 'error' || s === 'aborted') return 'err'
+  return 'ok'
+}
+
+function a2StatusText(automation: AutomationSummary): string {
+  const cls = a2StatusClass(automation.latestStatus)
+  if (cls === 'run') return '● RUN'
+  if (cls === 'err') return 'ERR'
+  return `OK · ${relativeTime(automation.lastActiveAt)}`
 }
 
 // ============================================================================
-// Automations Table Row
+// Row
 // ============================================================================
 
-function AutomRow({
-  automation,
-  showSource,
-}: {
-  automation: AutomationSummary
-  showSource: boolean
-}) {
-  const color = runStatusColor(automation.latestStatus)
-  const label = runStatusLabel(automation.latestStatus)
-  const isRun = label === 'RUN'
-  const isErr = label === 'ERR'
-  const countLabel = automation.sessionCount > 0 ? `${automation.sessionCount}x run` : 'defined'
+function AutomRow({ automation, showSource }: { automation: AutomationSummary; showSource: boolean }) {
+  const color = a2Color(automation.latestStatus)
+  const cls = a2StatusClass(automation.latestStatus)
+  const scheduleLabel = automation.schedule ? `${automation.schedule} ✱` : `${automation.sessionCount}x ✱`
 
   return (
-    <div
-      className="flex items-center gap-3 px-3.5 py-[5px] border-b last:border-b-0"
-      style={{ borderColor: 'color-mix(in oklch, var(--border) 35%, transparent)' }}
-    >
-      <span
-        className="text-[9.5px] font-mono text-muted-foreground tabular-nums shrink-0 w-[58px]"
-        title={automation.schedule}
-      >
-        {countLabel}
+    <div className="a2-row" style={{ '--a2-color': color } as React.CSSProperties}>
+      <span className="a2-cron" title={automation.schedule ?? undefined}>
+        {scheduleLabel}
       </span>
-
-      {/* Name */}
-      <span className="flex items-center gap-1.5 text-[11px] text-foreground truncate flex-1 min-w-0">
+      <span className="a2-name">
         {showSource && automation.source && (
-          <span className="text-[8px] font-bold font-mono tracking-[0.12em] text-muted-foreground uppercase shrink-0">
-            {automation.source === 'claude-code' ? 'CLAUDE' : automation.source}
+          <span style={{ fontSize: '8px', fontWeight: 700, letterSpacing: '.12em', color: 'var(--muted-foreground)', marginRight: 6 }}>
+            {automation.source === 'claude-code' ? 'CLAUDE' : automation.source.toUpperCase()}
           </span>
         )}
-        <span className="truncate" title={automation.name}>
-          {automation.name}
-        </span>
+        {automation.name}
       </span>
-
-      {/* Status */}
-      <span
-        className="text-[8.5px] font-bold font-mono tracking-[0.14em] shrink-0"
-        style={{ color }}
-      >
-        {isRun && (
-          <span
-            className="inline-block w-1 h-1 rounded-full mr-1 align-middle animate-pulse"
-            style={{ background: color }}
-          />
-        )}
-        {label}
-        {!isErr && !isRun && <span className="text-muted-foreground ml-1">· {relativeTime(automation.lastActiveAt)}</span>}
-      </span>
+      <span className={`a2-status ${cls}`}>{a2StatusText(automation)}</span>
     </div>
   )
 }
 
 // ============================================================================
-// Pixel Runner Empty State (no automations for this source)
+// Pixel Runner Empty State
 // ============================================================================
 
 function PixelRunner() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-6">
-      {/* Pixel art character */}
-      <div className="relative h-10 w-10">
+    <div className="empty-runner">
+      <div className="er-stage">
         <svg
+          className="er-char"
           viewBox="0 0 16 16"
           aria-hidden="true"
-          className="w-full h-full"
-          style={{ fill: 'var(--muted-foreground)', opacity: 0.4 }}
+          xmlns="http://www.w3.org/2000/svg"
         >
-          <rect x="6" y="2" width="4" height="3" />
-          <rect x="5" y="5" width="6" height="4" />
-          <rect x="3" y="6" width="2" height="1" />
-          <rect x="11" y="6" width="2" height="1" />
-          <rect x="5" y="9" width="2" height="3" />
-          <rect x="9" y="9" width="2" height="3" />
-          <rect x="3" y="12" width="2" height="1" />
-          <rect x="11" y="12" width="2" height="1" />
+          {/* Frame 1 — left leg forward */}
+          <g className="er-f1">
+            <rect x="6" y="1" width="4" height="3" />
+            <rect x="5" y="4" width="6" height="4" />
+            <rect x="3" y="5" width="2" height="1" />
+            <rect x="11" y="5" width="2" height="1" />
+            <rect x="5" y="8" width="2" height="3" />
+            <rect x="9" y="8" width="2" height="3" />
+            <rect x="3" y="11" width="3" height="1" />
+            <rect x="10" y="11" width="3" height="1" />
+          </g>
+          {/* Frame 2 — right leg forward */}
+          <g className="er-f2">
+            <rect x="6" y="1" width="4" height="3" />
+            <rect x="5" y="4" width="6" height="4" />
+            <rect x="3" y="5" width="2" height="1" />
+            <rect x="11" y="5" width="2" height="1" />
+            <rect x="5" y="8" width="2" height="3" />
+            <rect x="9" y="8" width="2" height="3" />
+            <rect x="4" y="11" width="3" height="1" />
+            <rect x="9" y="11" width="3" height="1" />
+          </g>
         </svg>
+        <span className="er-dust er-dust-1">·</span>
+        <span className="er-dust er-dust-2">·</span>
+        <span className="er-dust er-dust-3">·</span>
+        <div className="er-floor" />
       </div>
-      <div className="flex flex-col items-center gap-1 text-center">
-        <span className="text-[9px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
-          NO SCHEDULED TASKS HERE
-        </span>
-        <span className="text-[10px] text-muted-foreground/60 max-w-[200px] leading-relaxed">
-          This source has no automation. Cron jobs and recurring agents will surface here.
+      <div className="er-msg">
+        <span className="er-tag">NO SCHEDULED TASKS</span>
+        <span className="er-sub">
+          Cron jobs and recurring agents will surface here once configured for this source.
         </span>
       </div>
     </div>
@@ -143,12 +132,12 @@ function PixelRunner() {
 
 function AutomSkeleton() {
   return (
-    <div className="flex flex-col">
+    <div className="autom2">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="flex items-center gap-3 px-3.5 py-[5px] border-b border-border/35">
-          <Skeleton className="h-3 w-12 shrink-0" />
-          <Skeleton className="h-3 flex-1" />
-          <Skeleton className="h-3 w-10 shrink-0" />
+        <div key={i} className="a2-row" style={{ '--a2-color': 'var(--muted-foreground)' } as React.CSSProperties}>
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-12" />
         </div>
       ))}
     </div>
@@ -186,10 +175,7 @@ export function OverviewAutomations({ capabilities, toolId, capsLoading }: Overv
         background: 'color-mix(in oklch, var(--accent) 10%, transparent)',
       }}
     >
-      <span
-        className="w-1 h-1 rounded-full animate-pulse"
-        style={{ background: 'var(--accent)' }}
-      />
+      <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
       {automations.length} SCHEDULED
     </span>
   ) : (
@@ -229,7 +215,7 @@ export function OverviewAutomations({ capabilities, toolId, capsLoading }: Overv
 
   return (
     <HudFrame label={frameLabel} right={pill} bodyClassName="p-0">
-      <div className="flex flex-col">
+      <div className="autom2">
         {automations.map((autom) => (
           <AutomRow
             key={`${autom.source ?? toolId}:${autom.id ?? autom.name}`}
