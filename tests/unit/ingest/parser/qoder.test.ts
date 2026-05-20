@@ -298,6 +298,7 @@ describe('parseQoderSession', () => {
       try {
         const result = await parseQoderSession(wrappedFixturePath, ROOT_SESSION_ID);
         const userMessage = result.messages.find((msg) => msg.role === 'user');
+        const systemMessage = result.messages.find((msg) => msg.role === 'system');
 
         expect(userMessage?.content).toBe(
           '分析一下这个项目，总结一下他的功能和架构，以及在实现上有没有什么漏洞。不要更改代码或者源文件。'
@@ -305,6 +306,9 @@ describe('parseQoderSession', () => {
         expect(userMessage?.content).not.toContain('<system-reminder>');
         expect(userMessage?.content).not.toContain('<system_reminder>');
         expect(userMessage?.content).not.toContain('<user_query>');
+        expect(systemMessage?.content).toContain('[[qoder-injected-context]]');
+        expect(systemMessage?.content).toContain('<system-reminder>');
+        expect(systemMessage?.content).toContain('<user_query>');
       } finally {
         if (previousHistoryRoot == null) {
           delete process.env.QODER_HISTORY_ROOT;
@@ -364,6 +368,7 @@ describe('parseQoderSession', () => {
       try {
         const result = await parseQoderSession(commandFixturePath, ROOT_SESSION_ID);
         const userMessage = result.messages.find((msg) => msg.role === 'user');
+        const systemMessage = result.messages.find((msg) => msg.role === 'system');
 
         expect(userMessage?.content).toBe(
           '/gsd-plan-phase\n\n18\n确保cd .claude/worktrees/phase-18-qoder-source-integration并在worktree上进行变更'
@@ -371,6 +376,9 @@ describe('parseQoderSession', () => {
         expect(userMessage?.content).not.toContain('<system-reminder>');
         expect(userMessage?.content).not.toContain('<objective>');
         expect(userMessage?.content).not.toContain('Base directory');
+        expect(systemMessage?.content).toContain('[[qoder-injected-context]]');
+        expect(systemMessage?.content).toContain('<command-name>/gsd-plan-phase</command-name>');
+        expect(systemMessage?.content).toContain('<objective>internal workflow text</objective>');
       } finally {
         if (previousHistoryRoot == null) {
           delete process.env.QODER_HISTORY_ROOT;

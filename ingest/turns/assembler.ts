@@ -27,6 +27,8 @@ import {
   TurnEnrichment,
 } from '@/types/trace';
 
+const QODER_INJECTED_CONTEXT_MARKER = '[[qoder-injected-context]]\n';
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -101,11 +103,7 @@ export async function assembleTurns(
       // D-02, D-10: Non-compact system messages stored as system events
       if (currentTurn) {
         currentTurn.activities = currentTurn.activities || [];
-        currentTurn.activities.push({
-          type: 'system',
-          subtype: 'system_message',
-          content: message.content,
-        } as TraceSystemEvent);
+        currentTurn.activities.push(systemEventFromMessage(message));
       }
       continue;
     }
@@ -425,6 +423,22 @@ function parseMessageRow(row: MessageRow): TraceMessage {
   };
 }
 
+function systemEventFromMessage(message: TraceMessage): TraceSystemEvent {
+  if (message.content.startsWith(QODER_INJECTED_CONTEXT_MARKER)) {
+    return {
+      type: 'system',
+      subtype: 'qoder_injected_context',
+      content: message.content.slice(QODER_INJECTED_CONTEXT_MARKER.length),
+    };
+  }
+
+  return {
+    type: 'system',
+    subtype: message.content.toLowerCase().includes('compact') ? 'compact' : 'system_message',
+    content: message.content,
+  };
+}
+
 function tokenUsageTotal(usage: TokenUsage): number {
   if (typeof usage.totalTokens === 'number') return usage.totalTokens;
 
@@ -492,11 +506,7 @@ function assembleTurnsFromStoredBoundaries(
       );
       const systemActivities = messagesForTurn
         .filter((message) => message.role === 'system')
-        .map((message) => ({
-          type: 'system',
-          subtype: message.content.toLowerCase().includes('compact') ? 'compact' : 'system_message',
-          content: message.content,
-        }) as TraceSystemEvent);
+        .map(systemEventFromMessage);
 
       const startedAt = userMessage?.timestamp || messagesForTurn[0]?.timestamp || null;
       const endedAt =

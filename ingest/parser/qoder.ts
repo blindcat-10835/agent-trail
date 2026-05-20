@@ -120,6 +120,7 @@ interface QoderPlaintextMessage {
 const QODER_USER_QUERY_TAGS = ['user_query'];
 const QODER_COMMAND_NAME_TAGS = ['command-name', 'command_name', 'command-message', 'command_message'];
 const QODER_COMMAND_ARGS_TAGS = ['command-args', 'command_args'];
+const QODER_INJECTED_CONTEXT_MARKER = '[[qoder-injected-context]]\n';
 
 const QODER_INJECTED_CONTEXT_TAGS = [
   'attached_files',
@@ -351,15 +352,29 @@ export async function parseQoderSession(
       if (msg.role === 'user') {
         // Emit user message
         userMessageCount++;
+        const resolvedUserContent = plaintextResolver('user', msg.content);
+        const normalizedUserContent = normalizeQoderUserContent(resolvedUserContent);
         messages.push({
           id: msg.id,
           ordinal: messageOrdinal,
           role: 'user' as MessageRole,
-          content: plaintextResolver('user', msg.content),
+          content: normalizedUserContent,
           timestamp: msgTimestamp ?? undefined,
           sourceMetadata: buildSourceMetadata(dbPath, rawSessionId),
         });
         messageOrdinal++;
+
+        if (shouldPreserveQoderInjectedContext(resolvedUserContent, normalizedUserContent)) {
+          messages.push({
+            id: `${msg.id}:qoder-injected-context`,
+            ordinal: messageOrdinal,
+            role: 'system' as MessageRole,
+            content: `${QODER_INJECTED_CONTEXT_MARKER}${resolvedUserContent.trim()}`,
+            timestamp: msgTimestamp ?? undefined,
+            sourceMetadata: buildSourceMetadata(dbPath, rawSessionId),
+          });
+          messageOrdinal++;
+        }
 
       } else if (msg.role === 'assistant') {
         // Parse tool_calls JSON
@@ -673,7 +688,7 @@ export async function parseQoderSession(
       agentName: sessionRow.session_type || sessionRow.mode || undefined,
       model: resolvedModel,
       metrics: {
-        messageCount: chatMessages.length,
+        messageCount: messages.length,
         userMessageCount,
         inputTokens: totalInputTokens || undefined,
         outputTokens: totalOutputTokens || undefined,
@@ -909,8 +924,7 @@ function createPlaintextResolver(historyMessages: QoderPlaintextMessage[]) {
 
   return (role: QoderPlaintextMessage['role'], rawContent: string | null | undefined): string => {
     const plaintextContent = queues[role].shift();
-    const content = plaintextContent != null ? plaintextContent : sanitizeQoderContent(rawContent);
-    return role === 'user' ? normalizeQoderUserContent(content) : content;
+    return plaintextContent != null ? plaintextContent : sanitizeQoderContent(rawContent);
   };
 }
 
@@ -937,6 +951,24 @@ function normalizeQoderUserContent(content: string): string {
     .trim();
 
   return stripped || content.trim();
+}
+
+function shouldPreserveQoderInjectedContext(originalContent: string, normalizedContent: string): boolean {
+  const original = originalContent.trim();
+  if (!original || original === normalizedContent.trim()) return false;
+  return hasTaggedText(original, [
+    ...QODER_USER_QUERY_TAGS,
+    ...QODER_COMMAND_NAME_TAGS,
+    ...QODER_COMMAND_ARGS_TAGS,
+    ...QODER_INJECTED_CONTEXT_TAGS,
+  ]);
+}
+
+function hasTaggedText(content: string, tagNames: string[]): boolean {
+  return tagNames.some((tagName) => {
+    const pattern = new RegExp(`<${escapeRegExp(tagName)}\\b[^>]*>[\\s\\S]*?<\\/${escapeRegExp(tagName)}>`, 'i');
+    return pattern.test(content);
+  });
 }
 
 function extractFirstTaggedText(content: string, tagNames: string[]): string | null {

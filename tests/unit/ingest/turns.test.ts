@@ -234,6 +234,32 @@ describe('turn assembler', () => {
       );
       expect(systemActivity).toBeDefined();
     });
+
+    it('should expose Qoder injected context as a dedicated system event subtype', async () => {
+      const { assembleTurns } = await import('@/ingest/turns/assembler');
+      const sessionId = 'test-qoder-context';
+
+      insertMessage(db, sessionId, 0, 'user', '分析一下这个项目', '2024-01-01T00:00:00Z');
+      insertMessage(
+        db,
+        sessionId,
+        1,
+        'system',
+        '[[qoder-injected-context]]\n<system-reminder>respond in 中文</system-reminder>',
+        '2024-01-01T00:00:01Z'
+      );
+      insertMessage(db, sessionId, 2, 'assistant', '分析结果', '2024-01-01T00:00:02Z');
+
+      const turns = await assembleTurns(sessionId, db);
+      const qoderContext = turns[0].activities.find(
+        (activity) => activity.type === 'system' && activity.subtype === 'qoder_injected_context'
+      );
+
+      expect(qoderContext).toBeDefined();
+      expect(qoderContext?.type).toBe('system');
+      if (qoderContext?.type !== 'system') throw new Error('Expected system activity');
+      expect(qoderContext.content).toBe('<system-reminder>respond in 中文</system-reminder>');
+    });
   });
 
   describe('queued command merging (D-05)', () => {
