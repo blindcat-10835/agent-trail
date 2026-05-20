@@ -481,6 +481,45 @@ describe('overview endpoints', () => {
       expect(day).toMatchObject({ sessionCount: 3, totalTokens: 12300 });
     });
 
+    it('returns all recorded token days for the all-time overview window', async () => {
+      const res = await app.request('/api/v1/overview/daily-tokens?window=all');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const today = new Date().toISOString().slice(0, 10);
+      const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+      const fifteenDaysAgo = new Date(Date.now() - 15 * 86400000).toISOString().slice(0, 10);
+      const fortyDaysAgo = new Date(Date.now() - 40 * 86400000).toISOString().slice(0, 10);
+
+      const byDate = new Map(
+        body.days.map((day: { date: string; sessionCount: number; totalTokens: number }) => [day.date, day]),
+      );
+
+      expect(body.days.map((day: { date: string }) => day.date)).toEqual([
+        fortyDaysAgo,
+        fifteenDaysAgo,
+        fiveDaysAgo,
+        today,
+      ]);
+      expect(byDate.get(fortyDaysAgo)).toMatchObject({ sessionCount: 1, totalTokens: 6000 });
+      expect(byDate.get(today)).toMatchObject({ sessionCount: 2, totalTokens: 11000 });
+    });
+
+    it('filters all-time daily token totals by source', async () => {
+      const res = await app.request('/api/v1/overview/daily-tokens?source=codex&window=all');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const fortyDaysAgo = new Date(Date.now() - 40 * 86400000).toISOString().slice(0, 10);
+
+      expect(body.days).toHaveLength(1);
+      expect(body.days[0]).toMatchObject({
+        date: fortyDaysAgo,
+        sessionCount: 1,
+        totalTokens: 6000,
+      });
+    });
+
     it('supports a bounded custom day count', async () => {
       const res = await app.request('/api/v1/overview/daily-tokens?days=7');
       expect(res.status).toBe(200);
@@ -495,6 +534,11 @@ describe('overview endpoints', () => {
 
     it('returns 400 for invalid days', async () => {
       const res = await app.request('/api/v1/overview/daily-tokens?days=999');
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 for unsupported daily token windows', async () => {
+      const res = await app.request('/api/v1/overview/daily-tokens?window=30d');
       expect(res.status).toBe(400);
     });
   });

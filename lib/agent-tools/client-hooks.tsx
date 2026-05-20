@@ -1000,15 +1000,15 @@ export function useOverviewAggregates(toolId: AgentToolId, window: TimeWindow) {
 /**
  * Hook: Fetch daily token usage for a tool via BFF proxy.
  *
- * Returns zero-filled day buckets for the requested recent day count.
- * Re-fetches when toolId or days changes.
+ * Returns zero-filled day buckets for bounded recent windows, or all recorded
+ * token days for the all-time window. Re-fetches when toolId or window changes.
  *
  * @param toolId - Current tool from AgentToolProvider
- * @param days - Number of recent days to load
+ * @param window - Time window for daily token usage
  * @returns { dailyTokens, loading, error }
  */
-export function useDailyTokens(toolId: AgentToolId, days: number = 30) {
-  const requestKey = `${toolId}:${days}`
+export function useDailyTokens(toolId: AgentToolId, window: TimeWindow = '30d') {
+  const requestKey = `${toolId}:${window}`
   const [state, setState] = useState<{
     requestKey: string
     dailyTokens: DailyTokensResponse['days']
@@ -1023,8 +1023,12 @@ export function useDailyTokens(toolId: AgentToolId, days: number = 30) {
 
   useEffect(() => {
     let cancelled = false
+    const query: Record<string, string> =
+      window === 'all'
+        ? { window: 'all' }
+        : { days: String(window === 'today' ? 1 : window === '7d' ? 7 : 30) }
 
-    fetchToolApi<DailyTokensResponse>(toolId, '/overview/daily-tokens', { days: String(days) })
+    fetchToolApi<DailyTokensResponse>(toolId, '/overview/daily-tokens', query)
       .then((data) => {
         if (cancelled) return
         setState({
@@ -1047,7 +1051,7 @@ export function useDailyTokens(toolId: AgentToolId, days: number = 30) {
     return () => {
       cancelled = true
     }
-  }, [toolId, days, requestKey])
+  }, [toolId, window, requestKey])
 
   const stale = state.requestKey !== requestKey
 

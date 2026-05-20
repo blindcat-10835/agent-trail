@@ -34,9 +34,8 @@ export function OverviewPage() {
   const [modelSortBy, setModelSortBy] = useState<string>('tokens')
   const [projectSortBy, setProjectSortBy] = useState<string>('tokens')
 
-  const windowDays: Record<typeof window, number> = { today: 1, '7d': 7, '30d': 30, all: 365 }
   const { aggregates, loading: aggLoading, error: aggError } = useOverviewAggregates(toolId, window)
-  const { dailyTokens, loading: dailyTokensLoading, error: dailyTokensError } = useDailyTokens(toolId, windowDays[window])
+  const { dailyTokens, loading: dailyTokensLoading, error: dailyTokensError } = useDailyTokens(toolId, window)
 
   // Row A: window-dependent
   const { models, loading: modelsLoading, error: modelsError } = useTopModels(toolId, window, modelSortBy)
