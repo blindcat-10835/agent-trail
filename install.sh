@@ -45,8 +45,12 @@ fi
 
 # ── fetch latest release tag ──────────────────────────────────────────────────
 bold "Fetching latest release..."
-LATEST_TAG="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-  | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*/\1/')"
+if [ -n "${AGENTS_TRACING_VERSION:-}" ]; then
+  LATEST_TAG="${AGENTS_TRACING_VERSION}"
+else
+  LATEST_URL="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest")"
+  LATEST_TAG="$(printf '%s\n' "${LATEST_URL}" | sed -n 's#.*/releases/tag/\([^/?#]*\).*#\1#p')"
+fi
 
 if [ -z "${LATEST_TAG}" ]; then
   die "Could not determine latest release. Check https://github.com/${REPO}/releases"
