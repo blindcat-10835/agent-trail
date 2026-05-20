@@ -12,7 +12,7 @@ import type { AgentToolDefinition } from '../types'
 const definition: AgentToolDefinition = {
   id: 'qoder',
   label: 'Qoder',
-  shortLabel: 'QDR',
+  shortLabel: 'QODER',
   defaultRoute: '/dashboard',
   capabilities: {
     sessions: true,
@@ -48,6 +48,7 @@ const definition: AgentToolDefinition = {
     brand: {
       name: 'Qoder',
       versionLabel: 'QODER',
+      color: 'oklch(0.75 0.20 142)',
     },
     sessionColumns: [
       { id: 'label', header: 'SESSION', accessor: 'label', sortable: true },
