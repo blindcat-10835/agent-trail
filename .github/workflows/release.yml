@@ -58,6 +58,8 @@ jobs:
   tarball:
     name: Build release tarball (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
     strategy:
       matrix:
         include:
