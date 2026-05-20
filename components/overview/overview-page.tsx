@@ -34,9 +34,9 @@ export function OverviewPage() {
   const [modelSortBy, setModelSortBy] = useState<string>('tokens')
   const [projectSortBy, setProjectSortBy] = useState<string>('tokens')
 
-  // Hero band always uses 30D
-  const { aggregates, loading: aggLoading, error: aggError } = useOverviewAggregates(toolId, '30d')
-  const { dailyTokens, loading: dailyTokensLoading, error: dailyTokensError } = useDailyTokens(toolId, 30)
+  const windowDays: Record<typeof window, number> = { today: 1, '7d': 7, '30d': 30, all: 365 }
+  const { aggregates, loading: aggLoading, error: aggError } = useOverviewAggregates(toolId, window)
+  const { dailyTokens, loading: dailyTokensLoading, error: dailyTokensError } = useDailyTokens(toolId, windowDays[window])
 
   // Row A: window-dependent
   const { models, loading: modelsLoading, error: modelsError } = useTopModels(toolId, window, modelSortBy)
@@ -50,12 +50,17 @@ export function OverviewPage() {
   if (aggError && !aggLoading && !aggregates) {
     return (
       <div className={OVERVIEW_SCROLL_CLASS}>
+        {/* Time window selector */}
+        <div className="flex items-center">
+          <TimeWindowSelector value={window} onChange={setWindow} />
+        </div>
         <KpiHero
           toolId={toolId}
           aggregates={null}
           dailyTokens={dailyTokens}
           dailyTokensLoading={dailyTokensLoading}
           dailyTokensError={dailyTokensError}
+          window={window}
           loading={false}
           error={aggError}
         />
@@ -70,6 +75,11 @@ export function OverviewPage() {
   return (
     <div className={OVERVIEW_SCROLL_CLASS}>
 
+      {/* ═══ TIME WINDOW SELECTOR ═══ */}
+      <div className="flex items-center">
+        <TimeWindowSelector value={window} onChange={setWindow} />
+      </div>
+
       {/* ═══ HERO BAND ═══ */}
       <KpiHero
         toolId={toolId}
@@ -77,6 +87,7 @@ export function OverviewPage() {
         dailyTokens={dailyTokens}
         dailyTokensLoading={dailyTokensLoading}
         dailyTokensError={dailyTokensError}
+        window={window}
         loading={aggLoading}
         error={aggError}
       />
@@ -86,11 +97,6 @@ export function OverviewPage() {
 
       {/* ═══ ROW A: Models · Projects · Activity ═══ */}
       <section>
-        {/* Window selector right-aligned above row */}
-        <div className="flex justify-end mb-2">
-          <TimeWindowSelector value={window} onChange={setWindow} />
-        </div>
-
         <div
           className="grid gap-3"
           style={{ gridTemplateColumns: '1fr 1fr 1fr' }}

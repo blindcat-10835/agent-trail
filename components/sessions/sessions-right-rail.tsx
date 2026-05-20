@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { RefreshCw, Star } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import {
   useAgentTool,
@@ -370,7 +370,7 @@ function SessionRailRow({
             aria-label={isStarred ? 'Unstar session' : 'Star session'}
             title={isStarred ? 'Unstar session' : 'Star session'}
           >
-            <Star aria-hidden="true" />
+            ★
           </button>
         </div>
         <div className="rr-label">{session.displayTitle || session.name || session.id}</div>

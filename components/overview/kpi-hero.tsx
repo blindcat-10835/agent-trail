@@ -4,7 +4,7 @@ import { useState, useRef } from 'react'
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
-import type { DailyTokenUsage, OverviewAggregates, PricingStatus } from '@/types/overview'
+import type { DailyTokenUsage, OverviewAggregates, PricingStatus, TimeWindow } from '@/types/overview'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 
 // ============================================================================
@@ -206,7 +206,14 @@ function buildLinePath(
   return { linePath, areaPath, lastX: last.x, lastY: last.y }
 }
 
-function DailyTokenChart({
+const WINDOW_LABELS: Record<TimeWindow, string> = {
+  today: 'TODAY',
+  '7d': '7D',
+  '30d': '30D',
+  all: 'ALL',
+}
+
+function TodayTokenDisplay({
   dailyTokens,
   loading,
   error,
@@ -214,6 +221,102 @@ function DailyTokenChart({
   dailyTokens: DailyTokenUsage[]
   loading: boolean
   error?: string | null
+}) {
+  const today = dailyTokens[0]
+  const totalTokens = today?.totalTokens ?? 0
+  const inputTokens = today?.inputTokens ?? 0
+  const outputTokens = today?.outputTokens ?? 0
+  const cost = today?.cost ?? null
+  const hasData = totalTokens > 0
+
+  const right = (
+    <span className="inline-flex items-center gap-1.5 text-[9px] text-muted-foreground font-mono tracking-[0.06em]">
+      <span
+        className="w-1.5 h-1.5 rounded-full"
+        style={{ background: hasData ? 'var(--accent)' : 'color-mix(in oklch, var(--muted-foreground) 45%, transparent)' }}
+      />
+      {loading ? 'LOADING' : hasData ? today!.date : 'NO DATA'}
+    </span>
+  )
+
+  return (
+    <HudFrame
+      label="TODAY · TOKEN USAGE"
+      glow
+      className="flex flex-col"
+      bodyClassName="flex-1 min-h-0 p-3"
+      right={right}
+    >
+      {loading ? (
+        <div className="h-full flex flex-col items-center justify-center gap-3">
+          <Skeleton className="h-14 w-40" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+      ) : error ? (
+        <EmptyState heading="LOAD ERROR" body={error} />
+      ) : !hasData ? (
+        <EmptyState heading="NO TOKEN DATA" body="No token usage recorded today." />
+      ) : (
+        <div className="h-full flex flex-col items-center justify-center gap-2">
+          <div
+            className="font-bold font-mono tabular-nums leading-none"
+            style={{
+              fontSize: 52,
+              letterSpacing: '-0.035em',
+              color: 'var(--foreground)',
+              textShadow: '0 0 32px color-mix(in oklch, var(--accent) 35%, transparent)',
+            }}
+          >
+            {fmtTokens(totalTokens)}
+          </div>
+          <div
+            className="text-[9px] font-bold tracking-[0.22em] uppercase"
+            style={{ color: 'var(--accent)' }}
+          >
+            TOKENS TODAY
+          </div>
+          <div className="flex items-center gap-4 mt-1">
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="font-mono tabular-nums font-bold" style={{ fontSize: 15, color: 'oklch(0.78 0.12 220)' }}>
+                {fmtTokens(inputTokens)}
+              </span>
+              <span className="text-[8px] tracking-[0.18em] text-muted-foreground uppercase">Input</span>
+            </div>
+            <span className="text-muted-foreground/30 text-[10px]">/</span>
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="font-mono tabular-nums font-bold" style={{ fontSize: 15, color: 'oklch(0.78 0.15 45)' }}>
+                {fmtTokens(outputTokens)}
+              </span>
+              <span className="text-[8px] tracking-[0.18em] text-muted-foreground uppercase">Output</span>
+            </div>
+            {cost != null && (
+              <>
+                <span className="text-muted-foreground/30 text-[10px]">/</span>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="font-mono tabular-nums font-bold" style={{ fontSize: 15, color: 'oklch(0.75 0.17 340)' }}>
+                    ${cost < 0.01 ? cost.toFixed(4) : cost < 1 ? cost.toFixed(3) : cost.toFixed(2)}
+                  </span>
+                  <span className="text-[8px] tracking-[0.18em] text-muted-foreground uppercase">Cost</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </HudFrame>
+  )
+}
+
+function DailyTokenChart({
+  dailyTokens,
+  loading,
+  error,
+  window,
+}: {
+  dailyTokens: DailyTokenUsage[]
+  loading: boolean
+  error?: string | null
+  window: TimeWindow
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -243,6 +346,11 @@ function DailyTokenChart({
     setHoverIdx(Math.round(adjusted * denom))
   }
 
+  const windowLabel = WINDOW_LABELS[window] ?? '30D'
+  const noDataMsg = window === 'all'
+    ? 'No sessions with token totals recorded.'
+    : `No sessions with token totals in the last ${windowLabel}.`
+
   const right = (
     <span className="inline-flex items-center gap-1.5 text-[9px] text-muted-foreground font-mono tracking-[0.06em]">
       <span
@@ -255,7 +363,7 @@ function DailyTokenChart({
 
   return (
     <HudFrame
-      label="30D · TOKEN USAGE"
+      label={`${windowLabel} · TOKEN USAGE`}
       glow
       className="flex flex-col"
       bodyClassName="flex-1 min-h-0 p-3"
@@ -272,7 +380,7 @@ function DailyTokenChart({
       ) : error ? (
         <EmptyState heading="LOAD ERROR" body={error} />
       ) : !hasData || !chart ? (
-        <EmptyState heading="NO TOKEN DATA" body="No sessions with token totals in the last 30 days." />
+        <EmptyState heading="NO TOKEN DATA" body={noDataMsg} />
       ) : (
         <div className="h-full min-h-[138px] flex flex-col gap-2">
           <div
@@ -285,7 +393,7 @@ function DailyTokenChart({
               viewBox={`0 0 ${C_W} ${C_H}`}
               preserveAspectRatio="none"
               className="absolute inset-0 h-full w-full overflow-visible"
-              aria-label="Daily token usage over the last 30 days"
+              aria-label={`Daily token usage — ${windowLabel}`}
             >
               {[22, 52, 82, 112].map((y) => (
                 <line
@@ -476,43 +584,49 @@ function KpiMini({
 function KpiMiniStack({
   aggregates,
   loading,
+  window,
 }: {
   aggregates: OverviewAggregates | null
   loading: boolean
+  window: TimeWindow
 }) {
   const totalT = aggregates?.totalTokens ?? 0
   const inT = aggregates?.inputTokens ?? 0
   const outT = aggregates?.outputTokens ?? 0
   const totalCost = aggregates?.totalCost ?? null
   const pricingStatus = aggregates?.pricingStatus
-  const dailyBurn = totalCost === null ? null : totalCost / 30
+  const wLabel = WINDOW_LABELS[window] ?? '30D'
+  const windowDays = window === 'today' ? 1 : window === '7d' ? 7 : window === 'all' ? null : 30
+  const dailyBurn = totalCost === null || windowDays === null ? null : totalCost / windowDays
 
   return (
     <div className="flex flex-col gap-[3px]">
       <KpiMini
-        label="TOTAL COST · 30D"
+        label={`TOTAL COST · ${wLabel}`}
         value={loading ? DASH : fmtCost(totalCost, pricingStatus)}
         color="var(--accent)"
         sub={loading ? '…' : pricingSub(pricingStatus, `${fmtTokens(totalT)} tokens`)}
       />
       <KpiMini
-        label="INPUT TOKENS · 30D"
+        label={`INPUT TOKENS · ${wLabel}`}
         value={loading ? DASH : fmtTokens(inT)}
         color="oklch(0.78 0.12 220)"
         sub={loading ? '…' : `${pctOf(inT, totalT)} of total`}
       />
       <KpiMini
-        label="OUTPUT TOKENS · 30D"
+        label={`OUTPUT TOKENS · ${wLabel}`}
         value={loading ? DASH : fmtTokens(outT)}
         color="oklch(0.78 0.15 45)"
         sub={loading ? '…' : `${pctOf(outT, totalT)} of total`}
       />
-      <KpiMini
-        label="DAILY BURN · AVG"
-        value={loading ? DASH : fmtCost(dailyBurn, pricingStatus)}
-        color="oklch(0.75 0.17 340)"
-        sub={loading ? '…' : pricingSub(pricingStatus, 'est. avg/day')}
-      />
+      {window !== 'today' && (
+        <KpiMini
+          label="DAILY BURN · AVG"
+          value={loading ? DASH : fmtCost(dailyBurn, pricingStatus)}
+          color="oklch(0.75 0.17 340)"
+          sub={loading ? '…' : pricingSub(pricingStatus, 'est. avg/day')}
+        />
+      )}
     </div>
   )
 }
@@ -527,6 +641,7 @@ interface KpiHeroProps {
   dailyTokens: DailyTokenUsage[]
   dailyTokensLoading: boolean
   dailyTokensError?: string | null
+  window: TimeWindow
   loading: boolean
   error?: string | null
 }
@@ -541,6 +656,7 @@ export function KpiHero({
   dailyTokens,
   dailyTokensLoading,
   dailyTokensError,
+  window,
   loading,
   error,
 }: KpiHeroProps) {
@@ -565,12 +681,21 @@ export function KpiHero({
       style={{ gridTemplateColumns: '220px minmax(0,1fr) 200px', minHeight: 180 }}
     >
       <PulsePanel toolId={toolId} aggregates={aggregates} loading={loading} />
-      <DailyTokenChart
-        dailyTokens={dailyTokens}
-        loading={dailyTokensLoading}
-        error={dailyTokensError}
-      />
-      <KpiMiniStack aggregates={aggregates} loading={loading} />
+      {window === 'today' ? (
+        <TodayTokenDisplay
+          dailyTokens={dailyTokens}
+          loading={dailyTokensLoading}
+          error={dailyTokensError}
+        />
+      ) : (
+        <DailyTokenChart
+          dailyTokens={dailyTokens}
+          loading={dailyTokensLoading}
+          error={dailyTokensError}
+          window={window}
+        />
+      )}
+      <KpiMiniStack aggregates={aggregates} loading={loading} window={window} />
     </div>
   )
 }

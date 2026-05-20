@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Star } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useToolSessions, useAggregateSessions, useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
@@ -346,7 +345,7 @@ export function SessionsListPage() {
                         toggleStar(s.id)
                       }}
                     >
-                      <Star aria-hidden="true" />
+                      ★
                     </button>
                     <span className="sl-label">{label}</span>
                   </span>
