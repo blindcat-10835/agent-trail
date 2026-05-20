@@ -8,6 +8,7 @@ import {
   PARSER_CACHE_VERSION,
   readFileSnapshotWithIdentity,
   type FileSnapshotWithIdentity,
+  type SyncSourceType,
 } from './index.js';
 
 const tempDirs: string[] = [];
@@ -74,7 +75,8 @@ function insertCursor(
   db: Database.Database,
   filePath: string,
   snapshot: FileSnapshotWithIdentity,
-  sessionId: string | null
+  sessionId: string | null,
+  sourceType: SyncSourceType = 'claude-code'
 ): void {
   db.prepare(`
     INSERT INTO ingest_file_cursors (
@@ -84,7 +86,7 @@ function insertCursor(
       last_success_at, last_fallback_reason
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    'claude-code',
+    sourceType,
     filePath,
     sessionId,
     snapshot.size,
@@ -102,18 +104,21 @@ function insertCursor(
 }
 
 describe('decideCursorSync', () => {
-  it('forces a full reparse when a cursor has no session id', () => {
-    const db = createDatabase();
-    const { filePath, snapshot } = createJsonlFile();
-    insertCursor(db, filePath, snapshot, null);
+  it.each<SyncSourceType>(['claude-code', 'codex'])(
+    'forces a full reparse when a %s cursor has no session id',
+    (sourceType) => {
+      const db = createDatabase();
+      const { filePath, snapshot } = createJsonlFile();
+      insertCursor(db, filePath, snapshot, null, sourceType);
 
-    const decision = decideCursorSync('claude-code', filePath, snapshot, {}, db);
+      const decision = decideCursorSync(sourceType, filePath, snapshot, {}, db);
 
-    expect(decision).toMatchObject({
-      type: 'full_reparse',
-      reason: 'missing_cursor_session',
-    });
-  });
+      expect(decision).toMatchObject({
+        type: 'full_reparse',
+        reason: 'missing_cursor_session',
+      });
+    }
+  );
 
   it('forces a full reparse when stored message rows are incomplete', () => {
     const db = createDatabase();
