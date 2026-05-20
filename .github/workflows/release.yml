@@ -122,7 +122,10 @@ jobs:
           cp ingest/dist/schema.sql release-staging/ingest/dist/schema.sql
 
           # Production node_modules
-          cp -r node_modules release-staging/node_modules
+          # .next/standalone already contains a traced node_modules directory.
+          # Replace it and preserve pnpm symlinks instead of dereferencing them.
+          rm -rf release-staging/node_modules
+          tar -cf - node_modules | tar -xf - -C release-staging
 
           # Launch script
           cp scripts/start.sh release-staging/start.sh

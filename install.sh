@@ -6,7 +6,7 @@ set -e
 REPO="camtrik/agents-tracing-dashboard"
 INSTALL_DIR="${AGENTS_TRACING_INSTALL_DIR:-${HOME}/.agents-tracing/app}"
 BIN_DIR="${AGENTS_TRACING_BIN_DIR:-${HOME}/.local/bin}"
-REQUIRED_NODE_MAJOR=20
+REQUIRED_NODE_MAJOR=22
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -35,12 +35,19 @@ TARBALL_OS="${PLATFORM}-${ARCH_TAG}"
 
 # ── check Node.js ─────────────────────────────────────────────────────────────
 if ! command -v node >/dev/null 2>&1; then
-  die "Node.js is required but not found. Install Node.js ${REQUIRED_NODE_MAJOR}+ from https://nodejs.org"
+  die "Node.js ${REQUIRED_NODE_MAJOR} is required but not found. Install it from https://nodejs.org"
 fi
 
+NODE_BIN="$(command -v node)"
+case "${NODE_BIN}" in
+  */Codex.app/*)
+    die "Found Codex bundled Node at ${NODE_BIN}. Install Node.js ${REQUIRED_NODE_MAJOR} from https://nodejs.org or Homebrew, then rerun this installer."
+    ;;
+esac
+
 NODE_MAJOR="$(node -e 'process.stdout.write(String(process.versions.node.split(".")[0]))')"
-if [ "${NODE_MAJOR}" -lt "${REQUIRED_NODE_MAJOR}" ]; then
-  die "Node.js ${REQUIRED_NODE_MAJOR}+ required, found ${NODE_MAJOR}. Upgrade at https://nodejs.org"
+if [ "${NODE_MAJOR}" -ne "${REQUIRED_NODE_MAJOR}" ]; then
+  die "Node.js ${REQUIRED_NODE_MAJOR}.x required, found ${NODE_MAJOR}. The release bundles native modules built for Node.js ${REQUIRED_NODE_MAJOR}."
 fi
 
 # ── fetch latest release tag ──────────────────────────────────────────────────
@@ -79,6 +86,7 @@ chmod +x "${INSTALL_DIR}/start.sh"
 mkdir -p "${BIN_DIR}"
 cat > "${BIN_DIR}/agents-tracing" <<EOF
 #!/usr/bin/env bash
+export AGENTS_TRACING_NODE_BIN="${NODE_BIN}"
 exec "${INSTALL_DIR}/start.sh" "\$@"
 EOF
 chmod +x "${BIN_DIR}/agents-tracing"
@@ -87,6 +95,7 @@ chmod +x "${BIN_DIR}/agents-tracing"
 bold ""
 green "Installation complete!"
 echo ""
+echo "  Node.js runtime:     ${NODE_BIN}"
 echo "  Run the dashboard:   agents-tracing"
 echo "  Open in browser:     http://localhost:3030"
 echo ""

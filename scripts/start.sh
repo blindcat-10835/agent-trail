@@ -10,11 +10,12 @@ export NEXT_TELEMETRY_DISABLED=1
 export PORT="${PORT:-3030}"
 export INGEST_PORT="${INGEST_PORT:-8078}"
 export INGEST_DB_PATH="${INGEST_DB_PATH:-${HOME}/.agents-tracing/ingest.db}"
+NODE_BIN="${AGENTS_TRACING_NODE_BIN:-node}"
 
 mkdir -p "$(dirname "$INGEST_DB_PATH")"
 
 echo "[agents-tracing] Starting ingest service on port ${INGEST_PORT}..."
-node "${SCRIPT_DIR}/ingest/dist/index.js" &
+"${NODE_BIN}" "${SCRIPT_DIR}/ingest/dist/index.js" &
 INGEST_PID=$!
 
 cleanup() {
@@ -24,4 +25,4 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "[agents-tracing] Starting dashboard on http://localhost:${PORT}"
-exec node "${SCRIPT_DIR}/server.js"
+exec "${NODE_BIN}" "${SCRIPT_DIR}/server.js"
