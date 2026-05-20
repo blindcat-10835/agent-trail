@@ -13,7 +13,7 @@ interface ThemeStore {
 export const useThemeStore = create<ThemeStore>()(
   persist(
     (set, get) => ({
-      theme: 'system',
+      theme: 'dark',
       setTheme: (theme) => {
         set({ theme })
         const resolved = theme === 'system'
@@ -22,7 +22,7 @@ export const useThemeStore = create<ThemeStore>()(
         set({ resolvedTheme: resolved })
         document.documentElement.setAttribute('data-theme', resolved)
       },
-      resolvedTheme: typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+      resolvedTheme: 'dark',
       getResolvedTheme: () => {
         const { theme } = get()
         if (theme === 'system') {

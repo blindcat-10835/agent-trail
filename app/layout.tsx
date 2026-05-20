@@ -39,12 +39,12 @@ export default function RootLayout({
               (function() {
                 try {
                   var raw = localStorage.getItem('theme-storage');
-                  var theme = 'system';
-                  if (raw) { var parsed = JSON.parse(raw); theme = parsed.state && parsed.state.theme || 'system'; }
+                  var theme = 'dark';
+                  if (raw) { var parsed = JSON.parse(raw); theme = parsed.state && parsed.state.theme || 'dark'; }
                   var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                   document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
                 } catch(e) {
-                  document.documentElement.setAttribute('data-theme', 'light');
+                  document.documentElement.setAttribute('data-theme', 'dark');
                 }
               })();
             `,

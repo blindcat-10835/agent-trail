@@ -79,29 +79,29 @@
   --accent: oklch(0.8 0.17 var(--accent-h));
   --accent-dim: oklch(0.5 0.12 var(--accent-h));
   --accent-ghost: oklch(0.32 0.08 var(--accent-h));
-  --background: oklch(0.98 0.003 90);
+  --background: oklch(0.965 0.018 75);
   --foreground: oklch(0.18 0.008 160);
-  --card: oklch(1 0 0);
+  --card: oklch(0.978 0.012 75);
   --card-foreground: oklch(0.36 0.008 160);
-  --popover: oklch(0.965 0.003 90);
+  --popover: oklch(0.958 0.016 75);
   --popover-foreground: oklch(0.18 0.008 160);
-  --primary: oklch(0.98 0.003 90);
+  --primary: oklch(0.965 0.018 75);
   --primary-foreground: oklch(0.18 0.008 160);
-  --secondary: oklch(0.945 0.005 90);
+  --secondary: oklch(0.935 0.014 75);
   --secondary-foreground: oklch(0.18 0.008 160);
-  --muted: oklch(0.945 0.005 90);
+  --muted: oklch(0.935 0.014 75);
   --muted-foreground: oklch(0.54 0.008 160);
   --accent-foreground: oklch(0.18 0.008 160);
-  --foreground-ghost: oklch(0.72 0.005 90);
+  --foreground-ghost: oklch(0.72 0.008 75);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.88 0.005 90);
-  --border-strong: oklch(0.78 0.006 90);
+  --border: oklch(0.868 0.011 75);
+  --border-strong: oklch(0.78 0.01 75);
   /* Status palette — used inline in components, not as Tailwind semantic tokens */
   --status-success: oklch(0.76 0.17 145);
   --status-warning: oklch(0.76 0.17 75);
   --status-parser-warning: oklch(0.76 0.17 55);
   /* Error uses --destructive directly, no separate token */
-  --input: oklch(0.88 0.005 90);
+  --input: oklch(0.868 0.011 75);
   --ring: oklch(0.62 0.17 65);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -109,13 +109,13 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: oklch(0.975 0.01 75);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: oklch(0.952 0.013 75);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: oklch(0.903 0.011 75);
   --sidebar-ring: oklch(0.708 0 0);
 }
 
