@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── Docker image ─────────────────────────────────────────────────────────────
+  docker:
+    name: Build & push Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  # ── Tarball release (for install.sh) ─────────────────────────────────────────
+  tarball:
+    name: Build release tarball (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - os: linux-x64
+            runner: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: darwin-arm64
+            runner: macos-14
+            platform: darwin
+            arch: arm64
+          - os: darwin-x64
+            runner: macos-13
+            platform: darwin
+            arch: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Next.js
+        run: pnpm build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Build ingest service
+        run: pnpm build:ingest
+
+      - name: Install production dependencies
+        run: pnpm install --prod --frozen-lockfile --ignore-scripts
+
+      - name: Package tarball
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          TARBALL="agents-tracing-dashboard-${TAG}-${{ matrix.os }}.tar.gz"
+
+          mkdir -p release-staging
+
+          # Next.js standalone
+          cp -r .next/standalone/. release-staging/
+          cp -r .next/static       release-staging/.next/static
+          cp -r public             release-staging/public
+
+          # Ingest compiled output
+          mkdir -p release-staging/ingest/dist
+          cp -r ingest/dist/ingest release-staging/ingest/dist/ingest
+          cp -r ingest/dist/types  release-staging/ingest/dist/types
+
+          # Production node_modules
+          cp -r node_modules release-staging/node_modules
+
+          # Launch script
+          cp scripts/start.sh release-staging/start.sh
+          chmod +x release-staging/start.sh
+
+          tar -czf "${TARBALL}" -C release-staging .
+          echo "TARBALL=${TARBALL}" >> $GITHUB_ENV
+
+      - name: Create GitHub Release and upload tarball
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.TARBALL }}
+          generate_release_notes: true
+
+  # ── Notify ───────────────────────────────────────────────────────────────────
+  notify:
+    name: Release complete
+    needs: [docker, tarball]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## Release ${{ github.ref_name }} published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker: \`ghcr.io/${{ github.repository }}:${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Install: \`curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash\`" >> $GITHUB_STEP_SUMMARY

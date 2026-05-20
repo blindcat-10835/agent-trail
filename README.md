@@ -1,171 +1,106 @@
-# agent-tracing-dashboard
+# Agents Tracing Dashboard
 
-**Local multi-source AI agent session tracing dashboard for OpenClaw, Claude Code, and Codex.**
+**A local dashboard for tracking and replaying AI coding agent sessions — token usage, cost, tool calls, and subagent trees, all in one place.**
 
-A cyberpunk-HUD-styled developer tool that browses local agent sessions and replays each turn — user input, assistant response, tool/skill/subagent activity, token usage — in a single Next.js dashboard. All data stays on your machine.
+![Overview dashboard](image/README/1779286882349.png)
 
-> Note: this project was previously named **OVAO** (OpenClaw Visual Agents Office). The OpenClaw Gateway live overview surface has been preserved and integrated alongside file-based ingest for Claude Code and Codex.
-
----
-
-## Two services, one repo
-
-| Service | Path | Port | Runtime | Purpose |
-| --- | --- | --- | --- | --- |
-| **Next.js frontend (BFF)** | `app/` | `3000` | Node.js | UI shell, replay, BFF proxy that fronts the ingest service |
-| **Ingest service** | `ingest/` | `8078` | Node.js + Hono | File watcher, JSONL parsers, SQLite read model, REST + SSE API |
-
-`pnpm dev` starts both with `concurrently`. The frontend never talks to the ingest service directly — every request passes through `app/api/agent-tools/[tool]/...` BFF proxies that inject the source filter and sanitize errors.
-
-```text
-~/.openclaw/agents/*/sessions/*.jsonl   ─┐
-~/.claude/projects/*/*.jsonl             ├─►  ingest (8078)  ─►  SQLite (data/ingest.db)
-~/.codex/sessions/*/*.jsonl              ─┘                         │
-                                                                    │ REST + SSE
-                                                                    ▼
-                                                            Next.js BFF (3000)
-                                                                    │
-                                                                    ▼
-                                                                  React UI
-```
-
-For the full data flow and architecture decisions see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DATA-FLOW.md`](docs/DATA-FLOW.md).
+![Session replay](image/README/1779290188740.png)
 
 ---
 
-## Quick start
+## What it does
+
+### Usage overview across all your agents
+
+A unified dashboard aggregates token consumption and estimated cost across Claude Code, OpenClaw, Codex, OpenCode, and Qoder — broken down by day, session, project, and model. At a glance you can see:
+
+- Total tokens and estimated USD cost for any time window (today / week / all)
+- Per-project and per-model breakdowns with trends over time
+- Which sessions consumed the most tokens and where your budget is going
+- Live activity feed as new sessions are written to disk
+
+Everything is computed locally from the JSONL files your agents already produce — no account, no upload, no cloud.
+
+### Full session replay with tool and subagent detail
+
+Open any session and step through every turn exactly as it happened. The replay view goes beyond raw text — it surfaces the internal structure of each assistant turn:
+
+- **Tool calls**: expand any `Bash`, `Read`, `Edit`, `Write`, or custom tool invocation to see the exact input arguments and the full output the model received
+- **Subagent spawns**: when Claude Code or OpenClaw launches a sub-agent, the dashboard renders the nested agent tree so you can trace which subtask was delegated, what instructions it received, and what it returned
+- **Injected context and system events**: surface hidden context blocks, permission prompts, and synthetic messages that normally live between turns but shape how the model behaves
+- **Token accounting per turn**: see input, output, cache-read, cache-write, and reasoning token counts at the turn level, not just the session level
+
+---
+
+## Install
+
+### Option 1 — curl (requires Node.js 20+)
 
 ```bash
-pnpm install        # use pnpm, not npm/yarn — see pnpm-lock.yaml
-pnpm dev            # starts NEXT (3000) + INGEST (8078) with colored prefixes
+curl -fsSL https://raw.githubusercontent.com/camtrik/agents-tracing-dashboard/main/install.sh | bash
+agents-tracing
 ```
 
-Verify everything is up:
+Open <http://localhost:3000>.
+
+### Option 2 — Docker (no Node.js required)
 
 ```bash
-curl http://localhost:3000             # Next.js (redirects to /all/dashboard)
-curl http://localhost:8078/health      # ingest health
-curl http://localhost:8078/api/v1/sources
+# Download docker-compose.yml from the repo, then:
+docker compose up -d
 ```
 
-The bottom status bar of the dashboard shows `INGEST ONLINE / OFFLINE / RECONNECTING`. The full bootstrap walkthrough lives in [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md).
+Or run directly:
+
+```bash
+docker run --rm -p 127.0.0.1:3000:3000 \
+  -v "$HOME/.claude/projects:/agents/claude:ro" \
+  -e CLAUDE_PROJECTS_DIR=/agents/claude \
+  ghcr.io/camtrik/agents-tracing-dashboard:latest
+```
+
+Open <http://localhost:3000>. Mount additional agent directories with `-v` and the matching env var (`OPENCLAW_DIR`, `CODEX_SESSIONS_DIR`, `OPENCODE_DB_PATH`).
+
+### Option 3 — from source
+
+```bash
+pnpm install
+pnpm dev       # starts Next.js (3000) + ingest service (8078)
+```
+
+See [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) for full setup and environment variable reference.
+
+---
+
+## Supported agents
+
+| Agent | Source files | Notes |
+| --- | --- | --- |
+| **Claude Code** | `~/.claude/projects/**/*.jsonl` | Full tool-call and subagent replay |
+| **OpenClaw** | `~/.openclaw/agents/*/sessions/*.jsonl` | Gateway live view + file ingest |
+| **Codex** | `~/.codex/sessions/**/*.jsonl` | Parent-child session tree |
+| **OpenCode** | `~/.local/share/opencode/opencode.db` | SQLite source |
+| **Qoder** | local cache DB | Token counts (cost excluded from rollups) |
 
 ---
 
 ## Privacy
 
-This is a **local-only developer tool**:
+This is a **local-only** tool. No data leaves your machine.
 
-- **No data uploads.** JSONL files are parsed and indexed locally into SQLite (`data/ingest.db`). Nothing leaves your machine.
-- **No share links.** No cloud sync, no public URLs, no team sharing.
-- **No tool execution.** The dashboard is read-only. It replays recorded tool calls — it never re-runs them.
-- **Local files only.** Source discovery is restricted to configured roots (`OPENCLAW_DIR`, `CLAUDE_PROJECTS_DIR`, `CODEX_SESSIONS_DIR`) and validated with absolute-path containment checks (`isWithinRoot`). Paths can also be configured via `~/.agents-tracing/config.json`.
-- **No telemetry.** No usage metrics, error reports, or analytics are collected.
-
-Treat session files like source code — they may contain code snippets, file paths, command output, and credentials.
+- JSONL files are parsed and indexed into a local SQLite database (`data/ingest.db`).
+- The dashboard is read-only — it replays recorded tool calls, never re-executes them.
+- No telemetry, no analytics, no cloud sync.
 
 ---
 
-## Tech stack
+## Architecture
 
-- **Next.js 16.2.4** App Router + **React 19.2.4** + TypeScript (strict)
-- **Tailwind v4** (CSS-first; theme tokens in `app/globals.css` via `@theme inline` — there is no `tailwind.config.js`)
-- **shadcn/ui** with the `radix-nova` style, `neutral` base color, OKLCH tokens, lucide icons (`components.json`)
-- **Zustand** for client state (`stores/`)
-- **Hono 4** + **better-sqlite3** + **chokidar** for the ingest service
-- **Vitest 4** for tests; `eslint-config-next` flat config (`eslint.config.mjs`)
-- **pnpm** package manager (`pnpm-lock.yaml`)
+Two services, one repo:
 
----
+| Service | Path | Port | Purpose |
+| --- | --- | --- | --- |
+| **Next.js frontend** | `app/` | `3000` | UI, BFF proxy to ingest |
+| **Ingest service** | `ingest/` | `8078` | File watcher, JSONL parsers, SQLite, REST + SSE |
 
-## Repo layout
-
-```text
-app/
-  layout.tsx                              # Root layout (JetBrains Mono + Inter, theme bootstrap)
-  page.tsx                                # Redirects / → /all/dashboard
-  globals.css                             # Tailwind v4 + @theme inline tokens
-  (tool-shell)/[tool]/                    # Per-source shell: openclaw | claude-code | codex | all
-    layout.tsx                            # Validates [tool] via assertAgentToolId
-    dashboard/, sessions/, activity/      # Per-source pages
-  api/
-    agent-tools/[tool]/...                # BFF proxies to ingest (per D-07)
-    ingest/health/                        # Frontend-facing ingest health
-    sync/                                 # All-source aggregate sync
-    logs/, sessions/messages/             # Legacy OpenClaw file-scan endpoints
-    action/restart, action/update         # OpenClaw service control (host-only)
-ingest/
-  index.ts                                # Hono server bootstrap + lifecycle
-  config/                                 # Env-var parsing (INGEST_*)
-  api/                                    # Hono route modules (sessions, sources, turns, events)
-  parser/                                 # claude.ts | openclaw.ts | codex.ts
-  sync/                                   # Source discovery + writeSessionToDatabase
-  turns/assembler.ts                      # Turn-first read model
-  src/watcher.ts, src/sse.ts              # chokidar watcher + SSE manager
-  db/                                     # better-sqlite3 connection + schema.sql + migrations
-lib/
-  agent-tools/                            # Per-tool registry, server adapters, client hooks
-  utils.ts, env.ts, api-error.ts          # Shared utilities
-stores/                                   # Zustand stores (replay, ui, tool, theme, ingest-health, office-layout)
-components/                               # ui/ (shadcn) + replay/ + sessions/ + shell/ + activity/ + hud/
-types/                                    # trace.ts (canonical contract), activity.ts, log.ts
-fixtures/                                 # Golden parser fixtures (openclaw / claude-code / codex)
-tests/                                    # vitest: unit/, integration/ingest/, hooks/, perf/, local/
-scripts/generate-golden.ts               # Regenerate golden fixtures
-docs/                                     # See "Documentation" section
-.planning/                                # GSD workflow artifacts (do not hand-edit)
-data/                                     # SQLite DB (gitignored)
-```
-
-Path alias: `@/*` → `./*` (`tsconfig.json`).
-
----
-
-## Commands
-
-```bash
-pnpm dev                  # Both services with colored INGEST/NEXT prefixes
-pnpm dev:next             # Frontend only (Next 16 with --webpack to avoid Turbopack compile storm)
-pnpm dev:ingest           # Ingest only (tsx watch)
-
-pnpm build                # Next.js production build
-pnpm build:ingest         # tsc -p ingest/tsconfig.json → ingest/dist/
-pnpm start                # NODE_ENV=production node server/index.mjs
-pnpm start:ingest         # NODE_ENV=production node ingest/dist/ingest/index.js
-
-pnpm lint                 # ESLint (eslint-config-next)
-pnpm typecheck            # tsc --noEmit (project + ingest references)
-pnpm typecheck:ingest     # ingest only
-
-pnpm test                 # vitest (watch)
-pnpm test:run             # vitest run (single pass)
-pnpm test:real-sessions   # tests/local/real-session-corpus.test.ts (your local sessions; gitignored)
-```
-
----
-
-## Documentation
-
-| Doc | When to read |
-| --- | --- |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Overall system architecture, service boundaries, key decisions |
-| [`docs/DATA-FLOW.md`](docs/DATA-FLOW.md) | End-to-end pipeline: JSONL → parser → DB → turn assembler → BFF → UI |
-| [`docs/db-schema.md`](docs/db-schema.md) | SQLite tables, columns, indexes, migrations, foreign keys |
-| [`docs/services/ingest.md`](docs/services/ingest.md) | Ingest service deep-dive: parsers, watcher, sync, SSE |
-| [`docs/services/frontend.md`](docs/services/frontend.md) | Next.js frontend deep-dive: shell, BFF adapters, replay UI, stores |
-| [`docs/API.md`](docs/API.md) | Every endpoint (ingest + BFF) with parameters, status codes, examples |
-| [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) | First-run setup including `OPENCLAW_DIR`/`CLAUDE_PROJECTS_DIR`/`CODEX_SESSIONS_DIR` and `~/.agents-tracing/config.json` |
-| [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Every environment variable, defaults, and validation rules |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Dev workflow, hot reload, debugging, code conventions |
-| [`docs/TESTING.md`](docs/TESTING.md) | Vitest setup, fixtures, golden-file workflow, integration tests |
-| [`ERRORS_LEARNED.md`](ERRORS_LEARNED.md) | Past pitfalls (Tailwind v4, Next 16, etc.) — read before writing new components |
-| [`docs/preserved-capabilities.md`](docs/preserved-capabilities.md) | Phase 1 audit of OpenClaw Gateway-exclusive vs file-replaceable features |
-| [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | Instructions for AI coding assistants working on this repo |
-
-GSD workflow artifacts (`PROJECT.md`, `ROADMAP.md`, `STATE.md`, `phases/`) live under [`.planning/`](.planning/). Don't hand-edit them — use the `/gsd-*` skills.
-
----
-
-## Status
-
-Active development on milestone **v1.0**. Phase progress and session continuity are tracked in [`.planning/STATE.md`](.planning/STATE.md).
+For the full data flow and architecture decisions see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DATA-FLOW.md`](docs/DATA-FLOW.md).

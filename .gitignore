@@ -64,3 +64,5 @@ ingest/dist/
 
 .codex
 
+# Local release guide (not for repo)
+RELEASE.md

@@ -1,0 +1,23 @@
+services:
+  agents-tracing-dashboard:
+    image: ghcr.io/camtrik/agents-tracing-dashboard:latest
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - agents-tracing-data:/data
+      # Mount your agent session directories read-only.
+      # Adjust the host paths if yours differ from the defaults.
+      - "${HOME}/.claude/projects:/agents/claude:ro"
+      - "${HOME}/.openclaw/agents:/agents/openclaw:ro"
+      - "${HOME}/.codex/sessions:/agents/codex:ro"
+      # Uncomment if you use OpenCode:
+      # - "${HOME}/.local/share/opencode:/agents/opencode:ro"
+    environment:
+      CLAUDE_PROJECTS_DIR: /agents/claude
+      OPENCLAW_DIR: /agents/openclaw
+      CODEX_SESSIONS_DIR: /agents/codex
+      # OPENCODE_DB_PATH: /agents/opencode/opencode.db
+    restart: unless-stopped
+
+volumes:
+  agents-tracing-data:
