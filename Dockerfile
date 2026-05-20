@@ -36,7 +36,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
-ENV PORT=3000
+ENV PORT=3030
 ENV INGEST_PORT=8078
 
 # Next.js standalone — self-contained server + minimal node_modules
@@ -60,5 +60,5 @@ RUN chmod +x /docker-entrypoint.sh
 RUN mkdir -p /data
 VOLUME /data
 
-EXPOSE 3000 8078
+EXPOSE 3030 8078
 ENTRYPOINT ["/docker-entrypoint.sh"]

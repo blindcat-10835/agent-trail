@@ -84,7 +84,7 @@ bold ""
 green "Installation complete!"
 echo ""
 echo "  Run the dashboard:   agents-tracing"
-echo "  Open in browser:     http://localhost:3000"
+echo "  Open in browser:     http://localhost:3030"
 echo ""
 
 if ! echo "${PATH}" | grep -q "${BIN_DIR}"; then

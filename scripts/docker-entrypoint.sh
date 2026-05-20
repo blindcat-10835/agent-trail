@@ -11,7 +11,7 @@ export OPENCODE_DB_PATH="${OPENCODE_DB_PATH:-/agents/opencode/opencode.db}"
 
 export INGEST_DB_PATH="${INGEST_DB_PATH:-/data/ingest.db}"
 export INGEST_PORT="${INGEST_PORT:-8078}"
-export PORT="${PORT:-3000}"
+export PORT="${PORT:-3030}"
 
 # NEXT_PUBLIC_INGEST_URL is the URL the browser uses to reach the BFF proxy,
 # which is the same host as the Next.js server — no need to change this.

@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/camtrik/agents-tracing-dashboard/ma
 agents-tracing
 ```
 
-Open <http://localhost:3000>.
+Open [http://localhost:3030](http://localhost:3030).
 
 ### Option 2 — Docker (no Node.js required)
 
@@ -53,13 +53,13 @@ docker compose up -d
 Or run directly:
 
 ```bash
-docker run --rm -p 127.0.0.1:3000:3000 \
+docker run --rm -p 127.0.0.1:3030:3030 \
   -v "$HOME/.claude/projects:/agents/claude:ro" \
   -e CLAUDE_PROJECTS_DIR=/agents/claude \
   ghcr.io/camtrik/agents-tracing-dashboard:latest
 ```
 
-Open <http://localhost:3000>. Mount additional agent directories with `-v` and the matching env var (`OPENCLAW_DIR`, `CODEX_SESSIONS_DIR`, `OPENCODE_DB_PATH`).
+Open [http://localhost:3030](http://localhost:3030). Mount additional agent directories with `-v` and the matching env var (`OPENCLAW_DIR`, `CODEX_SESSIONS_DIR`, `OPENCODE_DB_PATH`).
 
 ### Option 3 — from source
 
@@ -74,13 +74,13 @@ See [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) for full setup and envi
 
 ## Supported agents
 
-| Agent | Source files | Notes |
-| --- | --- | --- |
-| **Claude Code** | `~/.claude/projects/**/*.jsonl` | Full tool-call and subagent replay |
-| **OpenClaw** | `~/.openclaw/agents/*/sessions/*.jsonl` | Gateway live view + file ingest |
-| **Codex** | `~/.codex/sessions/**/*.jsonl` | Parent-child session tree |
-| **OpenCode** | `~/.local/share/opencode/opencode.db` | SQLite source |
-| **Qoder** | local cache DB | Token counts (cost excluded from rollups) |
+| Agent                 | Source files                              | Notes                                     |
+| --------------------- | ----------------------------------------- | ----------------------------------------- |
+| **Claude Code** | `~/.claude/projects/**/*.jsonl`         | Full tool-call and subagent replay        |
+| **OpenClaw**    | `~/.openclaw/agents/*/sessions/*.jsonl` | Gateway live view + file ingest           |
+| **Codex**       | `~/.codex/sessions/**/*.jsonl`          | Parent-child session tree                 |
+| **OpenCode**    | `~/.local/share/opencode/opencode.db`   | SQLite source                             |
+| **Qoder**       | local cache DB                            | Token counts (cost excluded from rollups) |
 
 ---
 
@@ -98,9 +98,9 @@ This is a **local-only** tool. No data leaves your machine.
 
 Two services, one repo:
 
-| Service | Path | Port | Purpose |
-| --- | --- | --- | --- |
-| **Next.js frontend** | `app/` | `3000` | UI, BFF proxy to ingest |
-| **Ingest service** | `ingest/` | `8078` | File watcher, JSONL parsers, SQLite, REST + SSE |
+| Service                    | Path        | Port                                  | Purpose                                         |
+| -------------------------- | ----------- | ------------------------------------- | ----------------------------------------------- |
+| **Next.js frontend** | `app/`    | `3030` packaged/Docker; `3000` dev | UI, BFF proxy to ingest                         |
+| **Ingest service**   | `ingest/` | `8078`                                | File watcher, JSONL parsers, SQLite, REST + SSE |
 
 For the full data flow and architecture decisions see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DATA-FLOW.md`](docs/DATA-FLOW.md).

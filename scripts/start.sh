@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export NODE_ENV=production
 export NEXT_TELEMETRY_DISABLED=1
-export PORT="${PORT:-3000}"
+export PORT="${PORT:-3030}"
 export INGEST_PORT="${INGEST_PORT:-8078}"
 export INGEST_DB_PATH="${INGEST_DB_PATH:-${HOME}/.agents-tracing/ingest.db}"
 

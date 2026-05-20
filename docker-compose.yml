@@ -2,7 +2,7 @@ services:
   agents-tracing-dashboard:
     image: ghcr.io/camtrik/agents-tracing-dashboard:latest
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3030:3030"
     volumes:
       - agents-tracing-data:/data
       # Mount your agent session directories read-only.
