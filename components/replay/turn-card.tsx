@@ -125,31 +125,12 @@ export function TurnCard({ turn }: TurnCardProps) {
       {isExpanded && (
         <div className="border-t border-border">
           {/* User message block */}
-          {turn.userMessage?.content && (() => {
-            const parsed = parseUserMessage(turn.userMessage.content)
-            return (
-              <div className="border-b border-border/50">
-                <div className="px-4 py-3">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      USER
-                    </span>
-                    <CopyMessageButton content={parsed.userText} />
-                  </div>
-                  {parsed.userText && (
-                    <MarkdownContent
-                      content={parsed.userText}
-                      searchQuery={searchQuery}
-                      className="text-[12px] leading-relaxed text-foreground"
-                    />
-                  )}
-                </div>
-                {parsed.injectedParts.map((part, i) => (
-                  <InjectedContextBlock key={i} part={part} />
-                ))}
-              </div>
-            )
-          })()}
+          {turn.userMessage?.content && (
+            <UserMessageBlock
+              content={turn.userMessage.content}
+              searchQuery={searchQuery}
+            />
+          )}
 
           {/* Unanchored activity blocks — system events without a message ordinal */}
           {unanchoredActivityEntries.map(({ activity, idx }) => (
@@ -236,6 +217,33 @@ export function TurnCard({ turn }: TurnCardProps) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Renders the user message, splitting injected XML blocks from real user text */
+function UserMessageBlock({ content, searchQuery }: { content: string; searchQuery: string }) {
+  const parsed = parseUserMessage(content)
+  return (
+    <div className="border-b border-border/50">
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            USER
+          </span>
+          <CopyMessageButton content={parsed.userText} />
+        </div>
+        {parsed.userText && (
+          <MarkdownContent
+            content={parsed.userText}
+            searchQuery={searchQuery}
+            className="text-[12px] leading-relaxed text-foreground"
+          />
+        )}
+      </div>
+      {parsed.injectedParts.map((part, i) => (
+        <InjectedContextBlock key={i} part={part} />
+      ))}
     </div>
   )
 }
