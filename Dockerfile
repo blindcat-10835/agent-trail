@@ -3,12 +3,13 @@
 FROM node:22-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@latest --activate
+ARG PNPM_VERSION=11.1.3
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # ── Stage 2: install all deps (dev+prod) for building ─────────────────────────
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # node-linker=hoisted gives a flat node_modules that copies cleanly between stages
 RUN echo "node-linker=hoisted" > .npmrc && \
     pnpm install --frozen-lockfile
@@ -16,7 +17,7 @@ RUN echo "node-linker=hoisted" > .npmrc && \
 # ── Stage 3: install prod-only deps for runtime ───────────────────────────────
 FROM base AS prod-deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN echo "node-linker=hoisted" > .npmrc && \
     pnpm install --prod --frozen-lockfile
 
