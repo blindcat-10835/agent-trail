@@ -1,6 +1,6 @@
 -- Agent Tracing Dashboard - Ingest Service SQLite Schema
 -- Adapted from trace contract (types/trace.ts)
--- Supports OpenClaw, Claude Code, Codex, and OpenCode sources
+-- Supports OpenClaw, Claude Code, Codex, OpenCode, and Qoder sources
 
 -- ============================================================================
 -- Sessions Table
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
 
   -- Source identification
-  source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+  source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex', 'opencode', 'qoder')),
   project TEXT NOT NULL,
   name TEXT,
   agent_name TEXT,
@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS subagent_links (
   -- Child session reference. The child row may not have been indexed yet, so this
   -- intentionally does not use a foreign key to sessions(id).
   subagent_session_id TEXT NOT NULL,
-  subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+  subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex', 'opencode', 'qoder')),
   relationship TEXT NOT NULL CHECK(relationship IN ('spawned', 'attached')),
 
   -- Ordinal of the message/tool call that spawned or attached the child session.
@@ -261,7 +261,7 @@ CREATE INDEX IF NOT EXISTS idx_turns_session_index ON turns(session_id, turn_ind
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS ingest_file_cursors (
-  source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+  source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex', 'opencode', 'qoder')),
   file_path TEXT NOT NULL,
   session_id TEXT,
   file_size INTEGER NOT NULL,

@@ -24,7 +24,10 @@ import {
 
 export const overviewRoutes = new Hono();
 
-const VALID_SOURCES = ['openclaw', 'claude-code', 'codex', 'opencode'] as const;
+const VALID_SOURCES = ['openclaw', 'claude-code', 'codex', 'opencode', 'qoder'] as const;
+
+/** Sources excluded from cost-based rollups (product-tier model keys, no verifiable USD billing). */
+const COST_EXCLUDED_SOURCES = ['qoder'] as const;
 
 const UPDATED_AT_EXPR =
   "MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, ''))";
@@ -87,11 +90,25 @@ function isValidSource(source: string): source is typeof VALID_SOURCES[number] {
   return (VALID_SOURCES as readonly string[]).includes(source);
 }
 
+/** Build a SQL fragment that excludes cost-excluded sources from the sessions table (aliased as `s`). */
+function costSourceExclusion(): string {
+  return `AND s.source NOT IN (${COST_EXCLUDED_SOURCES.map(() => '?').join(', ')})`;
+}
+
+const COST_EXCLUSION_PARAMS: string[] = [...COST_EXCLUDED_SOURCES];
+
 function getSessionCostRows(
   db: IngestDatabase,
   whereClause: string,
   params: SqlParam[],
 ): SessionCostRow[] {
+  // Cost-excluded sources (e.g. qoder with product-tier model keys) must never
+  // enter cost rollups.  Append the exclusion fragment and params unconditionally.
+  const costWhere = whereClause
+    ? `${whereClause} ${costSourceExclusion()}`
+    : `WHERE 1=1 ${costSourceExclusion()}`;
+  const costParams = [...params, ...COST_EXCLUSION_PARAMS];
+
   const rows = db.prepare(`
     SELECT
       s.id,
@@ -116,8 +133,8 @@ function getSessionCostRows(
       s.source_cost_usd,
       s.cost_pricing_status
     FROM sessions s
-    ${whereClause}
-  `).all(...params) as Array<{
+    ${costWhere}
+  `).all(...costParams) as Array<{
     id: string;
     source: string;
     project: string;
@@ -477,12 +494,21 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+  // When sorting by cost, exclude sources that have no verifiable USD billing
+  // (e.g. qoder with product-tier model keys). Token-based rankings may include them.
+  const costExclusionConditions = [...conditions, ...COST_EXCLUDED_SOURCES.map(s => `s.source != '${s}'`)];
+  const costFilterWhereClause = costExclusionConditions.length > 0
+    ? `WHERE ${costExclusionConditions.join(' AND ')}`
+    : '';
+
   // Get total tokens across all models for share percentage
   const totalRow = db.prepare(`
     SELECT COALESCE(SUM(${sessionTotalTokensExpr('s')}), 0) as total_tokens
     FROM sessions s
     ${whereClause}
   `).get(...params) as { total_tokens: number };
+
+  const modelsWhere = sortBy === 'cost' ? costFilterWhereClause : whereClause;
 
   // Get per-model breakdown without duplicating session totals across messages.
   // A session can contain many message rows, empty-string model placeholders, and
@@ -499,7 +525,7 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
         s.total_reasoning_tokens,
         ${sessionTotalTokensExpr('s')} AS total_tokens
       FROM sessions s
-      ${whereClause}
+      ${modelsWhere}
     ),
     modeled_sessions AS (
       SELECT

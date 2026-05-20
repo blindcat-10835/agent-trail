@@ -15,22 +15,27 @@ import type {
 } from './types'
 
 describe('AgentToolId', () => {
-  it('is the literal union of all, openclaw, claude-code, codex, and opencode', () => {
-    const ids: AgentToolId[] = ['all', 'openclaw', 'claude-code', 'codex', 'opencode']
-    expect(ids).toHaveLength(5)
+  it('is the literal union of all, openclaw, claude-code, codex, opencode, and qoder', () => {
+    // Type-level check: if the union is correct, this array is valid
+    const ids: AgentToolId[] = ['all', 'openclaw', 'claude-code', 'codex', 'opencode', 'qoder']
+    expect(ids).toHaveLength(6)
     expect(ids).toContain('all')
     expect(ids).toContain('openclaw')
     expect(ids).toContain('claude-code')
     expect(ids).toContain('codex')
     expect(ids).toContain('opencode')
+    expect(ids).toContain('qoder')
   })
 
   it('has source IDs compatible with TraceSource from types/trace.ts', () => {
-    const toolIds: SourceToolId[] = ['openclaw', 'claude-code', 'codex', 'opencode']
+    const toolIds: SourceToolId[] = ['openclaw', 'claude-code', 'codex', 'opencode', 'qoder']
+    // Verify each can be used where TraceSource is expected
     toolIds.forEach((id) => {
       expect(typeof id).toBe('string')
-      expect(['openclaw', 'claude-code', 'codex', 'opencode']).toContain(id)
+      expect(['openclaw', 'claude-code', 'codex', 'opencode', 'qoder']).toContain(id)
     })
+    expect(toolIds).toContain('opencode')
+    expect(toolIds).toContain('qoder')
   })
 })
 
@@ -82,6 +87,7 @@ describe('assertAgentToolId', () => {
     expect(assertAgentToolId('claude-code')).toBe('claude-code')
     expect(assertAgentToolId('codex')).toBe('codex')
     expect(assertAgentToolId('opencode')).toBe('opencode')
+    expect(assertAgentToolId('qoder')).toBe('qoder')
   })
 
   it('throws with a descriptive message for invalid inputs', () => {
@@ -98,6 +104,7 @@ describe('assertAgentToolId', () => {
       expect(msg).toMatch(/claude-code/)
       expect(msg).toMatch(/codex/)
       expect(msg).toMatch(/opencode/)
+      expect(msg).toMatch(/qoder/)
     }
   })
 })
@@ -108,6 +115,7 @@ describe('assertSourceToolId', () => {
     expect(assertSourceToolId('claude-code')).toBe('claude-code')
     expect(assertSourceToolId('codex')).toBe('codex')
     expect(assertSourceToolId('opencode')).toBe('opencode')
+    expect(assertSourceToolId('qoder')).toBe('qoder')
   })
 
   it('rejects the synthetic all scope', () => {
@@ -116,12 +124,12 @@ describe('assertSourceToolId', () => {
 })
 
 describe('getAllDefinitions', () => {
-  it('returns an array of 5 definitions', () => {
+  it('returns an array of 6 definitions', () => {
     const defs = getAllDefinitions()
-    expect(defs).toHaveLength(5)
+    expect(defs).toHaveLength(6)
   })
 
-  it('includes definitions with ids all, openclaw, claude-code, codex, opencode', () => {
+  it('includes definitions with ids all, openclaw, claude-code, codex, opencode, and qoder', () => {
     const defs = getAllDefinitions()
     const ids = defs.map((d) => d.id)
     expect(ids).toContain('all')
@@ -129,6 +137,7 @@ describe('getAllDefinitions', () => {
     expect(ids).toContain('claude-code')
     expect(ids).toContain('codex')
     expect(ids).toContain('opencode')
+    expect(ids).toContain('qoder')
   })
 })
 
@@ -191,26 +200,27 @@ describe('getDefinition', () => {
 
 describe('TOOL_IDS', () => {
   it('contains only ingest-backed source IDs', () => {
-    expect(TOOL_IDS).toHaveLength(4)
-    expect(TOOL_IDS).toEqual(['openclaw', 'claude-code', 'codex', 'opencode'])
+    expect(TOOL_IDS).toHaveLength(5)
+    expect(TOOL_IDS).toEqual(['openclaw', 'claude-code', 'codex', 'opencode', 'qoder'])
   })
 })
 
 describe('SHELL_TOOL_IDS', () => {
-  it('contains all five shell tool scopes', () => {
-    expect(SHELL_TOOL_IDS).toHaveLength(5)
-    expect(SHELL_TOOL_IDS).toEqual(['all', 'openclaw', 'claude-code', 'codex', 'opencode'])
+  it('contains all six shell tool scopes', () => {
+    expect(SHELL_TOOL_IDS).toHaveLength(6)
+    expect(SHELL_TOOL_IDS).toEqual(['all', 'openclaw', 'claude-code', 'codex', 'opencode', 'qoder'])
   })
 })
 
 describe('AGENT_TOOL_DEFINITIONS', () => {
-  it('has entries for all five shell tool scopes', () => {
+  it('has entries for all six shell tool scopes', () => {
     const keys = Object.keys(AGENT_TOOL_DEFINITIONS)
-    expect(keys).toHaveLength(5)
+    expect(keys).toHaveLength(6)
     expect(keys).toContain('all')
     expect(keys).toContain('openclaw')
     expect(keys).toContain('claude-code')
     expect(keys).toContain('codex')
     expect(keys).toContain('opencode')
+    expect(keys).toContain('qoder')
   })
 })

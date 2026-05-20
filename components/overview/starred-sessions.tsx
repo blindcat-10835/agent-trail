@@ -31,6 +31,7 @@ function sourceLabel(source: string): string {
     case 'claude-code': return 'CLAUDE:CODE'
     case 'codex': return 'CODEX'
     case 'opencode': return 'OPENCODE'
+    case 'qoder': return 'QODER'
     default: return (source ?? '').toUpperCase()
   }
 }

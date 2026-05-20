@@ -40,7 +40,7 @@
 | 15 | Ingest Sync Performance Hardening | 修复 ingest watcher/background/periodic sync 重叠导致的高内存、高 CPU、大 JSONL 重复解析问题。 | PERF-101..106, TEST-103, OPEN-103 |
 | 16 | Ingest Incremental JSONL and Sync Observability Hardening | 完成 Phase 15 剩余 P2/P3：append-only JSONL 增量解析、cursor 安全回退、append/upsert 写入、sync run 历史与生产级 debug 指标。 | PERF-107..112 |
 | 17 | OpenCode Source Integration | 将 opencode CLI 的 SQLite session 数据作为第四个正式 source 纳入 dashboard，支持 session browsing、turn replay、tool activity、token usage、cost display。 | OPN-101..110 |
-| 18 | Qoder Source Integration | 将 Qoder 桌面端 SQLite 主库作为第五个正式 source 纳入 dashboard，支持 session browsing、turn replay、tool activity、subagent links、token totals；cost 暂不估算。 | QDR-101..110 |
+| 18 | 4/5 | In Progress|  |
 
 #### Phase 10: Rich Ingest Metrics & Data Contracts
 

@@ -49,6 +49,19 @@ export const TOOL_DIR_REGISTRY: ToolDirDef[] = [
     configKey: 'opencode_db_paths',
     defaultDirs: ['.local/share/opencode'],
   },
+  {
+    type: 'qoder',
+    displayName: 'Qoder',
+    envVar: 'QODER_DB_PATH',
+    configKey: 'qoder_db_paths',
+    // Qoder's "dir" is actually a single SQLite file path (the local cache DB).
+    // The TOOL_DIR_REGISTRY semantics tolerate this because consumers treat
+    // each entry as an opaque string list — discoverQoderSources (Plan 18-03)
+    // interprets the path as a DB file. The home-prefix loop in resolveToolDirs
+    // uses path.join(home, p) which does NOT append a trailing slash, so the
+    // file path is preserved as-is.
+    defaultDirs: ['Library/Application Support/Qoder/SharedClientCache/cache/db/local.db'],
+  },
 ];
 
 interface ToolConfigFile {

@@ -185,6 +185,15 @@ export function estimateModelCost(
   model: string | null | undefined,
   usage: TokenUsageForPricing,
 ): ModelCostEstimate {
+  // Provider-grouping guard: product-tier model keys from Qoder (and any source
+  // using opaque product-tier identifiers) must never be attributed to a specific
+  // provider like Anthropic / OpenAI / Gemini. These keys represent billing tiers,
+  // not underlying model names.
+  const normalized = normalizeModelName(model);
+  if (normalized === 'ultimate' || normalized === 'experts-ultimate') {
+    return { cost: null, pricingStatus: 'unknown', provider: 'qoder' };
+  }
+
   const rule = findPricingRule(model);
   if (!rule) {
     return { cost: null, pricingStatus: 'unknown' };

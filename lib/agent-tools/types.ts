@@ -15,7 +15,7 @@
  * Concrete ingest-backed agent tool sources.
  * Must remain compatible with TraceSource in types/trace.ts.
  */
-export type SourceToolId = 'openclaw' | 'claude-code' | 'codex' | 'opencode'
+export type SourceToolId = 'openclaw' | 'claude-code' | 'codex' | 'opencode' | 'qoder'
 
 /**
  * Supported tool scopes in the shell.
@@ -213,7 +213,7 @@ export interface AgentToolContextValue {
 
 /**
  * Complete definition of an agent tool.
- * Each supported tool (openclaw, claude-code, codex) has one definition
+ * Each supported tool (openclaw, claude-code, codex, qoder) has one definition
  * registered in lib/agent-tools/registry.ts.
  */
 export interface AgentToolDefinition {

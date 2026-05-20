@@ -48,6 +48,7 @@ const SOURCE_LABELS: Record<string, string> = {
   'claude-code': 'CLAUDE:CODE',
   codex: 'CODEX',
   opencode: 'OPENCODE',
+  qoder: 'QODER',
 }
 
 // ============================================================================

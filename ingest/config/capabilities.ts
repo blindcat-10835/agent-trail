@@ -49,4 +49,16 @@ export const SOURCE_CAPABILITIES: Record<string, SourceCapabilities> = {
     sessions: true,
     replay: true,
   },
+  qoder: {
+    // Qoder is excluded from cost rollups (QDR-109 / SPEC §9). cost=false is
+    // the first line of defence — downstream cost code must short-circuit on
+    // this flag. Subagents are exposed via lib/agent-tools/qoder/definition.ts
+    // (Plan 18-04); SOURCE_CAPABILITIES does not currently expose subagents.
+    agents: false,
+    automations: false,
+    cost: false,
+    activity: true,
+    sessions: true,
+    replay: true,
+  },
 };

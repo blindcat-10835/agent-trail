@@ -123,7 +123,7 @@ type AggregateHookResult = ReturnType<typeof useAggregateSessions>
 type SessionTurnsHookResult = ReturnType<typeof useSessionTurns>
 
 describe('useAggregateSessions', () => {
-  it('fetches initial aggregate sessions through the four BFF source URLs', async () => {
+  it('fetches initial aggregate sessions through the five BFF source URLs', async () => {
     let latest: AggregateHookResult | undefined
 
     function Consumer() {
@@ -136,13 +136,14 @@ describe('useAggregateSessions', () => {
     await waitFor(() => expect(latest?.loading).toBe(false))
 
     const urls = fetchMock.mock.calls.map(([url]) => String(url))
-    expect(urls).toHaveLength(4)
+    expect(urls).toHaveLength(5)
     expect(urls).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/^\/api\/agent-tools\/openclaw\/sessions\?/),
         expect.stringMatching(/^\/api\/agent-tools\/claude-code\/sessions\?/),
         expect.stringMatching(/^\/api\/agent-tools\/codex\/sessions\?/),
         expect.stringMatching(/^\/api\/agent-tools\/opencode\/sessions\?/),
+        expect.stringMatching(/^\/api\/agent-tools\/qoder\/sessions\?/),
       ]),
     )
     expect(urls.join('\n')).not.toMatch(/localhost:8078|127\.0\.0\.1|\/api\/v1/)
@@ -283,6 +284,13 @@ describe('useAggregateSessions', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
+          sessions: [],
+          pagination: { total: 0, limit: 2, offset: 0, hasMore: false },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
           sessions: [
             sessionFixture('openclaw-new', 'openclaw', {
               startedAt: '2026-05-10T00:05:00.000Z',
@@ -327,7 +335,7 @@ describe('useAggregateSessions', () => {
     await waitFor(() => expect(latest?.isLoadingMore).toBe(false))
 
     const urls = fetchMock.mock.calls.map(([url]) => String(url))
-    const nextPageUrls = urls.slice(4)
+    const nextPageUrls = urls.slice(5)
     expect(nextPageUrls).toHaveLength(2)
     expect(nextPageUrls).toEqual(
       expect.arrayContaining([
@@ -339,6 +347,7 @@ describe('useAggregateSessions', () => {
       expect.arrayContaining([
         expect.stringContaining('/api/agent-tools/claude-code/sessions?'),
         expect.stringContaining('/api/agent-tools/opencode/sessions?'),
+        expect.stringContaining('/api/agent-tools/qoder/sessions?'),
       ]),
     )
     expect(nextPageUrls).toEqual(

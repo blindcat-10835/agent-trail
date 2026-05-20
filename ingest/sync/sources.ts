@@ -1,7 +1,7 @@
 /**
  * Source Discovery and Configuration
  *
- * Discovers and configures data sources (OpenClaw, Claude Code, Codex)
+ * Discovers and configures data sources (OpenClaw, Claude Code, Codex, Qoder)
  * for the ingest service. Reads scan directories from the resolved
  * IngestConfig (which pulls from env vars and defaults via tool-dirs.ts).
  *
@@ -10,6 +10,7 @@
 
 import Database from 'better-sqlite3';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { TraceSource } from '@/types/trace';
@@ -337,6 +338,69 @@ export async function discoverOpencodeSources(dirs?: string[]): Promise<Discover
 }
 
 // ============================================================================
+// Qoder Discovery
+// ============================================================================
+
+/**
+ * Discover Qoder sources from configured database file paths
+ *
+ * Unlike other sources that scan directories for JSONL files, Qoder's data
+ * lives in a single SQLite database file. Each path is treated as a DB file
+ * and opened readonly to validate it contains the expected Qoder schema.
+ *
+ * @param dbPaths - Optional path list override; defaults to resolved config
+ */
+export async function discoverQoderSources(dbPaths?: string[]): Promise<DiscoveredSource[]> {
+  const paths = dbPaths ?? getDefaultDirs('qoder');
+  const results: DiscoveredSource[] = [];
+
+  for (const dbPath of paths) {
+    // Check file exists before attempting to open
+    if (!fsSync.existsSync(dbPath)) {
+      continue;
+    }
+
+    let db: Database.Database | null = null;
+    try {
+      db = new Database(dbPath, { readonly: true, fileMustExist: true });
+
+      // Validate expected Qoder tables exist (SPEC §4 / D-10)
+      const tables = db.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('chat_session','chat_record','chat_message')`
+      ).all() as Array<{ name: string }>;
+
+      if (tables.length < 3) {
+        // Not a Qoder DB — missing required tables
+        results.push({
+          type: 'qoder',
+          path: dbPath,
+          sessionCount: 0,
+          error: 'Not a valid Qoder database: missing required tables',
+        });
+        continue;
+      }
+
+      const row = db.prepare('SELECT COUNT(*) AS n FROM chat_session').get() as { n: number };
+      results.push({ type: 'qoder', path: dbPath, sessionCount: row.n });
+    } catch (err) {
+      // Locked DB / SQLITE_BUSY / any other error — graceful degradation (D-10)
+      const msg = err instanceof Error ? err.message : 'Failed to open Qoder database';
+      console.warn(`[sources] Qoder discovery error for ${dbPath}: ${msg}`);
+      results.push({
+        type: 'qoder',
+        path: dbPath,
+        sessionCount: 0,
+        error: msg,
+      });
+    } finally {
+      db?.close();
+    }
+  }
+
+  return results;
+}
+
+// ============================================================================
 // Source Config Resolution
 // ============================================================================
 
@@ -344,7 +408,7 @@ export async function discoverOpencodeSources(dirs?: string[]): Promise<Discover
  * Get source configuration for a specific source type
  *
  * Returns configuration for all discovered sources of the given type.
- * Supports OpenClaw, Claude Code, Codex, and OpenCode sources.
+ * Supports OpenClaw, Claude Code, Codex, OpenCode, and Qoder sources.
  *
  * @param sourceType - Type of source to configure
  * @returns Array of source configurations
@@ -360,6 +424,8 @@ export async function getSourceConfig(sourceType: TraceSource): Promise<SourceCo
     sources = await discoverCodexSources();
   } else if (sourceType === 'opencode') {
     sources = await discoverOpencodeSources();
+  } else if (sourceType === 'qoder') {
+    sources = await discoverQoderSources();
   } else {
     return [];
   }

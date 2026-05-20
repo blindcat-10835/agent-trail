@@ -13,6 +13,7 @@ import openclawDef from './openclaw/definition'
 import claudeCodeDef from './claude-code/definition'
 import codexDef from './codex/definition'
 import opencodeDef from './opencode/definition'
+import qoderDef from './qoder/definition'
 
 /**
  * Map of all tool definitions indexed by AgentToolId.
@@ -24,13 +25,14 @@ export const AGENT_TOOL_DEFINITIONS: Record<AgentToolId, AgentToolDefinition> = 
   'claude-code': claudeCodeDef,
   'codex': codexDef,
   'opencode': opencodeDef,
+  'qoder': qoderDef,
 }
 
 /**
  * Ordered array of source tool IDs.
  * Kept source-only for aggregate queries.
  */
-export const TOOL_IDS: SourceToolId[] = ['openclaw', 'claude-code', 'codex', 'opencode']
+export const TOOL_IDS: SourceToolId[] = ['openclaw', 'claude-code', 'codex', 'opencode', 'qoder']
 
 /**
  * Ordered array of all shell scopes, including synthetic aggregate views.
@@ -47,16 +49,16 @@ export function getDefinition(toolId: AgentToolId): AgentToolDefinition {
 
 /**
  * Return all tool definitions as an array.
- * Order: openclaw, claude-code, codex.
+ * Order: openclaw, claude-code, codex, qoder.
  */
 export function getAllDefinitions(): AgentToolDefinition[] {
-  return [allDef, openclawDef, claudeCodeDef, codexDef, opencodeDef]
+  return [allDef, openclawDef, claudeCodeDef, codexDef, opencodeDef, qoderDef]
 }
 
 /**
  * Validate and narrow a raw string to AgentToolId.
  * Throws an Error with a descriptive message listing valid IDs if the input
- * does not match one of 'openclaw', 'claude-code', or 'codex'.
+ * does not match one of 'openclaw', 'claude-code', 'codex', or 'qoder'.
  *
  * Use this at trust boundaries (e.g. URL param parsing) to ensure
  * downstream code only sees valid AgentToolId values.

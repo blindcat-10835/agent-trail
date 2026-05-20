@@ -60,7 +60,7 @@ export interface SyncObserver {
   onFileComplete?: (event: SyncProgressEvent) => void;
 }
 
-export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex' | 'opencode';
+export type SyncSourceType = 'openclaw' | 'claude-code' | 'codex' | 'opencode' | 'qoder';
 
 export interface FileSnapshotWithIdentity {
   size: number;
@@ -1760,9 +1760,9 @@ async function collectSessionFileCandidates(
  * Sync all sessions from a source type
  *
  * Orchestrates full sync pipeline: discover sources → parse files → write to database.
- * Supports OpenClaw, Claude Code, and Codex source types.
+ * Supports OpenClaw, Claude Code, Codex, and Qoder source types.
  *
- * @param sourceType - Type of source to sync ('openclaw', 'claude-code', 'codex')
+ * @param sourceType - Type of source to sync ('openclaw', 'claude-code', 'codex', 'qoder')
  * @param options - Optional sync options (basePath, force)
  * @returns SyncResult with aggregated counts and errors
  */
@@ -1786,6 +1786,8 @@ export async function syncSource(
     result = await syncCodexSource(opts);
   } else if (sourceType === 'opencode') {
     result = await syncOpencodeSource(opts);
+  } else if (sourceType === 'qoder') {
+    result = await syncQoderSource(opts);
   } else {
     result = {
       sessionsInserted: 0,
@@ -1952,6 +1954,19 @@ async function parseFullCandidate(
   recordFileParsed(totalResult, 'full');
   applyCodexRelationshipToSession(parseResult, relationshipsByChild);
   parseResult.session.name = extractSessionName(parseResult);
+
+  // Qoder dispatch — delegates to syncQoderSource; parseFullCandidate is not
+  // the primary entry for Qoder (it uses session-keyed iteration, not file-keyed).
+  // This branch handles the edge case where parseFullCandidate is called directly.
+  if (sourceType === 'qoder') {
+    const { parseQoderSession } = await import('../parser/qoder');
+    const qoderSessionId = path.basename(filePath, path.extname(filePath));
+    const qoderResult = await parseQoderSession(filePath, qoderSessionId);
+    recordFileParsed(totalResult, 'full');
+    const writeResult = writeSessionToDatabase(qoderResult, undefined, filePath, { force: opts.force });
+    mergeSyncResult(totalResult, writeResult);
+    return;
+  }
   parseResult.session.project = extractProjectFromParsedSession(parseResult, candidate.project);
   const writeResult = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
   if (writeResult.errors.length === 0) {
@@ -2398,6 +2413,126 @@ async function syncCodexSource(opts: SyncSourceOptions): Promise<SyncResult> {
   });
 
   return totalResult;
+}
+
+// ============================================================================
+// Qoder Sync
+// ============================================================================
+
+/**
+ * Sync Qoder sessions
+ *
+ * Unlike other sources that iterate JSONL files, Qoder iterates session rows
+ * from a readonly SQLite database. Uses per-session fingerprint skip cache
+ * (D-03) stored in sessions.file_hash.
+ */
+async function syncQoderSource(opts: SyncSourceOptions): Promise<SyncResult> {
+  const { discoverQoderSources } = await import('./sources');
+  const { parseQoderSession, computeQoderSessionFingerprint } = await import('../parser/qoder');
+
+  const { getConfig } = await import('../config');
+  const toolDirs = getConfig().toolDirs;
+  const sources = await discoverQoderSources(toolDirs.get('qoder'));
+  const totalResult = createSyncResult();
+
+  for (const source of sources) {
+    // Skip non-configured sources (absent/invalid DB)
+    if (source.error) continue;
+
+    let db: InstanceType<typeof import('better-sqlite3')> | null = null;
+    try {
+      db = new (require('better-sqlite3'))(source.path, { readonly: true, fileMustExist: true });
+
+      // Enumerate sessions with fingerprint metadata
+      const sessionRows = withSyncRetry(() =>
+        db!.prepare(
+          `SELECT id, gmt_modified,
+                  (SELECT COUNT(*) FROM chat_message m WHERE m.session_id = chat_session.id) AS msg_count,
+                  (SELECT MAX(gmt_create) FROM chat_message m WHERE m.session_id = chat_session.id) AS max_msg_gmt
+           FROM chat_session ORDER BY gmt_modified DESC`
+        ).all()
+      ) as Array<{ id: string; gmt_modified: number; msg_count: number; max_msg_gmt: number | null }>;
+
+      const database = getDatabase();
+
+      for (const row of sessionRows) {
+        try {
+          // Compute per-session fingerprint (D-03)
+          const fingerprint = computeQoderSessionFingerprint({
+            id: row.id,
+            gmt_modified: row.gmt_modified,
+            msg_count: row.msg_count,
+            max_msg_gmt: row.max_msg_gmt,
+          });
+          const cacheKey = buildParserCacheHash('qoder', fingerprint);
+
+          // Check skip cache — compare with existing file_hash (D-03)
+          const canonicalId = `qoder:${row.id}`;
+          const existing = database.prepare(
+            'SELECT file_hash FROM sessions WHERE id = ?'
+          ).get(canonicalId) as { file_hash: string | null } | undefined;
+
+          if (existing?.file_hash === cacheKey && !opts.force) {
+            // Session unchanged — skip
+            continue;
+          }
+
+          // Parse the session
+          const parseResult = await parseQoderSession(source.path, row.id, { force: opts.force });
+
+          // Write through canonical pipeline (without sourceFile — we set file_hash separately)
+          const filePath = `${source.path}#${row.id}`;
+          const writeResult = writeSessionToDatabase(parseResult, undefined, filePath, { force: opts.force });
+
+          // Update file_hash with the fingerprint-based cache key for future skip checks
+          database.prepare(
+            'UPDATE sessions SET file_hash = ? WHERE id = ?'
+          ).run(cacheKey, canonicalId);
+
+          mergeSyncResult(totalResult, writeResult);
+
+          // Track warnings from parser
+          for (const w of parseResult.warnings) {
+            totalResult.errors.push(`Qoder parser warning [${row.id}]: ${w}`);
+          }
+        } catch (err) {
+          totalResult.errors.push(`Failed to parse Qoder session ${row.id}: ${err}`);
+        }
+      }
+    } catch (err) {
+      totalResult.errors.push(`Failed to sync Qoder source ${source.path}: ${err}`);
+    } finally {
+      db?.close();
+    }
+  }
+
+  sseManager.emit('sync_complete', {
+    source: 'qoder',
+    sessionsInserted: totalResult.sessionsInserted,
+    sessionsUpdated: totalResult.sessionsUpdated,
+    errors: totalResult.errors.length,
+  });
+
+  return totalResult;
+}
+
+/**
+ * Retry helper for Qoder sync SQLITE_BUSY errors.
+ */
+function withSyncRetry<T>(fn: () => T, retries = 3, delayMs = 100): T {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return fn();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isBusy = msg.includes('SQLITE_BUSY') || msg.includes('database is locked');
+      if (!isBusy || attempt === retries) throw err;
+      // Wait before retry
+      const end = Date.now() + delayMs;
+      while (Date.now() < end) { /* busy-wait */ }
+    }
+  }
+  throw new Error('withSyncRetry exhausted');
 }
 
 /**

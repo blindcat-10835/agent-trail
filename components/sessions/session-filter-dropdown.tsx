@@ -29,6 +29,7 @@ const SOURCE_LABELS: Record<TraceSource, string> = {
   openclaw: 'OpenClaw',
   codex: 'Codex',
   opencode: 'OpenCode',
+  qoder: 'Qoder',
 }
 
 // ============================================================================

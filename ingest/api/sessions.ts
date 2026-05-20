@@ -14,7 +14,7 @@ import { estimateModelCost } from '../pricing/model-pricing.js';
 
 export const sessionsRoutes = new Hono();
 
-const VALID_SOURCES = ['openclaw', 'claude-code', 'codex', 'opencode'] as const;
+const VALID_SOURCES = ['openclaw', 'claude-code', 'codex', 'opencode', 'qoder'] as const;
 const VALID_SESSION_SORTS = [
   'updated_at',
   'started_at',
@@ -67,7 +67,7 @@ sessionsRoutes.get('/api/v1/sessions/lookup', (c) => {
   }
 
   // Validate source (whitelisted values only)
-  if (!['openclaw', 'claude-code', 'codex', 'opencode'].includes(source)) {
+  if (!['openclaw', 'claude-code', 'codex', 'opencode', 'qoder'].includes(source)) {
     return c.json({
       error: 'Invalid source parameter'
     }, 400);

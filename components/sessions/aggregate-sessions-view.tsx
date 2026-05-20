@@ -15,6 +15,8 @@ function sourceLabel(toolId: AggregateSourceStatus['toolId']): string {
       return 'CODEX'
     case 'opencode':
       return 'OPENCODE'
+    case 'qoder':
+      return 'QODER'
   }
 }
 

@@ -384,15 +384,15 @@ export function runMigrations(): void {
       `,
     },
     {
-      desc: 'Clean up stale rebuild tables from partial v14 migration',
+      desc: 'Clean up stale rebuild tables from partial migration',
       sql: 'DROP TABLE IF EXISTS sessions_new; DROP TABLE IF EXISTS subagent_links_new; DROP TABLE IF EXISTS ingest_file_cursors_new',
     },
     {
-      desc: 'Rebuild sessions table with opencode CHECK + cost columns',
+      desc: 'Rebuild sessions table with opencode + qoder CHECK + cost columns',
       sql: `
         CREATE TABLE sessions_new (
           id TEXT PRIMARY KEY,
-          source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+          source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex', 'opencode', 'qoder')),
           project TEXT NOT NULL,
           name TEXT,
           agent_name TEXT,
@@ -488,13 +488,13 @@ export function runMigrations(): void {
       `,
     },
     {
-      desc: 'Rebuild subagent_links table with opencode CHECK',
+      desc: 'Rebuild subagent_links table with opencode + qoder CHECK',
       sql: `
         CREATE TABLE subagent_links_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           session_id TEXT NOT NULL,
           subagent_session_id TEXT NOT NULL,
-          subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+          subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex', 'opencode', 'qoder')),
           relationship TEXT NOT NULL CHECK(relationship IN ('spawned', 'attached')),
           message_ordinal INTEGER,
           FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -523,10 +523,10 @@ export function runMigrations(): void {
       `,
     },
     {
-      desc: 'Rebuild ingest_file_cursors table with opencode CHECK',
+      desc: 'Rebuild ingest_file_cursors table with opencode + qoder CHECK',
       sql: `
         CREATE TABLE ingest_file_cursors_new (
-          source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+          source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex', 'opencode', 'qoder')),
           file_path TEXT NOT NULL,
           session_id TEXT,
           file_size INTEGER NOT NULL,
@@ -562,8 +562,8 @@ export function runMigrations(): void {
       sql: 'CREATE INDEX IF NOT EXISTS idx_ingest_file_cursors_session_id ON ingest_file_cursors(session_id)',
     },
     {
-      desc: 'Invalidate skip cache for opencode migration',
-      sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'openclaw' OR source = 'claude-code' OR source = 'codex'",
+      desc: 'Invalidate skip cache for opencode and qoder migration',
+      sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'openclaw' OR source = 'claude-code' OR source = 'codex' OR source = 'qoder'",
     },
     {
       desc: 'Add dashboard overview session indexes',

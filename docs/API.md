@@ -7,7 +7,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 
 前端按源读取数据应始终通过 `/api/agent-tools/[tool]/...` 路径。此处记录摄取 API 供工具开发、调试和对照参考。
 
-> 所有示例假定使用 [`CONFIGURATION.md`](CONFIGURATION.md) 中的默认值。`[tool]` 取值为 `openclaw | claude-code | codex | opencode`（`all` 聚合作用域仅用于 shell 层，BFF 会拒绝它）。
+> 所有示例假定使用 [`CONFIGURATION.md`](CONFIGURATION.md) 中的默认值。`[tool]` 取值为 `openclaw | claude-code | codex | opencode | qoder`（`all` 聚合作用域仅用于 shell 层，BFF 会拒绝它）。
 
 ---
 
@@ -59,7 +59,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 
 #### `GET /api/v1/sources`
 
-列出所有数据源类型的已发现数据源。
+列出所有已发现的数据源。支持五种数据源类型：`openclaw`、`claude-code`、`codex`、`opencode`、`qoder`。
 
 ```json
 {
@@ -87,7 +87,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 
 与上述结构相同，仅限某一数据源类型。
 
-  - **400** 当 `type` 不是 `openclaw | claude-code | codex | opencode` 时返回 `Unsupported source type`。
+- **400** 当 `type` 不是 `openclaw | claude-code | codex | opencode | qoder` 时返回 `Unsupported source type`。
 
 #### `POST /api/v1/sources/:type/sync`
 
@@ -456,6 +456,9 @@ curl http://localhost:8078/health | jq
 
 # 2. 确认你关心的数据源已配置
 curl 'http://localhost:8078/api/v1/sources/claude-code' | jq
+
+# 2b. Qoder 数据源发现（返回 configured/empty/error）
+curl 'http://localhost:8078/api/v1/sources/qoder' | jq
 
 # 3. 强制同步某个数据源（跳过缓存，重新解析）
 curl -X POST 'http://localhost:8078/api/v1/sources/claude-code/sync' \

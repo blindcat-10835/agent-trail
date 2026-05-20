@@ -1,0 +1,49 @@
+{
+  "description": "Synthetic Qoder SQLite fixture for parser unit tests (D-08/D-09)",
+  "builder": "tests/fixtures/qoder/build-fixture.ts",
+  "output": "tests/fixtures/qoder/sample.db",
+  "sessions": [
+    {
+      "id": "root-aaaa-bbbb-cccc",
+      "purpose": "Root session with all 7 tool types, 1 ERROR tool, token_info, user message, and malformed JSON"
+    },
+    {
+      "id": "sub-dddd-eeee-ffff",
+      "purpose": "Subagent of root; tests TraceSubagentLink emission via parent_tool_call_id"
+    }
+  ],
+  "messages": [
+    { "id": "msg-user-001", "purpose": "User message with realistic content" },
+    { "id": "msg-asst-001", "purpose": "Assistant with full token_info (prompt=120, completion=80, cached=40, max_input=200000) and 7 tool_calls" },
+    { "id": "msg-tool-read-file", "purpose": "Tool result: read_file → FINISHED" },
+    { "id": "msg-tool-search-file", "purpose": "Tool result: search_file → FINISHED" },
+    { "id": "msg-tool-grep-code", "purpose": "Tool result: grep_code → FINISHED" },
+    { "id": "msg-tool-search-codebase", "purpose": "Tool result: search_codebase → FINISHED" },
+    { "id": "msg-tool-list-dir", "purpose": "Tool result: list_dir → FINISHED" },
+    { "id": "msg-tool-run-terminal", "purpose": "Tool result: run_in_terminal → ERROR (exercises error path)" },
+    { "id": "msg-tool-agent", "purpose": "Tool result: Agent → FINISHED (parent tool call for subagent)" },
+    { "id": "msg-tool-malformed", "purpose": "Tool result with malformed JSON '{not valid json' (parser warning case)" }
+  ],
+  "toolCallIds": {
+    "tc-read-file-001": { "name": "read_file", "category": "Read", "status": "success" },
+    "tc-search-file-001": { "name": "search_file", "category": "Grep", "status": "success" },
+    "tc-grep-code-001": { "name": "grep_code", "category": "Grep", "status": "success" },
+    "tc-search-codebase-001": { "name": "search_codebase", "category": "Grep", "status": "success" },
+    "tc-list-dir-001": { "name": "list_dir", "category": "Read", "status": "success" },
+    "tc-run-terminal-001": { "name": "run_in_terminal", "category": "Bash", "status": "error" },
+    "tc-agent-001": { "name": "Agent", "category": "Agent", "status": "success" },
+    "tc-malformed-001": { "name": null, "category": "Other", "status": "success" }
+  },
+  "tokenInfo": {
+    "prompt_tokens": 120,
+    "completion_tokens": 80,
+    "cached_tokens": 40,
+    "max_input_tokens": 200000,
+    "expectedTotalTokens": 200
+  },
+  "subagentLink": {
+    "parentSessionId": "root-aaaa-bbbb-cccc",
+    "parentToolCallId": "tc-agent-001",
+    "childSessionId": "sub-dddd-eeee-ffff"
+  }
+}

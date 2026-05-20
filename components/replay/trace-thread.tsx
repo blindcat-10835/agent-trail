@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Search } from 'lucide-react'
+import { Search, CornerLeftUp } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import type { TraceSession, TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
+import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { MarkdownContent } from './markdown-content'
 import { ToolBlock } from './tool-block'
 import { SkillBlock } from './skill-block'
@@ -504,6 +506,12 @@ export function TraceThread({
   const totalOutput = session?.outputTokens ?? session?.metrics.outputTokens ?? 0
   const cost = session?.estimatedCost
 
+  // Parent session back-link (D-06 part 3)
+  const { href } = useAgentTool()
+  const router = useRouter()
+  const parentSessionId = session?.parentSessionId
+  const parentHref = parentSessionId ? href(`/sessions/${parentSessionId}`) : null
+
   return (
     <div className="v2-root">
       <div className="v2-hud">
@@ -520,6 +528,20 @@ export function TraceThread({
               <>
                 <span className="v2-sep">/</span>
                 <span>{model}</span>
+              </>
+            )}
+            {parentHref && (
+              <>
+                <span className="v2-sep">/</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); router.push(parentHref) }}
+                  className="inline-flex items-center gap-1 hover:text-accent transition-colors"
+                  style={{ color: 'oklch(0.78 0.15 320)', fontSize: 'inherit' }}
+                  title={`Parent session: ${parentSessionId}`}
+                >
+                  <CornerLeftUp style={{ width: 10, height: 10 }} />
+                  SPAWNED
+                </button>
               </>
             )}
           </div>

@@ -2,7 +2,7 @@
  * Canonical Trace Contract
  *
  * This module defines the canonical trace data model for agent-tracing-dashboard.
- * It supports multi-source architecture (OpenClaw, Claude Code, Codex).
+ * It supports multi-source architecture (OpenClaw, Claude Code, Codex, Qoder).
  *
  * The trace model is used by:
  * - Ingest service for parsing and indexing
@@ -19,7 +19,7 @@
 /**
  * Supported agent sources
  */
-export type TraceSource = 'openclaw' | 'claude-code' | 'codex' | 'opencode';
+export type TraceSource = 'openclaw' | 'claude-code' | 'codex' | 'opencode' | 'qoder';
 
 /**
  * Ingest service status (file-based discovery and parsing)
