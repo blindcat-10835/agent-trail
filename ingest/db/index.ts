@@ -6,6 +6,7 @@
  */
 
 import Database from 'better-sqlite3';
+import { readFileSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -83,7 +84,7 @@ export function initSchema(): void {
 
   let schemaContent: string;
   try {
-    schemaContent = require('fs').readFileSync(schemaPath, 'utf-8');
+    schemaContent = readFileSync(schemaPath, 'utf-8');
   } catch (err) {
     console.error(`Failed to read schema file: ${schemaPath}`, err);
     throw new Error(`Failed to read schema file: ${(err as Error).message}`);
@@ -143,7 +144,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 15;
+  const targetVersion = 16;
 
   if (currentVersion >= targetVersion) {
     console.log(`Schema at version ${currentVersion}, no migrations needed`);
@@ -388,6 +389,10 @@ export function runMigrations(): void {
       sql: 'DROP TABLE IF EXISTS sessions_new; DROP TABLE IF EXISTS subagent_links_new; DROP TABLE IF EXISTS ingest_file_cursors_new',
     },
     {
+      desc: 'Disable foreign keys before source CHECK table rebuilds',
+      sql: 'PRAGMA foreign_keys = OFF',
+    },
+    {
       desc: 'Rebuild sessions table with opencode + qoder CHECK + cost columns',
       sql: `
         CREATE TABLE sessions_new (
@@ -562,8 +567,12 @@ export function runMigrations(): void {
       sql: 'CREATE INDEX IF NOT EXISTS idx_ingest_file_cursors_session_id ON ingest_file_cursors(session_id)',
     },
     {
+      desc: 'Re-enable foreign keys after source CHECK table rebuilds',
+      sql: 'PRAGMA foreign_keys = ON',
+    },
+    {
       desc: 'Invalidate skip cache for opencode and qoder migration',
-      sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'openclaw' OR source = 'claude-code' OR source = 'codex' OR source = 'qoder'",
+      sql: "UPDATE sessions SET file_hash = NULL WHERE source IN ('opencode', 'qoder')",
     },
     {
       desc: 'Add dashboard overview session indexes',

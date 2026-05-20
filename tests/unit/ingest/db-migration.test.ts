@@ -108,7 +108,7 @@ describe('ingest database migrations', () => {
     );
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(15);
+    expect(version).toBe(16);
   });
 
   it('initializes ingest file cursor schema idempotently', () => {
@@ -153,7 +153,156 @@ describe('ingest database migrations', () => {
     expect(indexes.map((index) => index.name)).toContain('idx_ingest_file_cursors_session_id');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(15);
+    expect(version).toBe(16);
+  });
+
+  it('repairs v15 databases whose source CHECK constraints only include opencode', () => {
+    dbPath = join(tmpdir(), `ingest-v15-qoder-repair-${randomUUID()}.db`);
+    const seed = new Database(dbPath);
+    seed.exec(`
+      PRAGMA foreign_keys = ON;
+
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+        project TEXT NOT NULL,
+        name TEXT,
+        agent_name TEXT,
+        started_at TEXT,
+        ended_at TEXT,
+        status TEXT NOT NULL CHECK(status IN ('active', 'idle', 'aborted', 'error', 'unknown')),
+        root_session_id TEXT,
+        parent_session_id TEXT,
+        relationship_type TEXT CHECK(relationship_type IN ('root', 'subagent', 'fork', 'continuation')),
+        message_count INTEGER NOT NULL DEFAULT 0,
+        user_message_count INTEGER NOT NULL DEFAULT 0,
+        total_output_tokens INTEGER,
+        total_input_tokens INTEGER NOT NULL DEFAULT 0,
+        total_cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        total_cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        total_reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        has_tool_calls INTEGER NOT NULL DEFAULT 0 CHECK(has_tool_calls IN (0, 1)),
+        file_path TEXT NOT NULL,
+        file_size INTEGER,
+        file_mtime TEXT,
+        file_hash TEXT,
+        last_sync_at TEXT,
+        cwd TEXT,
+        git_branch TEXT,
+        source_session_id TEXT,
+        source_version TEXT,
+        parser_malformed_lines INTEGER NOT NULL DEFAULT 0,
+        is_truncated INTEGER NOT NULL DEFAULT 0 CHECK(is_truncated IN (0, 1)),
+        termination_status TEXT,
+        source_cost_usd REAL,
+        cost_source TEXT,
+        cost_pricing_status TEXT,
+        FOREIGN KEY (root_session_id) REFERENCES sessions(id) ON DELETE SET NULL,
+        FOREIGN KEY (parent_session_id) REFERENCES sessions(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE subagent_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        subagent_session_id TEXT NOT NULL,
+        subagent_source TEXT NOT NULL CHECK(subagent_source IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+        relationship TEXT NOT NULL CHECK(relationship IN ('spawned', 'attached')),
+        message_ordinal INTEGER,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE ingest_file_cursors (
+        source_type TEXT NOT NULL CHECK(source_type IN ('openclaw', 'claude-code', 'codex', 'opencode')),
+        file_path TEXT NOT NULL,
+        session_id TEXT,
+        file_size INTEGER NOT NULL,
+        file_mtime TEXT,
+        file_inode INTEGER,
+        file_device INTEGER,
+        parser_version TEXT NOT NULL,
+        last_indexed_offset INTEGER NOT NULL DEFAULT 0,
+        last_indexed_line INTEGER NOT NULL DEFAULT 0,
+        last_message_ordinal INTEGER NOT NULL DEFAULT -1,
+        last_turn_index INTEGER NOT NULL DEFAULT -1,
+        last_success_at TEXT,
+        last_fallback_reason TEXT,
+        PRIMARY KEY (source_type, file_path),
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
+      );
+
+      INSERT INTO sessions (
+        id, source, project, status, message_count, user_message_count,
+        has_tool_calls, file_path, name, agent_name, total_input_tokens
+      ) VALUES (
+        'codex:legacy-parent', 'codex', 'legacy', 'idle', 1, 1,
+        0, '/tmp/codex.jsonl', 'legacy parent', 'legacy-agent', 100
+      );
+
+      INSERT INTO subagent_links (
+        session_id, subagent_session_id, subagent_source, relationship, message_ordinal
+      ) VALUES (
+        'codex:legacy-parent', 'codex:legacy-child', 'codex', 'spawned', 1
+      );
+
+      INSERT INTO ingest_file_cursors (
+        source_type, file_path, session_id, parser_version, file_size
+      ) VALUES (
+        'codex', '/tmp/codex.jsonl', 'codex:legacy-parent', 'codex@1', 42
+      );
+
+      PRAGMA user_version = 15;
+    `);
+    seed.close();
+
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    expect(() => initSchema()).not.toThrow();
+
+    const dbRead = new Database(dbPath);
+    const version = dbRead.pragma('user_version', { simple: true });
+    const sessionSql = dbRead.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'"
+    ).get() as { sql: string };
+    const linkSql = dbRead.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='subagent_links'"
+    ).get() as { sql: string };
+    const cursorSql = dbRead.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='ingest_file_cursors'"
+    ).get() as { sql: string };
+    const legacyLinkCount = dbRead.prepare(
+      `SELECT COUNT(*) as c FROM subagent_links WHERE session_id = 'codex:legacy-parent'`
+    ).get() as { c: number };
+
+    expect(version).toBe(16);
+    expect(sessionSql.sql).toContain("'qoder'");
+    expect(linkSql.sql).toContain("'qoder'");
+    expect(cursorSql.sql).toContain("'qoder'");
+    expect(legacyLinkCount.c).toBe(1);
+
+    expect(() => {
+      dbRead.prepare(`
+        INSERT INTO sessions (
+          id, source, project, status, message_count, user_message_count,
+          has_tool_calls, file_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('qoder:repair-1', 'qoder', 'demo', 'idle', 0, 0, 0, '/tmp/qoder.db');
+    }).not.toThrow();
+    expect(() => {
+      dbRead.prepare(`
+        INSERT INTO subagent_links (
+          session_id, subagent_session_id, subagent_source, relationship
+        ) VALUES (?, ?, ?, ?)
+      `).run('qoder:repair-1', 'qoder:repair-child', 'qoder', 'spawned');
+    }).not.toThrow();
+    expect(() => {
+      dbRead.prepare(`
+        INSERT INTO ingest_file_cursors (
+          source_type, file_path, parser_version, file_size
+        ) VALUES (?, ?, ?, ?)
+      `).run('qoder', '/tmp/qoder/local.db', 'qoder@1', 100);
+    }).not.toThrow();
+    dbRead.close();
   });
 
   it('enforces append writer idempotency constraints', () => {
@@ -368,7 +517,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(15);
+    expect(version).toBe(16);
     // All three pre-existing rows survive the rebuild.
     const ids = sessionRows.map((r) => r.id);
     expect(ids).toEqual(
