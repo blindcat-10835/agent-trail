@@ -565,101 +565,112 @@
    Sessions Filter Panel (.sfp-*)
    ============================================================ */
 
+.sfp-root {
+  position: relative;
+}
+
 .sfp-trigger {
-  align-items: center;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--muted-foreground);
+  transition: color 0.1s;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.sfp-trigger:hover {
+  color: var(--foreground);
 }
 
 .sfp-trigger--open {
   color: var(--accent);
-  border-color: var(--accent);
 }
 
-.sfp-trigger--active {
-  color: var(--accent);
-}
-
-.sfp-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
-  border-radius: 2px;
+.sfp-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
   background: var(--accent);
-  color: var(--background);
-  font: 700 9px/1 var(--font-sans);
 }
 
 .sfp-panel {
   position: absolute;
   right: 0;
-  top: calc(100% + 6px);
-  width: 240px;
+  top: calc(100% + 4px);
+  width: 200px;
+  background: var(--card);
   border: 1px solid var(--border);
-  background: var(--background);
-  z-index: 60;
-  padding: 8px 0;
-  box-shadow: 0 8px 24px color-mix(in oklch, var(--background) 10%, transparent);
+  border-radius: 4px;
+  box-shadow: 0 8px 20px oklch(0% 0 0 / 0.4);
+  padding: 6px 0 8px;
+  z-index: 100;
+  animation: sfp-in 0.1s ease-out;
+  transform-origin: top right;
 }
 
-.sfp-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 1px solid color-mix(in oklch, var(--accent) 20%, transparent);
-  pointer-events: none;
+@keyframes sfp-in {
+  from { opacity: 0; transform: scale(0.95) translateY(-3px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);    }
 }
 
 .sfp-section {
-  padding: 0 10px 8px;
+  padding: 4px 0;
+}
+
+.sfp-section + .sfp-section {
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+  padding-top: 6px;
 }
 
 .sfp-section-title {
-  font: 700 8px/1 var(--font-sans);
-  letter-spacing: 0.22em;
+  font: 600 9px/1 var(--font-sans);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted-foreground);
-  margin-bottom: 6px;
-  padding: 4px 2px 0;
+  margin-bottom: 4px;
+  padding: 0 10px;
 }
 
-.sfp-empty {
-  font: 400 10px/1 var(--font-sans);
-  color: var(--muted-foreground);
-  padding: 4px 2px;
-}
-
-.sfp-project-row {
+.sfp-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 4px;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 10px;
+  font: 400 11px/1 var(--font-sans);
+  color: var(--muted-foreground);
+  text-align: left;
+  background: transparent;
+  border: none;
   cursor: pointer;
-  border-radius: 2px;
-  transition: background 0.1s;
-  outline: none;
+  border-radius: 0;
+  transition: background 0.1s, color 0.1s;
 }
 
-.sfp-project-row:hover {
+.sfp-row:hover {
   background: color-mix(in oklch, var(--accent) 8%, transparent);
 }
 
-.sfp-project-row:focus-visible {
-  box-shadow: 0 0 0 1px var(--accent);
-}
-
-.sfp-project-row--selected {
-  background: color-mix(in oklch, var(--accent) 6%, transparent);
+.sfp-row--active {
+  color: var(--foreground);
 }
 
 .sfp-check {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 11px;
-  height: 11px;
-  border: 1px solid var(--border);
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--border);
   border-radius: 2px;
   flex-shrink: 0;
   color: var(--background);
@@ -671,61 +682,32 @@
   border-color: var(--accent);
 }
 
-.sfp-proj-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.sfp-proj-name {
-  font: 500 10px/1 var(--font-sans);
-  letter-spacing: 0.04em;
-  color: var(--foreground);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sfp-project-row:not(.sfp-project-row--selected) .sfp-proj-name {
-  color: var(--muted-foreground);
-}
-
-.sfp-proj-count {
-  font: 600 9px/1 var(--font-mono);
-  color: var(--accent);
-  letter-spacing: 0.04em;
-}
-
-.sfp-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 2px 10px 8px;
+.sfp-date-inputs {
+  padding: 4px 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .sfp-date-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 7px;
 }
 
 .sfp-date-label {
   font: 700 8px/1 var(--font-sans);
   letter-spacing: 0.18em;
   color: var(--muted-foreground);
-  width: 28px;
+  width: 26px;
   flex-shrink: 0;
 }
 
 .sfp-date-input {
   flex: 1;
-  font: 500 10px/1 var(--font-sans);
-  letter-spacing: 0.02em;
-  padding: 5px 6px;
-  background: var(--card);
+  font: 400 10px/1 var(--font-sans);
+  padding: 4px 5px;
+  background: var(--background);
   border: 1px solid var(--border);
   color: var(--foreground);
   outline: none;
@@ -743,23 +725,139 @@
   filter: invert(1);
 }
 
-.sfp-clear-btn {
-  width: calc(100% - 20px);
-  margin: 0 10px;
-  padding: 6px;
-  background: transparent;
-  border: 1px solid var(--border);
+.sfp-clear {
+  display: block;
+  width: 100%;
+  padding: 6px 10px 2px;
+  font: 400 10px/1 var(--font-sans);
   color: var(--muted-foreground);
-  font: 600 9px/1 var(--font-sans);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  text-align: center;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
   cursor: pointer;
-  transition: border-color 0.1s, color 0.1s;
+  transition: color 0.1s;
 }
 
-.sfp-clear-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+.sfp-clear:hover {
+  color: var(--foreground);
+}
+
+/* ============================================================
+   Session list group headers (.sl-group-header)
+   ============================================================ */
+
+.sl-group-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 28px;
+  padding: 0 24px;
+  font: 600 9px/1 var(--font-sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--card) 60%, transparent);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.1s, background 0.1s;
+}
+
+.sl-group-header:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--card) 90%, transparent);
+}
+
+.sl-group-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  color: var(--muted-foreground);
+}
+
+.sl-group-chevron--open {
+  transform: rotate(90deg);
+}
+
+.sl-group-proj-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sl-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sl-group-count {
+  font: 500 9px/1 var(--font-mono);
+  color: var(--muted-foreground);
+  background: var(--background);
+  padding: 1px 5px;
+  border-radius: 8px;
+}
+
+/* ============================================================
+   Right rail group headers (.rr-group-header)
+   ============================================================ */
+
+.rr-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 24px;
+  padding: 0 8px;
+  font: 600 9px/1 var(--font-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--card) 60%, transparent);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.1s;
+}
+
+.rr-group-header:hover {
+  color: var(--foreground);
+}
+
+.rr-group-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.rr-group-chevron--open {
+  transform: rotate(90deg);
+}
+
+.rr-group-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.rr-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rr-group-count {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--muted-foreground);
 }
 
 .sl-bar {

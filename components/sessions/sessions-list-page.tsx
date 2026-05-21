@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToolSessions, useAggregateSessions, useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
@@ -119,6 +119,82 @@ function ActivityChips({ tools, subagents }: { tools: number; subagents: number 
 }
 
 
+function SessionRow({
+  s,
+  openSession,
+  isStarred,
+  toggleStar,
+}: {
+  s: TraceSession
+  openSession: (id: string) => void
+  isStarred: (id: string) => boolean
+  toggleStar: (id: string) => void
+}) {
+  const pc = projectColor(s.project)
+  const srcC = getSourceColor(s.source)
+  const status = deriveStatus(s)
+  const inputTokens = s.metrics.inputTokens ?? s.inputTokens ?? 0
+  const outputTokens = s.metrics.outputTokens ?? s.outputTokens ?? 0
+  const turns = s.totalTurns ?? s.metrics.userMessageCount
+  const cost = s.estimatedCost != null ? `$${s.estimatedCost.toFixed(2)}` : '—'
+  const label = s.displayTitle || s.name || s.id
+  const toolCount = s.activityCounts?.toolCalls ?? 0
+  const subagentCount = s.activityCounts?.subagents ?? 0
+  const summary = s.summary || s.gitBranch || s.id
+  const model = s.model || '—'
+  const starred = isStarred(s.id)
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={`sl-row ${status === 'ERROR' ? 'err' : ''}`}
+      style={{ '--src-c': srcC, '--proj-c': pc } as React.CSSProperties}
+      onClick={() => openSession(s.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSession(s.id) }
+      }}
+    >
+      <span className="sl-proj-rail" />
+      <span className="sl-cell sl-cell-label">
+        <span className="sl-label-row">
+          <button
+            type="button"
+            className={`sl-star-toggle${starred ? ' active' : ''}`}
+            aria-label={starred ? 'Unstar session' : 'Star session'}
+            title={starred ? 'Unstar session' : 'Star session'}
+            onClick={(e) => { e.stopPropagation(); toggleStar(s.id) }}
+          >★</button>
+          <span className="sl-label">{label}</span>
+        </span>
+        <span className="sl-summary">{summary}</span>
+        <span className="sl-id mono">
+          {s.id}
+          {s.gitBranch && <span className="sl-branch"> {'⎇'} {s.gitBranch}</span>}
+        </span>
+      </span>
+      <span className="sl-cell"><StatusCell status={status} /></span>
+      <span className="sl-cell sl-cell-proj">
+        <span className="sl-proj-tag mono">
+          <span className="sl-proj-dot" style={{ background: pc }} />
+          <span className="sl-proj-name">{shortPath(s.project)}</span>
+        </span>
+      </span>
+      <span className="sl-cell sl-model mono" title={model}>{model}</span>
+      <span className="sl-cell"><SourceBadge source={s.source} /></span>
+      <span className="sl-cell mono sl-num">{turns}</span>
+      <span className="sl-cell"><ActivityChips tools={toolCount} subagents={subagentCount} /></span>
+      <span className="sl-cell sl-cell-tok">
+        <span className="mono sl-num">{fmtTok(inputTokens)}</span>
+        <span className="mono sl-num sl-token-out">/{fmtTok(outputTokens)}</span>
+      </span>
+      <span className="sl-cell mono sl-num">{fmtDuration(s.durationMs)}</span>
+      <span className="sl-cell mono sl-num sl-cost">{cost}</span>
+      <span className="sl-cell mono sl-num sl-updated">{relativeTime(s.updatedAt || s.startedAt)}</span>
+    </div>
+  )
+}
+
 export function SessionsListPage() {
   const router = useRouter()
   const { toolId, href } = useAgentTool()
@@ -129,11 +205,16 @@ export function SessionsListPage() {
   const [sort, setSort] = useState<string>('updated')
   const [sourceFilter, setSourceFilter] = useState<string>('ALL')
   const [starredOnly, setStarredOnly] = useState(false)
-  const [filterState, setFilterState] = useState<SessionsFilterState>({
-    selectedProjects: new Set(),
-    dateFrom: '',
-    dateTo: '',
-  })
+  const [groupByProject, setGroupByProject] = useState(false)
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+  const [dateRangeActive, setDateRangeActive] = useState(false)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  // Collapse all groups when groupByProject is turned off
+  useEffect(() => {
+    if (!groupByProject) setExpandedProjects(new Set())
+  }, [groupByProject])
 
   const isStarred = useStarredStore((s) => s.isStarred)
   const toggleStar = useStarredStore((s) => s.toggle)
@@ -160,23 +241,22 @@ export function SessionsListPage() {
   const filtered = useMemo(() => {
     let result = rawSessions
     if (sourceFilter !== 'ALL') result = result.filter((s) => s.source === sourceFilter)
-    if (filterState.selectedProjects.size > 0) result = result.filter((s) => filterState.selectedProjects.has(s.project))
-    if (filterState.dateFrom) {
-      const from = new Date(filterState.dateFrom).getTime()
+    if (dateRangeActive && dateFrom) {
+      const from = new Date(dateFrom).getTime()
       result = result.filter((s) => {
         const t = s.startedAt ? new Date(s.startedAt).getTime() : null
         return t != null && t >= from
       })
     }
-    if (filterState.dateTo) {
-      const to = new Date(filterState.dateTo).getTime() + 86400000 - 1
+    if (dateRangeActive && dateTo) {
+      const to = new Date(dateTo).getTime() + 86400000 - 1
       result = result.filter((s) => {
         const t = s.startedAt ? new Date(s.startedAt).getTime() : null
         return t != null && t <= to
       })
     }
     return result
-  }, [rawSessions, sourceFilter, filterState])
+  }, [rawSessions, sourceFilter, dateRangeActive, dateFrom, dateTo])
   const paginationTotal = isAll ? aggResult.totalCount : toolResult.pagination?.total
   const loading = isAll ? aggResult.loading : toolResult.loading
   const error = isAll ? aggResult.error : toolResult.error
@@ -197,21 +277,17 @@ export function SessionsListPage() {
     cost: filtered.reduce((a, s) => a + (s.estimatedCost ?? 0), 0),
   }), [filtered, paginationTotal, sourceFilter])
 
-  const projectEntries = useMemo(() => {
-    if (groupCounts?.project && groupCounts.project.length > 0) {
-      return groupCounts.project
-        .filter((item) => item.label !== '-')
-        .map((item) => ({ label: item.label, count: item.count }))
-        .sort((a, b) => a.label.localeCompare(b.label))
+  // Group sessions by project when groupByProject is active
+  const groupedByProject = useMemo(() => {
+    if (!groupByProject) return null
+    const map: Record<string, TraceSession[]> = {}
+    for (const s of filtered) {
+      const key = s.project || '-'
+      if (!map[key]) map[key] = []
+      map[key].push(s)
     }
-    const counts: Record<string, number> = {}
-    for (const s of rawSessions) {
-      if (s.project && s.project !== '-') counts[s.project] = (counts[s.project] ?? 0) + 1
-    }
-    return Object.entries(counts)
-      .map(([label, count]) => ({ label, count }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [groupCounts, rawSessions])
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+  }, [filtered, groupByProject])
 
   if (loading && rawSessions.length === 0) {
     return (
@@ -245,19 +321,20 @@ export function SessionsListPage() {
         </div>
         <div className="sl-hud-right">
           <SessionsFilterPanel
-            projects={projectEntries}
-            state={filterState}
-            onProjectToggle={(project) =>
-              setFilterState((prev) => {
-                const next = new Set(prev.selectedProjects)
-                if (next.has(project)) next.delete(project)
-                else next.add(project)
-                return { ...prev, selectedProjects: next }
-              })
-            }
-            onDateFromChange={(date) => setFilterState((prev) => ({ ...prev, dateFrom: date }))}
-            onDateToChange={(date) => setFilterState((prev) => ({ ...prev, dateTo: date }))}
-            onClearAll={() => setFilterState({ selectedProjects: new Set(), dateFrom: '', dateTo: '' })}
+            state={{ groupByProject, dateRangeActive, dateFrom, dateTo }}
+            onGroupByProjectToggle={() => setGroupByProject(p => !p)}
+            onDateRangeToggle={() => {
+              if (dateRangeActive) { setDateFrom(''); setDateTo('') }
+              setDateRangeActive(p => !p)
+            }}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
+            onClearAll={() => {
+              setGroupByProject(false)
+              setDateRangeActive(false)
+              setDateFrom('')
+              setDateTo('')
+            }}
           />
           <button className="sl-newscan" onClick={() => refetch()}>
             {'↻'} RESCAN
@@ -337,87 +414,38 @@ export function SessionsListPage() {
             <div className="sl-empty-title">NO MATCH</div>
             <div className="sl-empty-body">Try clearing the search or status filter.</div>
           </div>
-        ) : (
-          filtered.map((s) => {
-            const pc = projectColor(s.project)
-            const srcC = getSourceColor(s.source)
-            const status = deriveStatus(s)
-            const inputTokens = s.metrics.inputTokens ?? s.inputTokens ?? 0
-            const outputTokens = s.metrics.outputTokens ?? s.outputTokens ?? 0
-            const turns = s.totalTurns ?? s.metrics.userMessageCount
-            const cost = s.estimatedCost != null ? `$${s.estimatedCost.toFixed(2)}` : '—'
-            const label = s.displayTitle || s.name || s.id
-            const toolCount = s.activityCounts?.toolCalls ?? 0
-            const subagentCount = s.activityCounts?.subagents ?? 0
-            const summary = s.summary || s.gitBranch || s.id
-            const model = s.model || '—'
-            const starred = isStarred(s.id)
-
+        ) : groupedByProject ? (
+          groupedByProject.map(([project, sessions]) => {
+            const pc = projectColor(project)
+            const isOpen = expandedProjects.has(project)
             return (
-              <div
-                key={s.id}
-                role="button"
-                tabIndex={0}
-                className={`sl-row ${status === 'ERROR' ? 'err' : ''}`}
-                style={{ '--src-c': srcC, '--proj-c': pc } as React.CSSProperties}
-                onClick={() => openSession(s.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    openSession(s.id)
-                  }
-                }}
-              >
-                <span className="sl-proj-rail" />
-                <span className="sl-cell sl-cell-label">
-                  <span className="sl-label-row">
-                    <button
-                      type="button"
-                      className={`sl-star-toggle${starred ? ' active' : ''}`}
-                      aria-label={starred ? 'Unstar session' : 'Star session'}
-                      title={starred ? 'Unstar session' : 'Star session'}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        toggleStar(s.id)
-                      }}
-                    >
-                      ★
-                    </button>
-                    <span className="sl-label">{label}</span>
-                  </span>
-                  <span className="sl-summary">{summary}</span>
-                  <span className="sl-id mono">
-                    {s.id}
-                    {s.gitBranch && <span className="sl-branch"> {'⎇'} {s.gitBranch}</span>}
-                  </span>
-                </span>
-                <span className="sl-cell">
-                  <StatusCell status={status} />
-                </span>
-                <span className="sl-cell sl-cell-proj">
-                  <span className="sl-proj-tag mono">
-                    <span className="sl-proj-dot" style={{ background: pc }} />
-                    <span className="sl-proj-name">{shortPath(s.project)}</span>
-                  </span>
-                </span>
-                <span className="sl-cell sl-model mono" title={model}>{model}</span>
-                <span className="sl-cell">
-                  <SourceBadge source={s.source} />
-                </span>
-                <span className="sl-cell mono sl-num">{turns}</span>
-                <span className="sl-cell">
-                  <ActivityChips tools={toolCount} subagents={subagentCount} />
-                </span>
-                <span className="sl-cell sl-cell-tok">
-                  <span className="mono sl-num">{fmtTok(inputTokens)}</span>
-                  <span className="mono sl-num sl-token-out">/{fmtTok(outputTokens)}</span>
-                </span>
-                <span className="sl-cell mono sl-num">{fmtDuration(s.durationMs)}</span>
-                <span className="sl-cell mono sl-num sl-cost">{cost}</span>
-                <span className="sl-cell mono sl-num sl-updated">{relativeTime(s.updatedAt || s.startedAt)}</span>
+              <div key={project}>
+                <button
+                  type="button"
+                  className="sl-group-header"
+                  onClick={() => setExpandedProjects(prev => {
+                    const next = new Set(prev)
+                    if (next.has(project)) next.delete(project)
+                    else next.add(project)
+                    return next
+                  })}
+                >
+                  <svg
+                    className={`sl-group-chevron${isOpen ? ' sl-group-chevron--open' : ''}`}
+                    width="10" height="10" viewBox="0 0 16 16" fill="currentColor"
+                  >
+                    <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                  </svg>
+                  <span className="sl-group-proj-dot" style={{ background: pc }} />
+                  <span className="sl-group-name">{shortPath(project)}</span>
+                  <span className="sl-group-count">{sessions.length}</span>
+                </button>
+                {isOpen && sessions.map((s) => <SessionRow key={s.id} s={s} openSession={openSession} isStarred={isStarred} toggleStar={toggleStar} />)}
               </div>
             )
           })
+        ) : (
+          filtered.map((s) => <SessionRow key={s.id} s={s} openSession={openSession} isStarred={isStarred} toggleStar={toggleStar} />)
         )}
         {hasMore && filtered.length > 0 && (
           <div className="sl-load-more">
