@@ -8,6 +8,7 @@ import { useStarredStore } from '@/stores/starred-store'
 import { shortPath, projectColor } from '@/lib/utils'
 import type { TraceSession } from '@/types/trace'
 import type { AgentToolId } from '@/lib/agent-tools/types'
+import { SessionsFilterPanel, type SessionsFilterState } from './sessions-filter-panel'
 
 const STATUS_COLORS: Record<string, string> = {
   LIVE: 'var(--status-success)',
@@ -125,10 +126,14 @@ export function SessionsListPage() {
 
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
-  const [projectFilter, setProjectFilter] = useState<string>('ALL')
   const [sort, setSort] = useState<string>('updated')
   const [sourceFilter, setSourceFilter] = useState<string>('ALL')
   const [starredOnly, setStarredOnly] = useState(false)
+  const [filterState, setFilterState] = useState<SessionsFilterState>({
+    selectedProjects: new Set(),
+    dateFrom: '',
+    dateTo: '',
+  })
 
   const isStarred = useStarredStore((s) => s.isStarred)
   const toggleStar = useStarredStore((s) => s.toggle)
@@ -143,20 +148,35 @@ export function SessionsListPage() {
     const trimmedQuery = q.trim()
     if (trimmedQuery) next.q = trimmedQuery
     if (statusFilter !== 'ALL') next.status = STATUS_QUERY[statusFilter as keyof typeof STATUS_QUERY] ?? statusFilter.toLowerCase()
-    if (projectFilter !== 'ALL') next.project = projectFilter
     if (starredOnly) next.starred = 'true'
     return next
-  }, [q, projectFilter, sort, starredOnly, statusFilter])
+  }, [q, sort, starredOnly, statusFilter])
 
   const effectiveToolId = (isAll ? 'openclaw' : toolId) as AgentToolId
   const toolResult = useToolSessions(effectiveToolId, query, { enabled: !isAll })
   const aggResult = useAggregateSessions(query, { enabled: isAll })
 
   const rawSessions = isAll ? aggResult.sessions : toolResult.sessions
-  const filtered = useMemo(
-    () => sourceFilter === 'ALL' ? rawSessions : rawSessions.filter((s) => s.source === sourceFilter),
-    [rawSessions, sourceFilter],
-  )
+  const filtered = useMemo(() => {
+    let result = rawSessions
+    if (sourceFilter !== 'ALL') result = result.filter((s) => s.source === sourceFilter)
+    if (filterState.selectedProjects.size > 0) result = result.filter((s) => filterState.selectedProjects.has(s.project))
+    if (filterState.dateFrom) {
+      const from = new Date(filterState.dateFrom).getTime()
+      result = result.filter((s) => {
+        const t = s.startedAt ? new Date(s.startedAt).getTime() : null
+        return t != null && t >= from
+      })
+    }
+    if (filterState.dateTo) {
+      const to = new Date(filterState.dateTo).getTime() + 86400000 - 1
+      result = result.filter((s) => {
+        const t = s.startedAt ? new Date(s.startedAt).getTime() : null
+        return t != null && t <= to
+      })
+    }
+    return result
+  }, [rawSessions, sourceFilter, filterState])
   const paginationTotal = isAll ? aggResult.totalCount : toolResult.pagination?.total
   const loading = isAll ? aggResult.loading : toolResult.loading
   const error = isAll ? aggResult.error : toolResult.error
@@ -177,14 +197,21 @@ export function SessionsListPage() {
     cost: filtered.reduce((a, s) => a + (s.estimatedCost ?? 0), 0),
   }), [filtered, paginationTotal, sourceFilter])
 
-  const projects = useMemo(
-    () => {
-      const labels = groupCounts?.project?.map((item) => item.label).filter((label) => label !== '-') ?? []
-      if (labels.length > 0) return labels.sort()
-      return Array.from(new Set(rawSessions.map((s) => s.project))).sort()
-    },
-    [groupCounts, rawSessions]
-  )
+  const projectEntries = useMemo(() => {
+    if (groupCounts?.project && groupCounts.project.length > 0) {
+      return groupCounts.project
+        .filter((item) => item.label !== '-')
+        .map((item) => ({ label: item.label, count: item.count }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+    }
+    const counts: Record<string, number> = {}
+    for (const s of rawSessions) {
+      if (s.project && s.project !== '-') counts[s.project] = (counts[s.project] ?? 0) + 1
+    }
+    return Object.entries(counts)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [groupCounts, rawSessions])
 
   if (loading && rawSessions.length === 0) {
     return (
@@ -217,6 +244,21 @@ export function SessionsListPage() {
           </div>
         </div>
         <div className="sl-hud-right">
+          <SessionsFilterPanel
+            projects={projectEntries}
+            state={filterState}
+            onProjectToggle={(project) =>
+              setFilterState((prev) => {
+                const next = new Set(prev.selectedProjects)
+                if (next.has(project)) next.delete(project)
+                else next.add(project)
+                return { ...prev, selectedProjects: next }
+              })
+            }
+            onDateFromChange={(date) => setFilterState((prev) => ({ ...prev, dateFrom: date }))}
+            onDateToChange={(date) => setFilterState((prev) => ({ ...prev, dateTo: date }))}
+            onClearAll={() => setFilterState({ selectedProjects: new Set(), dateFrom: '', dateTo: '' })}
+          />
           <button className="sl-newscan" onClick={() => refetch()}>
             {'↻'} RESCAN
           </button>
@@ -253,12 +295,6 @@ export function SessionsListPage() {
             STARRED
           </button>
         </div>
-        <select className="sl-select" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-          <option value="ALL">PROJECT {'·'} ALL</option>
-          {projects.map((p) => (
-            <option key={p} value={p}>{p.toUpperCase()}</option>
-          ))}
-        </select>
         <select className="sl-select" value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="updated">SORT {'·'} UPDATED</option>
           <option value="title">SORT {'·'} TITLE</option>

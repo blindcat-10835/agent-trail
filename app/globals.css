@@ -561,6 +561,207 @@
   cursor: wait;
 }
 
+/* ============================================================
+   Sessions Filter Panel (.sfp-*)
+   ============================================================ */
+
+.sfp-trigger {
+  align-items: center;
+}
+
+.sfp-trigger--open {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.sfp-trigger--active {
+  color: var(--accent);
+}
+
+.sfp-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--background);
+  font: 700 9px/1 var(--font-sans);
+}
+
+.sfp-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 240px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  z-index: 60;
+  padding: 8px 0;
+  box-shadow: 0 8px 24px color-mix(in oklch, var(--background) 10%, transparent);
+}
+
+.sfp-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in oklch, var(--accent) 20%, transparent);
+  pointer-events: none;
+}
+
+.sfp-section {
+  padding: 0 10px 8px;
+}
+
+.sfp-section-title {
+  font: 700 8px/1 var(--font-sans);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  margin-bottom: 6px;
+  padding: 4px 2px 0;
+}
+
+.sfp-empty {
+  font: 400 10px/1 var(--font-sans);
+  color: var(--muted-foreground);
+  padding: 4px 2px;
+}
+
+.sfp-project-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 4px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.1s;
+  outline: none;
+}
+
+.sfp-project-row:hover {
+  background: color-mix(in oklch, var(--accent) 8%, transparent);
+}
+
+.sfp-project-row:focus-visible {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.sfp-project-row--selected {
+  background: color-mix(in oklch, var(--accent) 6%, transparent);
+}
+
+.sfp-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  flex-shrink: 0;
+  color: var(--background);
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.sfp-check--on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.sfp-proj-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sfp-proj-name {
+  font: 500 10px/1 var(--font-sans);
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sfp-project-row:not(.sfp-project-row--selected) .sfp-proj-name {
+  color: var(--muted-foreground);
+}
+
+.sfp-proj-count {
+  font: 600 9px/1 var(--font-mono);
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+
+.sfp-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 10px 8px;
+}
+
+.sfp-date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sfp-date-label {
+  font: 700 8px/1 var(--font-sans);
+  letter-spacing: 0.18em;
+  color: var(--muted-foreground);
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.sfp-date-input {
+  flex: 1;
+  font: 500 10px/1 var(--font-sans);
+  letter-spacing: 0.02em;
+  padding: 5px 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  outline: none;
+  min-width: 0;
+  color-scheme: dark;
+}
+
+.sfp-date-input:focus {
+  border-color: var(--accent);
+}
+
+.sfp-date-input::-webkit-calendar-picker-indicator {
+  opacity: 0.4;
+  cursor: pointer;
+  filter: invert(1);
+}
+
+.sfp-clear-btn {
+  width: calc(100% - 20px);
+  margin: 0 10px;
+  padding: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font: 600 9px/1 var(--font-sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.1s, color 0.1s;
+}
+
+.sfp-clear-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .sl-bar {
   display: flex;
   align-items: center;
