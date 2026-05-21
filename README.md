@@ -41,6 +41,14 @@ npm install -g @camtrik/agents-tracing-dashboard
 agents-tracing
 ```
 
+Update an existing global install:
+
+```bash
+npm update -g @camtrik/agents-tracing-dashboard
+# Or force the latest published version:
+npm install -g @camtrik/agents-tracing-dashboard@latest
+```
+
 Works across Node 22, 24, and newer — `npm install` resolves native modules (better-sqlite3) for your local ABI. First install takes ~30s while deps are fetched.
 
 ### Option 2 — Docker local build (no Node.js required)
