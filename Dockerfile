@@ -30,9 +30,7 @@ RUN echo "node-linker=hoisted" > .npmrc && \
 FROM prod-deps AS ingest-deps
 WORKDIR /app
 RUN mkdir -p /ingest-node_modules && \
-    for pkg in better-sqlite3 bindings file-uri-to-path; do \
-      cp -a "node_modules/${pkg}" "/ingest-node_modules/${pkg}"; \
-    done
+    node -e "const fs = require('fs'); const path = require('path'); const copyPkg = (pkg, paths) => { const src = fs.realpathSync(path.dirname(require.resolve(pkg + '/package.json', { paths }))); const dest = path.join('/ingest-node_modules', pkg); fs.rmSync(dest, { recursive: true, force: true }); fs.cpSync(src, dest, { recursive: true }); return src; }; const better = copyPkg('better-sqlite3', [process.cwd()]); const bindings = copyPkg('bindings', [better]); copyPkg('file-uri-to-path', [bindings]);"
 
 # ── Stage 4: build ────────────────────────────────────────────────────────────
 FROM base AS builder
