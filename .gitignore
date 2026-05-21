@@ -45,7 +45,10 @@ next-env.d.ts
 .omc/
 .playwright-mcp/
 .playwright/
-.claude/worktrees
+# Tool-specific agent dirs (.claude / .codex / .opencode) are local-only —
+# shared skills live in .agents/ and are wired in via scripts/link-agents.sh.
+.claude
+.worktree/
 .qoder
 
 .opencode/

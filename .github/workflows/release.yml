@@ -100,24 +100,13 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # ── GitHub release notes ─────────────────────────────────────────────────────
-  github-release:
-    name: Create GitHub Release
-    needs: [docker, npm]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-
   # ── Notify ───────────────────────────────────────────────────────────────────
+  # GitHub Release itself is created locally by the `release` skill via
+  # `gh release create --notes-file`, so AI-drafted release notes are preserved.
+  # This workflow only handles Docker + npm publishing.
   notify:
     name: Release complete
-    needs: [github-release]
+    needs: [docker, npm]
     runs-on: ubuntu-latest
     steps:
       - name: Summary
