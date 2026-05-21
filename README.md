@@ -97,6 +97,49 @@ See [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) for full setup and envi
 
 ---
 
+## Uninstall
+
+### npm global install
+
+```bash
+npm uninstall -g @camtrik/agents-tracing-dashboard
+```
+
+Optional cleanup for the local index/config created by the packaged app:
+
+```bash
+rm -rf ~/.agents-tracing
+```
+
+This does not delete your original Claude Code, OpenClaw, Codex, OpenCode, or Qoder session files.
+
+### Docker Compose
+
+Stop and remove the containers:
+
+```bash
+docker compose down
+# or, if you used the published-image compose file:
+docker compose -f docker-compose.image.yml down
+```
+
+Optional cleanup for the Docker volume that stores the dashboard's SQLite index:
+
+```bash
+docker compose down -v
+# or:
+docker compose -f docker-compose.image.yml down -v
+```
+
+Optional image cleanup:
+
+```bash
+docker image rm agents-tracing-dashboard:local
+docker image rm ghcr.io/camtrik/agents-tracing-dashboard:latest
+```
+
+---
+
 ## Supported agents
 
 | Agent                 | Source files                              | Notes                                     |
