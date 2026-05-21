@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
+ARG NODE_VERSION=24-slim
 # ── Stage 1: base ─────────────────────────────────────────────────────────────
-FROM node:22-slim AS base
+FROM node:${NODE_VERSION} AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 ARG PNPM_VERSION=11.1.3
@@ -31,7 +32,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build && pnpm build:ingest
 
 # ── Stage 5: runtime ──────────────────────────────────────────────────────────
-FROM node:22-slim AS runner
+FROM node:${NODE_VERSION} AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

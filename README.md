@@ -43,25 +43,25 @@ agents-tracing
 
 Works across Node 22, 24, and newer — `npm install` resolves native modules (better-sqlite3) for your local ABI. First install takes ~30s while deps are fetched.
 
-### Option 2 — curl (pinned to Node.js 22 prebuilds)
+### Option 2 — Docker local build (no Node.js required)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/camtrik/agents-tracing-dashboard/refs/heads/main/install.sh | bash
-agents-tracing
+git clone https://github.com/camtrik/agents-tracing-dashboard.git
+cd agents-tracing-dashboard
+docker compose up --build
 ```
 
-Faster than npm (no dep install), but requires exactly Node 22 because the release bundles prebuilt native modules.
+The default Compose file builds the app locally with Node 24 inside Docker, so your host machine does not need Node.js installed.
 
 Open [http://localhost:3030](http://localhost:3030).
 
-### Option 3 — Docker (no Node.js required)
+### Option 3 — Docker published image (no Node.js required)
 
 ```bash
-# Download docker-compose.yml from the repo, then:
-docker compose up -d
+docker compose -f docker-compose.image.yml up -d
 ```
 
-Or run directly:
+Or run the published image directly:
 
 ```bash
 docker run --rm -p 127.0.0.1:3030:3030 \
@@ -72,7 +72,7 @@ docker run --rm -p 127.0.0.1:3030:3030 \
 
 Open [http://localhost:3030](http://localhost:3030). Mount additional agent directories with `-v` and the matching env var (`OPENCLAW_DIR`, `CODEX_SESSIONS_DIR`, `OPENCODE_DB_PATH`).
 
-### Option 3 — from source
+### Option 4 — from source
 
 ```bash
 pnpm install

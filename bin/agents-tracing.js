@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // CLI entry shipped to npm. Launches the ingest service and the Next.js
-// standalone server in the same Node process tree, mirroring scripts/start.sh
-// but without a bash dependency.
+// standalone server in the same Node process tree without a shell dependency.
 
 const path = require("path");
 const fs = require("fs");

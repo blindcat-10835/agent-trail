@@ -1,9 +1,6 @@
 services:
   agents-tracing-dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: agents-tracing-dashboard:local
+    image: ghcr.io/camtrik/agents-tracing-dashboard:latest
     ports:
       - "127.0.0.1:3030:3030"
     volumes:
