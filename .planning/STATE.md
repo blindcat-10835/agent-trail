@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: completed
-last_updated: "2026-05-17T14:50:40.000Z"
+last_updated: "2026-05-21T05:20:45.000Z"
 progress:
   total_phases: 8
   completed_phases: 6
@@ -16,7 +16,7 @@ progress:
 
 **Project:** agent-tracing-dashboard
 **Core Value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
-**Last Updated:** 2026-05-17
+**Last Updated:** 2026-05-21
 
 ---
 
@@ -182,6 +182,7 @@ v1.1 has two explicit workstreams:
 | 260517-uks | Implement overview cost estimation from unified AI provider pricing table | 2026-05-17 | 1883e36 | [260517-uks-implement-overview-cost-estimation-from-](./quick/260517-uks-implement-overview-cost-estimation-from-/) |
 | 260517-fast | Mark Phase 12 complete and Phase 13 partial from code status | 2026-05-17 | this commit | — |
 | 260517-wjv | Complete remaining Phase 13 Sessions table and long-session detail gaps | 2026-05-17 | this commit | [260517-wjv-complete-remaining-phase-13-sessions-tab](./quick/260517-wjv-complete-remaining-phase-13-sessions-tab/) |
+| 260521-pql | Reduce package footprint and quiet packaged runtime logs | 2026-05-21 | faf5ad6 | [260521-pql-package-size-quiet-runtime-logs](./quick/260521-pql-package-size-quiet-runtime-logs/) |
 
 ### Watchpoints
 
@@ -210,5 +211,5 @@ v1.1 has two explicit workstreams:
 ---
 
 *State created: 2026-05-06*
-*Last updated: 2026-05-17*
-*Last activity: 2026-05-17 - Completed quick task 260517-wjv: Phase 13 Sessions table and long-session detail residuals*
+*Last updated: 2026-05-21*
+*Last activity: 2026-05-21 - Completed quick task 260521-pql: package footprint and quiet packaged runtime logs*
