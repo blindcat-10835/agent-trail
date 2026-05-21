@@ -6,6 +6,7 @@ import { Search, CornerLeftUp } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type { TraceSession, TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { formatSessionCost } from '@/lib/session-cost'
 import { MarkdownContent } from './markdown-content'
 import { ToolBlock } from './tool-block'
 import { SkillBlock } from './skill-block'
@@ -504,7 +505,7 @@ export function TraceThread({
 
   const totalInput = session?.inputTokens ?? session?.metrics.inputTokens ?? 0
   const totalOutput = session?.outputTokens ?? session?.metrics.outputTokens ?? 0
-  const cost = session?.estimatedCost
+  const cost = session?.estimatedCost != null ? formatSessionCost(session) : null
 
   // Parent session back-link (D-06 part 3)
   const { href } = useAgentTool()
@@ -559,10 +560,10 @@ export function TraceThread({
             <span className="v2-hud-k">OUT</span>
             <span className="v2-hud-v mono">{formatTokens(totalOutput)}</span>
           </div>
-          {cost != null && (
+          {cost && (
             <div className="v2-hud-stat">
               <span className="v2-hud-k">COST</span>
-              <span className="v2-hud-v mono accent">${cost.toFixed(2)}</span>
+              <span className="v2-hud-v mono accent">{cost}</span>
             </div>
           )}
         </div>

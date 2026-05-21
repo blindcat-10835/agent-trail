@@ -223,6 +223,28 @@ The skill should self-heal these on first run:
 
 Don't commit the gitignore change yourself — show the diff and let the user decide whether to fold it into their next commit.
 
+## Local Dev Gotcha
+
+The user may ask you to run the worktree on two specific ports so they can inspect the changes in that worktree without conflicting with the main app already running elsewhere.
+
+- When that happens, run the backend on the requested ingest port and run the frontend on the requested Next port, with the frontend pointing to the same `INGEST_PORT`.
+- Prefer the explicit one-off commands below instead of `pnpm dev`, so you do not accidentally reuse the default `3000` / `8078` ports.
+- On macOS, if the worktree hits native-addon `dlopen(...)` / Team ID issues, retry the same commands with the bundled Codex Node runtime instead of the system `node`.
+
+Example:
+
+```bash
+INGEST_PORT=7002 /Users/ebbi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --import tsx ingest/index.ts
+PORT=3002 INGEST_PORT=7002 /Users/ebbi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node ./node_modules/next/dist/bin/next dev --webpack
+```
+
+- After boot, verify the exact ports the user asked for:
+
+```bash
+curl http://127.0.0.1:7002/health
+curl -I http://127.0.0.1:3002
+```
+
 ---
 
 ## Tone

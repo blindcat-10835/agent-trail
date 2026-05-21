@@ -6,6 +6,7 @@ import { useToolSessions, useAggregateSessions, useAgentTool } from '@/lib/agent
 import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
 import { useStarredStore } from '@/stores/starred-store'
 import { shortPath, projectColor } from '@/lib/utils'
+import { formatSessionCost, summarizeSessionCosts } from '@/lib/session-cost'
 import type { TraceSession } from '@/types/trace'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 
@@ -258,7 +259,7 @@ export function SessionsListPage() {
     count: paginationTotal ?? filtered.length,
     turns: filtered.reduce((a, s) => a + (s.totalTurns ?? s.metrics.userMessageCount), 0),
     tok: filtered.reduce((a, s) => a + (s.metrics.totalTokens ?? (s.metrics.inputTokens ?? 0) + (s.metrics.outputTokens ?? 0)), 0),
-    cost: filtered.reduce((a, s) => a + (s.estimatedCost ?? 0), 0),
+    costSummary: summarizeSessionCosts(filtered),
   }), [filtered, paginationTotal])
 
   // Group sessions by project when groupByProject is active
@@ -300,7 +301,15 @@ export function SessionsListPage() {
           <h1 className="sl-title">Sessions</h1>
           <div className="sl-subline mono">
             {totals.count} sessions {'·'} {totals.turns} turns {'·'} {fmtTok(totals.tok)} tok
-            {totals.cost > 0 && <> {'·'} <span className="accent">${totals.cost.toFixed(2)}</span></>}
+            {totals.costSummary.total != null && !totals.costSummary.mixedUnits && (
+              <>
+                {'·'} <span className="accent">{formatSessionCost({
+                  estimatedCost: totals.costSummary.total,
+                  costPricingStatus: totals.costSummary.pricingStatus,
+                  costUnit: totals.costSummary.unit === 'mixed' ? null : totals.costSummary.unit,
+                })}</span>
+              </>
+            )}
           </div>
         </div>
         <div className="sl-hud-right">

@@ -1,11 +1,12 @@
 ---
 type: fix
 title: Qoder cost is not extracted
-status: todo
+status: wip
 priority: p2
 created: 2026-05-21
-branch:
-worktree:
+branch: fix/qoder-cost-extraction
+worktree: .worktree/fix-qoder-cost-extraction
+updated: 2026-05-21
 ---
 
 ## Description

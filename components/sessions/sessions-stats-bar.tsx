@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import type { TraceSession } from '@/types/trace'
+import { formatSessionCost, summarizeSessionCosts } from '@/lib/session-cost'
 
 // ============================================================================
 // Helpers
@@ -11,10 +12,6 @@ function fmtNum(n: number): string {
   if (n < 1000) return String(n)
   if (n < 1e6) return (n / 1000).toFixed(1) + 'k'
   return (n / 1e6).toFixed(2) + 'm'
-}
-
-function fmtUsd(n: number): string {
-  return '$' + n.toFixed(2)
 }
 
 // ============================================================================
@@ -76,10 +73,9 @@ export function SessionsStatsBar({
       (sum, s) => sum + (s.metrics.totalTokens || 0),
       0,
     )
-    // Rough cost estimate at $2/M tokens
-    const totalCost = totalTokens * 0.000002
+    const costSummary = summarizeSessionCosts(sessions)
 
-    return { activeCount, totalTokens, totalCost }
+    return { activeCount, totalTokens, costSummary }
   }, [sessions])
 
   return (
@@ -100,7 +96,14 @@ export function SessionsStatsBar({
       />
       <KpiTile
         label="LOADED COST"
-        value={fmtUsd(stats.totalCost)}
+        value={stats.costSummary.total != null && !stats.costSummary.mixedUnits
+          ? formatSessionCost({
+              estimatedCost: stats.costSummary.total,
+              costPricingStatus: stats.costSummary.pricingStatus,
+              costUnit: stats.costSummary.unit === 'mixed' ? null : stats.costSummary.unit,
+            })
+          : '—'}
+        sublabel={stats.costSummary.mixedUnits ? 'mixed units' : undefined}
         mono
       />
     </div>

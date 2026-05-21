@@ -1,12 +1,12 @@
 ---
 type: feat
 title: Filter sessions by project and date range
-status: todo
+status: wip
 priority: p2
 created: 2026-05-21
 updated: 2026-05-21
-branch:
-worktree:
+branch: feat/filter-by-project
+worktree: .worktree/feat-filter-by-project
 ---
 
 ## Description

@@ -17,6 +17,7 @@ import { useToolStore } from '@/stores/tool-store'
 import { useStarredStore } from '@/stores/starred-store'
 import { useUIStore } from '@/stores/ui-store'
 import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
+import { formatSessionCost } from '@/lib/session-cost'
 import { shortPath, projectColor } from '@/lib/utils'
 import type { AgentToolId, SourceToolId } from '@/lib/agent-tools/types'
 import type { TraceSession } from '@/types/trace'
@@ -429,7 +430,7 @@ function SessionRailRow({
   const sc = RR_STATUS[displayStatus] || 'var(--muted-foreground)'
   const srcC = getSourceColor(session.source)
   const srcName = getSourceName(session.source)
-  const cost = session.estimatedCost != null ? `$${session.estimatedCost.toFixed(2)}` : null
+  const cost = session.estimatedCost != null ? formatSessionCost(session) : null
 
   return (
     <div
@@ -467,10 +468,10 @@ function SessionRailRow({
         <div className="rr-label">{session.displayTitle || session.name || session.id}</div>
         <div className="rr-line2 mono">
           <span>{session.id.slice(-8)}</span>
-          {cost && (
+          {session.estimatedCost != null && (
             <>
               <span className="rr-sep">·</span>
-              <span className="rr-cost">{cost}</span>
+              <span className="rr-cost">{formatSessionCost(session)}</span>
             </>
           )}
         </div>
