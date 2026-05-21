@@ -8,23 +8,12 @@ import { useStarredStore } from '@/stores/starred-store'
 import { shortPath, projectColor } from '@/lib/utils'
 import type { TraceSession } from '@/types/trace'
 import type { AgentToolId } from '@/lib/agent-tools/types'
-import { SessionsFilterPanel, type SessionsFilterState } from './sessions-filter-panel'
 
 const STATUS_COLORS: Record<string, string> = {
   LIVE: 'var(--status-success)',
   IDLE: 'var(--muted-foreground)',
   ERROR: 'var(--destructive)',
   TRUNCATED: 'var(--status-parser-warning)',
-}
-
-const STATUSES = ['ALL', 'LIVE', 'IDLE', 'ERROR', 'TRUNCATED'] as const
-const SOURCE_IDS = ['openclaw', 'claude-code', 'codex', 'opencode'] as const
-
-const STATUS_QUERY: Partial<Record<(typeof STATUSES)[number], string>> = {
-  LIVE: 'active',
-  IDLE: 'idle',
-  ERROR: 'error',
-  TRUNCATED: 'truncated',
 }
 
 const SORT_QUERY: Record<string, string> = {
@@ -201,23 +190,20 @@ export function SessionsListPage() {
   const isAll = toolId === 'all'
 
   const [q, setQ] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('ALL')
+  const [scope, setScope] = useState<'recent' | 'starred' | 'live'>('recent')
   const [sort, setSort] = useState<string>('updated')
-  const [sourceFilter, setSourceFilter] = useState<string>('ALL')
-  const [starredOnly, setStarredOnly] = useState(false)
   const [groupByProject, setGroupByProject] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
-  const [dateRangeActive, setDateRangeActive] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  // Collapse all groups when groupByProject is turned off
   useEffect(() => {
     if (!groupByProject) setExpandedProjects(new Set())
   }, [groupByProject])
 
   const isStarred = useStarredStore((s) => s.isStarred)
   const toggleStar = useStarredStore((s) => s.toggle)
+  const starredIds = useStarredStore((s) => s.ids)
 
   const query = useMemo(() => {
     const next: Record<string, string> = {
@@ -225,13 +211,12 @@ export function SessionsListPage() {
       sort: SORT_QUERY[sort] ?? 'updated_at',
       order: 'desc',
     }
-
     const trimmedQuery = q.trim()
     if (trimmedQuery) next.q = trimmedQuery
-    if (statusFilter !== 'ALL') next.status = STATUS_QUERY[statusFilter as keyof typeof STATUS_QUERY] ?? statusFilter.toLowerCase()
-    if (starredOnly) next.starred = 'true'
+    if (scope === 'starred') next.starred = 'true'
+    if (scope === 'live') next.status = 'active'
     return next
-  }, [q, sort, starredOnly, statusFilter])
+  }, [q, sort, scope])
 
   const effectiveToolId = (isAll ? 'openclaw' : toolId) as AgentToolId
   const toolResult = useToolSessions(effectiveToolId, query, { enabled: !isAll })
@@ -240,15 +225,14 @@ export function SessionsListPage() {
   const rawSessions = isAll ? aggResult.sessions : toolResult.sessions
   const filtered = useMemo(() => {
     let result = rawSessions
-    if (sourceFilter !== 'ALL') result = result.filter((s) => s.source === sourceFilter)
-    if (dateRangeActive && dateFrom) {
+    if (dateFrom) {
       const from = new Date(dateFrom).getTime()
       result = result.filter((s) => {
         const t = s.startedAt ? new Date(s.startedAt).getTime() : null
         return t != null && t >= from
       })
     }
-    if (dateRangeActive && dateTo) {
+    if (dateTo) {
       const to = new Date(dateTo).getTime() + 86400000 - 1
       result = result.filter((s) => {
         const t = s.startedAt ? new Date(s.startedAt).getTime() : null
@@ -256,7 +240,7 @@ export function SessionsListPage() {
       })
     }
     return result
-  }, [rawSessions, sourceFilter, dateRangeActive, dateFrom, dateTo])
+  }, [rawSessions, dateFrom, dateTo])
   const paginationTotal = isAll ? aggResult.totalCount : toolResult.pagination?.total
   const loading = isAll ? aggResult.loading : toolResult.loading
   const error = isAll ? aggResult.error : toolResult.error
@@ -271,11 +255,11 @@ export function SessionsListPage() {
   }
 
   const totals = useMemo(() => ({
-    count: sourceFilter === 'ALL' ? (paginationTotal ?? filtered.length) : filtered.length,
+    count: paginationTotal ?? filtered.length,
     turns: filtered.reduce((a, s) => a + (s.totalTurns ?? s.metrics.userMessageCount), 0),
     tok: filtered.reduce((a, s) => a + (s.metrics.totalTokens ?? (s.metrics.inputTokens ?? 0) + (s.metrics.outputTokens ?? 0)), 0),
     cost: filtered.reduce((a, s) => a + (s.estimatedCost ?? 0), 0),
-  }), [filtered, paginationTotal, sourceFilter])
+  }), [filtered, paginationTotal])
 
   // Group sessions by project when groupByProject is active
   const groupedByProject = useMemo(() => {
@@ -320,22 +304,6 @@ export function SessionsListPage() {
           </div>
         </div>
         <div className="sl-hud-right">
-          <SessionsFilterPanel
-            state={{ groupByProject, dateRangeActive, dateFrom, dateTo }}
-            onGroupByProjectToggle={() => setGroupByProject(p => !p)}
-            onDateRangeToggle={() => {
-              if (dateRangeActive) { setDateFrom(''); setDateTo('') }
-              setDateRangeActive(p => !p)
-            }}
-            onDateFromChange={setDateFrom}
-            onDateToChange={setDateTo}
-            onClearAll={() => {
-              setGroupByProject(false)
-              setDateRangeActive(false)
-              setDateFrom('')
-              setDateTo('')
-            }}
-          />
           <button className="sl-newscan" onClick={() => refetch()}>
             {'↻'} RESCAN
           </button>
@@ -353,42 +321,40 @@ export function SessionsListPage() {
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        <div className="sl-chip-group">
-          {STATUSES.map((s) => (
-            <button
-              key={s}
-              className={`sl-chip ${statusFilter === s ? 'active' : ''}`}
-              style={s !== 'ALL' ? { '--c': STATUS_COLORS[s] } as React.CSSProperties : undefined}
-              onClick={() => setStatusFilter(s)}
-            >
-              {s}
-            </button>
-          ))}
-          <button
-            className={`sl-chip ${starredOnly ? 'active' : ''}`}
-            style={{ '--c': 'var(--accent)' } as React.CSSProperties}
-            onClick={() => setStarredOnly((value) => !value)}
-          >
-            STARRED
+        <div className="sl-scope-tabs">
+          <button className={`sl-scope-tab${scope === 'recent' ? ' active' : ''}`} onClick={() => setScope('recent')}>
+            RECENT
+          </button>
+          <button className={`sl-scope-tab${scope === 'starred' ? ' active' : ''}`} onClick={() => setScope('starred')}>
+            ★
+            {starredIds.size > 0 && <span className="sl-scope-count">{starredIds.size}</span>}
+          </button>
+          <button className={`sl-scope-tab sl-scope-tab-live${scope === 'live' ? ' active' : ''}`} onClick={() => setScope('live')}>
+            <span className="sl-livedot" />
+            LIVE
           </button>
         </div>
-        <select className="sl-select" value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="updated">SORT {'·'} UPDATED</option>
-          <option value="title">SORT {'·'} TITLE</option>
-          <option value="project">SORT {'·'} PROJECT</option>
-          <option value="cost">SORT {'·'} COST</option>
-          <option value="turns">SORT {'·'} TURNS</option>
-          <option value="tokens">SORT {'·'} TOKENS</option>
-          <option value="tools">SORT {'·'} ACTIVITY</option>
-        </select>
-        {isAll && (
-          <select className="sl-select" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
-            <option value="ALL">SOURCE {'·'} ALL</option>
-            {SOURCE_IDS.map((source) => (
-              <option key={source} value={source}>{getSourceName(source).toUpperCase()}</option>
-            ))}
-          </select>
-        )}
+        <div className="sl-bar-spacer" />
+        <button
+          type="button"
+          className={`sl-bar-toggle${groupByProject ? ' active' : ''}`}
+          onClick={() => setGroupByProject(p => !p)}
+        >
+          <span className={`sl-bar-check${groupByProject ? ' sl-bar-check--on' : ''}`}>
+            {groupByProject && (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1.5 4L3 5.5L6.5 2.5" />
+              </svg>
+            )}
+          </span>
+          BY PROJECT
+        </button>
+        <div className="sl-bar-dates">
+          <span className="sl-bar-date-label">FROM</span>
+          <input type="date" className="sl-bar-date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <span className="sl-bar-date-label">TO</span>
+          <input type="date" className="sl-bar-date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        </div>
       </div>
 
       {/* TABLE HEADER */}

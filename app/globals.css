@@ -731,7 +731,7 @@
   padding: 6px 10px 2px;
   font: 400 10px/1 var(--font-sans);
   color: var(--muted-foreground);
-  text-align: center;
+  text-align: left;
   background: transparent;
   border: none;
   border-top: 1px solid var(--border);
@@ -751,13 +751,14 @@
 .sl-group-header {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  text-align: left;
   gap: 7px;
   width: 100%;
   height: 28px;
   padding: 0 24px;
   font: 600 9px/1 var(--font-sans);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--muted-foreground);
   background: color-mix(in oklch, var(--card) 60%, transparent);
   border-bottom: 1px solid var(--border);
@@ -794,6 +795,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--foreground);
+  font-size: 11px;
+  letter-spacing: 0.01em;
 }
 
 .sl-group-count {
@@ -811,13 +815,14 @@
 .rr-group-header {
   display: flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 6px;
   width: 100%;
   height: 24px;
   padding: 0 8px;
   font: 600 9px/1 var(--font-sans);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--muted-foreground);
   background: color-mix(in oklch, var(--card) 60%, transparent);
   border-bottom: 1px solid var(--border);
@@ -852,6 +857,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--foreground);
+  font-size: 11px;
+  letter-spacing: 0.01em;
 }
 
 .rr-group-count {
@@ -900,29 +908,134 @@
   border-color: color-mix(in oklch, var(--accent) 50%, var(--border));
 }
 
-.sl-chip-group {
-  display: flex;
+.sl-scope-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 2px;
 }
 
-.sl-chip {
-  font: 700 9px/1 var(--font-sans);
+.sl-scope-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font: 700 9.5px/1 var(--font-sans);
   letter-spacing: 0.16em;
-  padding: 6px 8px;
+  text-transform: uppercase;
+  padding: 5px 8px;
   background: transparent;
-  border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+  border: 1px solid var(--border);
   color: var(--muted-foreground);
   cursor: pointer;
+  transition: all 0.12s;
 }
 
-.sl-chip:hover {
+.sl-scope-tab:hover {
   color: var(--foreground);
+  border-color: color-mix(in oklch, var(--accent) 30%, var(--border));
 }
 
-.sl-chip.active {
-  color: var(--c, var(--accent));
-  border-color: var(--c, var(--accent));
-  background: color-mix(in oklch, var(--c, var(--accent)) 12%, transparent);
+.sl-scope-tab.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+.sl-scope-count {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  opacity: 0.7;
+  font-weight: 600;
+}
+
+.sl-livedot {
+  width: 5px;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--status-success);
+  box-shadow: 0 0 4px var(--status-success);
+  animation: hud-pulse 1.4s infinite;
+}
+
+.sl-scope-tab-live.active .sl-livedot {
+  animation: hud-pulse 1.4s infinite;
+}
+
+.sl-bar-spacer {
+  flex: 1;
+}
+
+.sl-bar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 700 9.5px/1 var(--font-sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+
+.sl-bar-toggle:hover {
+  color: var(--foreground);
+  border-color: color-mix(in oklch, var(--accent) 30%, var(--border));
+}
+
+.sl-bar-toggle.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+.sl-bar-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+  transition: all 0.12s;
+}
+
+.sl-bar-check--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--background);
+}
+
+.sl-bar-dates {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sl-bar-date-label {
+  font: 700 8px/1 var(--font-sans);
+  letter-spacing: 0.14em;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+}
+
+.sl-bar-date-input {
+  font: 11px var(--font-mono);
+  padding: 4px 6px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+
+.sl-bar-date-input:focus {
+  border-color: color-mix(in oklch, var(--accent) 50%, var(--border));
 }
 
 .sl-select {
