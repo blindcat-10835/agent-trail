@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { SessionsFilterPanel, type SessionsFilterState } from './sessions-filter-panel'
 import { useRouter } from 'next/navigation'
 import {
   useAgentTool,
@@ -201,11 +202,39 @@ function SessionsRailContent({
   const starredIsStarred = useStarredStore((s) => s.isStarred)
   const starredToggle = useStarredStore((s) => s.toggle)
 
+  const [filterState, setFilterState] = useState<SessionsFilterState>({
+    groupByProject: false,
+    dateRangeActive: false,
+    dateFrom: '',
+    dateTo: '',
+  })
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+
   const filteredSessions = useMemo(() => {
-    if (railScope === 'starred') return sessions.filter((s) => starredIds.has(s.id))
-    if (railScope === 'live') return sessions.filter((s) => s.status === 'active')
-    return sessions
-  }, [sessions, railScope, starredIds])
+    let result = sessions
+    if (railScope === 'starred') result = result.filter((s) => starredIds.has(s.id))
+    else if (railScope === 'live') result = result.filter((s) => s.status === 'active')
+    if (filterState.dateRangeActive && filterState.dateFrom) {
+      const from = new Date(filterState.dateFrom).getTime()
+      result = result.filter((s) => s.startedAt ? new Date(s.startedAt).getTime() >= from : false)
+    }
+    if (filterState.dateRangeActive && filterState.dateTo) {
+      const to = new Date(filterState.dateTo).getTime() + 86400000 - 1
+      result = result.filter((s) => s.startedAt ? new Date(s.startedAt).getTime() <= to : false)
+    }
+    return result
+  }, [sessions, railScope, starredIds, filterState])
+
+  const groupedByProject = useMemo(() => {
+    if (!filterState.groupByProject) return null
+    const map: Record<string, TraceSession[]> = {}
+    for (const s of filteredSessions) {
+      const key = s.project || '-'
+      if (!map[key]) map[key] = []
+      map[key].push(s)
+    }
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+  }, [filteredSessions, filterState.groupByProject])
 
   const liveCount = useMemo(
     () => sessions.filter((s) => s.status === 'active').length,
@@ -237,6 +266,27 @@ function SessionsRailContent({
         <div className="rr-head-row">
           <span className="eyebrow accent">◆ SESSIONS</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <SessionsFilterPanel
+              state={filterState}
+              onGroupByProjectToggle={() => {
+                setFilterState(p => ({ ...p, groupByProject: !p.groupByProject }))
+                setExpandedProjects(new Set())
+              }}
+              onDateRangeToggle={() => {
+                setFilterState(p => ({
+                  ...p,
+                  dateRangeActive: !p.dateRangeActive,
+                  dateFrom: p.dateRangeActive ? '' : p.dateFrom,
+                  dateTo: p.dateRangeActive ? '' : p.dateTo,
+                }))
+              }}
+              onDateFromChange={(date) => setFilterState(p => ({ ...p, dateFrom: date }))}
+              onDateToChange={(date) => setFilterState(p => ({ ...p, dateTo: date }))}
+              onClearAll={() => {
+                setFilterState({ groupByProject: false, dateRangeActive: false, dateFrom: '', dateTo: '' })
+                setExpandedProjects(new Set())
+              }}
+            />
             <button
               className="rr-close"
               onClick={onRefresh}
@@ -295,6 +345,46 @@ function SessionsRailContent({
             <div className="rr-empty-tag">EMPTY</div>
             <div className="rr-empty-body">No sessions match this filter.</div>
           </div>
+        ) : groupedByProject ? (
+          groupedByProject.map(([project, projectSessions]) => {
+            const pc = projectColor(project)
+            const isOpen = expandedProjects.has(project)
+            return (
+              <div key={project}>
+                <button
+                  type="button"
+                  className="rr-group-header"
+                  onClick={() => setExpandedProjects(prev => {
+                    const next = new Set(prev)
+                    if (next.has(project)) next.delete(project)
+                    else next.add(project)
+                    return next
+                  })}
+                >
+                  <svg
+                    className={`rr-group-chevron${isOpen ? ' rr-group-chevron--open' : ''}`}
+                    width="9" height="9" viewBox="0 0 16 16" fill="currentColor"
+                  >
+                    <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                  </svg>
+                  <span className="rr-group-dot" style={{ background: pc }} />
+                  <span className="rr-group-name">{shortPath(project)}</span>
+                  <span className="rr-group-count">{projectSessions.length}</span>
+                </button>
+                {isOpen && projectSessions.map((session, index) => (
+                  <SessionRailRow
+                    key={session.id || `${session.source}-${index}`}
+                    session={session}
+                    active={selectedSessionId === session.id}
+                    currentToolId={currentToolId}
+                    onSelect={() => onSelect(session)}
+                    isStarred={starredIsStarred(session.id)}
+                    onToggleStar={() => starredToggle(session.id)}
+                  />
+                ))}
+              </div>
+            )
+          })
         ) : (
           filteredSessions.map((session, index) => (
             <SessionRailRow
