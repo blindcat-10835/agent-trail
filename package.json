@@ -24,7 +24,7 @@
   "dependencies": {
     "@hono/node-server": "^1.14.1",
     "@tanstack/react-virtual": "^3.13.24",
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^12.10.0",
     "chokidar": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

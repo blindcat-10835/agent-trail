@@ -5,7 +5,11 @@ FROM node:${NODE_VERSION} AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 ARG PNPM_VERSION=11.1.3
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 make g++ && \
+    rm -rf /var/lib/apt/lists/* && \
+    corepack enable && \
+    corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # ── Stage 2: install all deps (dev+prod) for building ─────────────────────────
 FROM base AS deps
