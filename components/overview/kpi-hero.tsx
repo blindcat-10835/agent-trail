@@ -5,6 +5,7 @@ import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import type { DailyTokenUsage, OverviewAggregates, PricingStatus, TimeWindow } from '@/types/overview'
+import { getSourceTag } from '@/types/trace'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 
 // ============================================================================
@@ -42,15 +43,6 @@ function fmtShortDate(date: string): string {
   return `${month}/${day}`
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  all: 'ALL SOURCES',
-  openclaw: 'OPENCLAW',
-  'claude-code': 'CLAUDE',
-  codex: 'CODEX',
-  opencode: 'OPENCODE',
-  qoder: 'QODER',
-}
-
 // ============================================================================
 // PulsePanel
 // ============================================================================
@@ -64,7 +56,7 @@ function PulsePanel({
   aggregates: OverviewAggregates | null
   loading: boolean
 }) {
-  const label = SOURCE_LABELS[toolId] ?? toolId.toUpperCase()
+  const label = getSourceTag(toolId)
   const sessions = aggregates ? String(aggregates.sessionCount) : DASH
   const avgTurns =
     aggregates && aggregates.sessionCount > 0

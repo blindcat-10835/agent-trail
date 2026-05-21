@@ -3,22 +3,8 @@
 import { useAggregateSessions } from '@/lib/agent-tools/client-hooks'
 import { SessionsStatsBar } from '@/components/sessions/sessions-stats-bar'
 import { EmptyState } from '@/components/dashboard/empty-state'
+import { getSourceTag } from '@/types/trace'
 import type { AggregateSourceStatus } from '@/lib/agent-tools/client-hooks'
-
-function sourceLabel(toolId: AggregateSourceStatus['toolId']): string {
-  switch (toolId) {
-    case 'openclaw':
-      return 'OPENCLAW'
-    case 'claude-code':
-      return 'CLAUDE'
-    case 'codex':
-      return 'CODEX'
-    case 'opencode':
-      return 'OPENCODE'
-    case 'qoder':
-      return 'QODER'
-  }
-}
 
 function SourceStatusStrip({ sources }: { sources: AggregateSourceStatus[] }) {
   if (sources.length === 0) return null
@@ -31,7 +17,7 @@ function SourceStatusStrip({ sources }: { sources: AggregateSourceStatus[] }) {
           className="px-3 py-2 border-r border-border last:border-r-0"
         >
           <div className="text-[9px] text-muted-foreground tracking-[0.18em] uppercase">
-            {sourceLabel(source.toolId)}
+            {getSourceTag(source.toolId)}
           </div>
           <div className="mt-1 text-[11px] font-mono">
             {source.status === 'error' ? (

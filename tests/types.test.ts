@@ -3,6 +3,7 @@ import {
   TraceSource,
   IngestStatus,
   GatewayStatus,
+  SOURCE_LABELS,
   TraceSourceMetadata,
   TraceSession,
   TraceTurn,
@@ -15,6 +16,8 @@ import {
   TraceSystemEvent,
   TokenUsage,
   SourceMetadata,
+  getSourceLabel,
+  getSourceTag,
 } from '@/types/trace';
 
 describe('Source Status Types', () => {
@@ -51,11 +54,23 @@ describe('Source Status Types', () => {
       'openclaw',
       'claude-code',
       'codex',
+      'opencode',
+      'qoder',
     ];
 
     validSources.forEach((source) => {
       expect(source).toBeTruthy();
     });
+  });
+
+  it('should expose canonical source labels and tags', () => {
+    expect(SOURCE_LABELS['claude-code']).toBe('Claude');
+    expect(SOURCE_LABELS.openclaw).toBe('OpenClaw');
+    expect(getSourceLabel('all')).toBe('All Sources');
+    expect(getSourceTag('all')).toBe('ALL SOURCES');
+    expect(getSourceTag('opencode')).toBe('OPENCODE');
+    expect(getSourceLabel('toString')).toBe('toString');
+    expect(getSourceTag('toString')).toBe('TOSTRING');
   });
 });
 

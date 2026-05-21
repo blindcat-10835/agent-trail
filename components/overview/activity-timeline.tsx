@@ -4,6 +4,7 @@ import { shortPath } from '@/lib/utils'
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
+import { getSourceTag } from '@/types/trace'
 import type { TimelineEvent, TimelineEventType } from '@/types/overview'
 
 const EVENT_COLOR: Record<TimelineEventType, string> = {
@@ -30,15 +31,6 @@ function relativeTime(iso: string | null): string {
 
 function getTimelineEventKey(event: TimelineEvent): string {
   return [event.source, event.id, event.eventType, event.eventTime || 'unknown'].join(':')
-}
-
-function sourceTag(source: string): string {
-  switch (source) {
-    case 'openclaw': return 'OPENCLAW'
-    case 'claude-code': return 'CLAUDE'
-    case 'codex': return 'CODEX'
-    default: return (source ?? '').toUpperCase()
-  }
 }
 
 function eventBody(event: TimelineEvent): string {
@@ -118,7 +110,7 @@ function StreamFeed({ items }: { items: TimelineEvent[] }) {
                   background: 'color-mix(in oklch, var(--background) 50%, transparent)',
                 }}
               >
-                {sourceTag(event.source)}
+                {getSourceTag(event.source)}
               </span>
             </div>
           </div>

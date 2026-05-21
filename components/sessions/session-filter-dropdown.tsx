@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { SlidersHorizontal, Search, Star, X } from 'lucide-react'
-import type { TraceSource } from '@/types/trace'
+import { SOURCE_LABELS, type TraceSource } from '@/types/trace'
 import { TOOL_IDS } from '@/lib/agent-tools/registry'
 import { useStarredStore } from '@/stores/starred-store'
 import { cn } from '@/lib/utils'
@@ -18,18 +18,6 @@ export interface SessionFilterState {
   sourceFilter: Set<TraceSource>
   starredOnly: boolean
   searchQuery: string
-}
-
-// ============================================================================
-// Source labels
-// ============================================================================
-
-const SOURCE_LABELS: Record<TraceSource, string> = {
-  'claude-code': 'Claude',
-  openclaw: 'OpenClaw',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  qoder: 'Qoder',
 }
 
 // ============================================================================

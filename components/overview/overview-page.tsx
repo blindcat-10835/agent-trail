@@ -22,18 +22,11 @@ import { OverviewAgents } from '@/components/overview/overview-agents'
 import { OverviewAutomations } from '@/components/overview/overview-automations'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import type { TimeWindow } from '@/types/overview'
+import { getSourceTag } from '@/types/trace'
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-const SOURCE_LABELS: Record<string, string> = {
-  all: 'ALL SOURCES',
-  openclaw: 'OPENCLAW',
-  'claude-code': 'CLAUDE',
-  codex: 'CODEX',
-  opencode: 'OPENCODE',
-}
 
 const WINDOW_META: Record<TimeWindow, string> = {
   today: 'TODAY',
@@ -84,7 +77,7 @@ export function OverviewPage() {
   }
 
   const wLabel = WINDOW_META[timeWindow] ?? '30D'
-  const srcLabel = SOURCE_LABELS[toolId] ?? toolId.toUpperCase()
+  const srcLabel = getSourceTag(toolId)
 
   if (aggError && !aggLoading && !aggregates) {
     return (

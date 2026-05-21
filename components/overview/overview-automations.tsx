@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import { useOverviewAutomations } from '@/lib/agent-tools/client-hooks'
 import { getSourceColor } from '@/lib/agent-tools/registry'
+import { getSourceTag } from '@/types/trace'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 import type { SourceCapabilitySet, AutomationSummary } from '@/types/overview'
 
@@ -97,14 +98,6 @@ function a2StatusText(automation: AutomationSummary): string {
   return `OK · ${relativeTime(automation.lastActiveAt)}`
 }
 
-function sourceLabel(source: string): string {
-  if (source === 'claude-code') return 'CLAUDE'
-  if (source === 'openclaw') return 'CLAW'
-  if (source === 'opencode') return 'OC'
-  if (source === 'qoder') return 'QDR'
-  return source.toUpperCase().slice(0, 6)
-}
-
 // ============================================================================
 // Row
 // ============================================================================
@@ -133,7 +126,7 @@ function AutomRow({ automation, showSource }: { automation: AutomationSummary; s
               opacity: 0.85,
             }}
           >
-            {sourceLabel(automation.source)}
+            {getSourceTag(automation.source)}
           </span>
         )}
         {automation.name}

@@ -5,6 +5,7 @@ import { getSourceColor } from '@/lib/agent-tools/registry'
 import { HudFrame } from '@/components/overview/hud-frame'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/empty-state'
+import { getSourceTag } from '@/types/trace'
 import type { StarredSession } from '@/types/overview'
 
 // ============================================================================
@@ -23,17 +24,6 @@ function relativeTime(iso: string | null): string {
   const days = Math.floor(hours / 24)
   if (days < 30) return `${days}d`
   return `${Math.floor(days / 30)}mo`
-}
-
-function sourceLabel(source: string): string {
-  switch (source) {
-    case 'openclaw': return 'OPENCLAW'
-    case 'claude-code': return 'CLAUDE'
-    case 'codex': return 'CODEX'
-    case 'opencode': return 'OPENCODE'
-    case 'qoder': return 'QODER'
-    default: return (source ?? '').toUpperCase()
-  }
 }
 
 // ============================================================================
@@ -101,7 +91,7 @@ function StarThread({ items }: { items: StarredSession[] }) {
                   className="text-muted-foreground uppercase tracking-[0.14em]"
                   style={{ fontSize: 9 }}
                 >
-                  {sourceLabel(session.source)}
+                  {getSourceTag(session.source)}
                 </span>
                 <span
                   className="ml-auto text-muted-foreground px-1.5 py-0.5 border"

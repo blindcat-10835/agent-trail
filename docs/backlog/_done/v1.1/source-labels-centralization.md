@@ -1,11 +1,12 @@
 ---
 type: refactor
 title: Centralize SOURCE_LABELS and sourceTag usage
-status: todo
+status: done
 priority: p2
 created: 2026-05-21
-branch:
-worktree:
+updated: 2026-05-22
+branch: refactor/source-labels-centralization
+worktree: .worktree/refactor-source-labels-centralization
 ---
 
 ## Description
@@ -29,9 +30,9 @@ export const SOURCE_LABELS: Record<TraceSource, string> = {
 
 ## Acceptance criteria
 
-- [ ] `SOURCE_LABELS` 定义在统一位置（建议 `types/trace.ts`）
-- [ ] grep `claude-code|openclaw|codex|opencode|qoder` 字面量后，所有显示用途都改为读 `SOURCE_LABELS[source]`
-- [ ] 新增 source 时只改一处即可
+- [x] `SOURCE_LABELS` 定义在统一位置（建议 `types/trace.ts`）
+- [x] grep `claude-code|openclaw|codex|opencode|qoder` 字面量后，所有显示用途都改为读 `SOURCE_LABELS[source]`
+- [x] 新增 source 时只改一处即可
 
 ## Related
 

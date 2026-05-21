@@ -7,6 +7,7 @@
  * Pure TypeScript — no React, no IO, no side effects.
  */
 
+import { getSourceLabel } from '@/types/trace'
 import type { AgentToolDefinition, AgentToolId, SourceToolId } from './types'
 import allDef from './all/definition'
 import openclawDef from './openclaw/definition'
@@ -95,5 +96,5 @@ export function getSourceColor(toolId: string): string {
  * Falls back to the raw toolId string for unknown tools.
  */
 export function getSourceName(toolId: string): string {
-  return AGENT_TOOL_DEFINITIONS[toolId as AgentToolId]?.ui.brand.name ?? toolId
+  return getSourceLabel(toolId)
 }

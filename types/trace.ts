@@ -22,6 +22,33 @@
 export type TraceSource = 'openclaw' | 'claude-code' | 'codex' | 'opencode' | 'qoder';
 
 /**
+ * Canonical display labels for trace sources.
+ * All user-facing source names should read from this single map.
+ */
+export const SOURCE_LABELS: Record<TraceSource, string> = {
+  openclaw: 'OpenClaw',
+  'claude-code': 'Claude',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+  qoder: 'Qoder',
+};
+
+export const ALL_SOURCES_LABEL = 'All Sources';
+
+export function isTraceSource(value: string): value is TraceSource {
+  return Object.prototype.hasOwnProperty.call(SOURCE_LABELS, value);
+}
+
+export function getSourceLabel(source: TraceSource | 'all' | string): string {
+  if (source === 'all') return ALL_SOURCES_LABEL;
+  return isTraceSource(source) ? SOURCE_LABELS[source] : source;
+}
+
+export function getSourceTag(source: TraceSource | 'all' | string): string {
+  return getSourceLabel(source).toUpperCase();
+}
+
+/**
  * Ingest service status (file-based discovery and parsing)
  */
 export type IngestStatus =
