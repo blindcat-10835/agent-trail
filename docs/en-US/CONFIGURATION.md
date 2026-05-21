@@ -90,7 +90,7 @@ Each key accepts an array of paths. Relative paths are resolved from the user's 
 | --- | --- | --- | --- |
 | `INGEST_PORT` | `8078` | Integer in `[1024, 65535]` | TCP port for the Hono server. |
 | `INGEST_DB_PATH` | `./data/ingest.db` | Non-empty; cannot contain `..` (path traversal) | Resolved to absolute path. Parent directory is created on open. |
-| `INGEST_LOG_LEVEL` | `info` | One of `debug \| info \| warn \| error` | Reserved for the logger; currently used to gate verbose output in tests. |
+| `AGENTS_TRACING_LOG_LEVEL` / `INGEST_LOG_LEVEL` | `info` in development, `warn` in production/package runs | One of `silent \| error \| warn \| info \| debug` | Controls runtime logs. The npm/Docker launcher buffers child logs by default and prints them on failure; set `debug` to stream verbose logs live. |
 | `INGEST_RESYNC_INTERVAL_MS` | `900000` (15 min) | Integer ≥ 5000 | Periodic directory-consistency resync interval for the file watcher. |
 | `INGEST_DEBOUNCE_MS` | `500` | Integer ≥ 100 | Debounce window between filesystem events and a sync trigger. |
 | `INGEST_STARTUP_SYNC_LIMIT` | `50` | Integer ≥ 0 | Newest files per source parsed during the warmup pass before `/health` reports `ready: true`. `0` skips warmup entirely. |

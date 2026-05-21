@@ -26,6 +26,14 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN echo "node-linker=hoisted" > .npmrc && \
     pnpm install --prod --frozen-lockfile
 
+# ── Stage 3b: keep only native deps needed by the bundled ingest service ──────
+FROM prod-deps AS ingest-deps
+WORKDIR /app
+RUN mkdir -p /ingest-node_modules && \
+    for pkg in better-sqlite3 bindings file-uri-to-path; do \
+      cp -a "node_modules/${pkg}" "/ingest-node_modules/${pkg}"; \
+    done
+
 # ── Stage 4: build ────────────────────────────────────────────────────────────
 FROM base AS builder
 WORKDIR /app
@@ -54,10 +62,14 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/ingest/dist/index.js    ./ingest/dist/index.js
 COPY --from=builder /app/ingest/dist/schema.sql  ./ingest/dist/schema.sql
 
-# Production node_modules (provides hono, better-sqlite3, chokidar, etc. for ingest)
-# Placed at /app/node_modules so Node's module resolution finds them from ingest/dist/
-COPY --from=prod-deps /app/node_modules ./node_modules
+# The Next.js standalone output already includes traced frontend/server deps.
+# The ingest bundle externalizes only better-sqlite3, so copy that native
+# package and its tiny runtime helpers instead of the full prod node_modules.
+COPY --from=ingest-deps /ingest-node_modules/better-sqlite3 ./node_modules/better-sqlite3
+COPY --from=ingest-deps /ingest-node_modules/bindings ./node_modules/bindings
+COPY --from=ingest-deps /ingest-node_modules/file-uri-to-path ./node_modules/file-uri-to-path
 
+COPY bin/agents-tracing.js ./bin/agents-tracing.js
 COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 

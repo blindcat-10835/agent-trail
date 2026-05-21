@@ -5,6 +5,7 @@ import type {
   SyncSourceOptions,
   SyncSourceType,
 } from '../sync/index.js';
+import { logger } from '../logger';
 
 export type SyncReason = 'startup-warmup' | 'background' | 'watcher' | 'periodic' | 'manual';
 
@@ -285,7 +286,7 @@ export function createSyncScheduler(deps: SchedulerDeps, options: SchedulerOptio
   }
 
   function logCompletion(entry: SyncRunHistoryEntry): void {
-    console.log(JSON.stringify({
+    logger.debug(JSON.stringify({
       event: 'ingest_sync_complete',
       runId: entry.runId,
       reason: entry.reason,

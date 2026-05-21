@@ -21,6 +21,7 @@ import { rateLimiter } from './api/middleware/rate-limit.js';
 import { createWatcher } from './src/watcher.js';
 import { createSyncScheduler } from './src/sync-scheduler.js';
 import { sseManager } from './src/sse.js';
+import { logger } from './logger.js';
 import {
   discoverOpenClawSources,
   discoverClaudeSources,
@@ -173,11 +174,11 @@ export async function start(): Promise<void> {
     }
 
     // Open database
-    console.log(`Opening database: ${config.dbPath}`);
+    logger.info(`Opening database: ${config.dbPath}`);
     const db = openDatabase({ path: config.dbPath });
 
     // Initialize schema
-    console.log('Initializing database schema...');
+    logger.info('Initializing database schema...');
     initSchema();
 
     const syncState: StartupSyncState = {
@@ -206,13 +207,13 @@ export async function start(): Promise<void> {
     // Store context before background initialization so routes/health can answer.
     context = { config, db, server, sseManager, watcher: null, syncScheduler, syncState };
 
-    console.log(`Ingest service listening on port ${config.port}`);
-    console.log(`Health check: http://localhost:${config.port}/health`);
-    console.log(`Version info: http://localhost:${config.port}/version`);
+    logger.info(`Ingest service listening on port ${config.port}`);
+    logger.debug(`Health check: http://localhost:${config.port}/health`);
+    logger.debug(`Version info: http://localhost:${config.port}/version`);
 
     void initializeSourcesAndSync();
   } catch (err) {
-    console.error('Failed to start ingest service:', err);
+    logger.error('Failed to start ingest service:', err);
     throw err;
   }
 }
@@ -225,7 +226,7 @@ async function initializeSourcesAndSync(): Promise<void> {
     active.syncState.phase = 'discovering';
 
     // Discover source directories for watcher
-    console.log('Discovering source directories...');
+    logger.info('Discovering source directories...');
     const openClawSources = await discoverOpenClawSources();
     const claudeSources = await discoverClaudeSources();
     const codexSources = await discoverCodexSources();
@@ -247,14 +248,14 @@ async function initializeSourcesAndSync(): Promise<void> {
         try {
           await active.syncScheduler?.enqueuePaths(sourceType, paths, 'watcher');
         } catch (err) {
-          console.error(`[watcher] Path sync failed for ${sourceType}:`, err);
+          logger.error(`[watcher] Path sync failed for ${sourceType}:`, err);
         }
       },
       onFullResync: async (sourceType) => {
         try {
           await active.syncScheduler?.enqueueFullSource(sourceType, 'periodic');
         } catch (err) {
-          console.error(`[watcher] Periodic sync failed for ${sourceType}:`, err);
+          logger.error(`[watcher] Periodic sync failed for ${sourceType}:`, err);
         }
       },
     });
@@ -268,7 +269,7 @@ async function initializeSourcesAndSync(): Promise<void> {
 
     if (active.config.startupSyncLimit > 0) {
       active.syncState.phase = 'warming';
-      console.log(`Running startup warmup sync: latest ${active.config.startupSyncLimit} files per source...`);
+      logger.info(`Running startup warmup sync: latest ${active.config.startupSyncLimit} files per source...`);
 
       for (const sourceType of sourceTypes) {
         active.syncState.currentSource = sourceType;
@@ -278,11 +279,11 @@ async function initializeSourcesAndSync(): Promise<void> {
             sortByMtimeDesc: true,
           });
           active.syncState.lastSyncAt = new Date().toISOString();
-          console.log(`  Warmup sync ${sourceType}: +${result.sessionsInserted} new, ~${result.sessionsUpdated} updated`);
+          logger.debug(`Warmup sync ${sourceType}: +${result.sessionsInserted} new, ~${result.sessionsUpdated} updated`);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           active.syncState.lastError = message;
-          console.error(`  Warmup sync failed for ${sourceType}:`, err);
+          logger.error(`Warmup sync failed for ${sourceType}:`, err);
         }
       }
     }
@@ -290,27 +291,27 @@ async function initializeSourcesAndSync(): Promise<void> {
     active.syncState.startupComplete = true;
     active.syncState.currentSource = null;
 
-    console.log('Starting file watcher...');
+    logger.info('Starting file watcher...');
     await watcher.start();
 
     if (!active.config.backgroundSyncEnabled) {
       active.syncState.phase = 'idle';
-      console.log('Background sync disabled; ingest is ready after startup warmup.');
+      logger.info('Background sync disabled; ingest is ready after startup warmup.');
       return;
     }
 
     active.syncState.phase = 'indexing';
-    console.log('Running background full sync for all sources...');
+    logger.info('Running background full sync for all sources...');
     for (const sourceType of sourceTypes) {
       active.syncState.currentSource = sourceType;
       try {
         const result = await active.syncScheduler!.enqueueFullSource(sourceType, 'background');
         active.syncState.lastSyncAt = new Date().toISOString();
-        console.log(`  Background sync ${sourceType}: +${result.sessionsInserted} new, ~${result.sessionsUpdated} updated`);
+        logger.debug(`Background sync ${sourceType}: +${result.sessionsInserted} new, ~${result.sessionsUpdated} updated`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         active.syncState.lastError = message;
-        console.error(`  Background sync failed for ${sourceType}:`, err);
+        logger.error(`Background sync failed for ${sourceType}:`, err);
       }
     }
 
@@ -324,7 +325,7 @@ async function initializeSourcesAndSync(): Promise<void> {
       activeContext.syncState.currentSource = null;
       activeContext.syncState.lastError = err instanceof Error ? err.message : String(err);
     }
-    console.error('Failed to initialize sources and sync:', err);
+    logger.error('Failed to initialize sources and sync:', err);
   }
 }
 
@@ -334,12 +335,12 @@ async function initializeSourcesAndSync(): Promise<void> {
 export async function stop(): Promise<void> {
   try {
     if (context?.watcher) {
-      console.log('Stopping file watcher...');
+      logger.info('Stopping file watcher...');
       await context.watcher.stop();
     }
 
     if (context?.server) {
-      console.log('Stopping HTTP server...');
+      logger.info('Stopping HTTP server...');
       context.server.close();
       context.server = null;
     }
@@ -347,9 +348,9 @@ export async function stop(): Promise<void> {
     closeDatabase();
     context = null;
 
-    console.log('Ingest service stopped');
+    logger.info('Ingest service stopped');
   } catch (err) {
-    console.error('Error during shutdown:', err);
+    logger.error('Error during shutdown:', err);
     throw err;
   }
 }
@@ -360,29 +361,29 @@ export async function stop(): Promise<void> {
 
 if (require.main === module) {
   start().catch((err) => {
-    console.error('Failed to start ingest service:', err);
+    logger.error('Failed to start ingest service:', err);
     process.exit(1);
   });
 
   // Graceful shutdown handlers
   process.on('SIGINT', async () => {
-    console.log('\nReceived SIGINT, shutting down gracefully...');
+    logger.info('Received SIGINT, shutting down gracefully...');
     try {
       await stop();
       process.exit(0);
     } catch (err) {
-      console.error('Error during shutdown:', err);
+      logger.error('Error during shutdown:', err);
       process.exit(1);
     }
   });
 
   process.on('SIGTERM', async () => {
-    console.log('\nReceived SIGTERM, shutting down gracefully...');
+    logger.info('Received SIGTERM, shutting down gracefully...');
     try {
       await stop();
       process.exit(0);
     } catch (err) {
-      console.error('Error during shutdown:', err);
+      logger.error('Error during shutdown:', err);
       process.exit(1);
     }
   });

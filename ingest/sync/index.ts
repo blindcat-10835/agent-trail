@@ -16,6 +16,7 @@ import * as os from 'os';
 import { getDatabase } from '../db';
 import { IncrementalParseDelta, ParseResult } from '../parser/types';
 import { sseManager } from '../src/sse';
+import { logger } from '../logger';
 
 export const PARSER_CACHE_VERSION = 'parser-v9-token-channel-accounting';
 
@@ -1674,7 +1675,7 @@ function upsertSyncStatus(sourceType: string, result: SyncResult): void {
       VALUES (?, datetime('now'), NULL, ?, ?)
     `).run(sourceType, filesWatched, lastError);
   } catch (err) {
-    console.error(`[sync_status] Failed to upsert sync status for ${sourceType}:`, err);
+    logger.error(`[sync_status] Failed to upsert sync status for ${sourceType}:`, err);
   }
 }
 
@@ -2728,7 +2729,7 @@ async function syncOpencodeSource(opts: SyncSourceOptions): Promise<SyncResult> 
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('SQLITE_BUSY')) {
-          console.warn(`[sync:opencode] Skipping session ${row.id}: DB busy`);
+          logger.warn(`[sync:opencode] Skipping session ${row.id}: DB busy`);
           totalResult.errors.push(`Skipped session ${row.id}: DB busy`);
         } else {
           totalResult.errors.push(`Failed to sync opencode session ${row.id}: ${msg}`);

@@ -10,6 +10,7 @@
 
 import * as chokidar from 'chokidar';
 import * as fs from 'fs/promises';
+import { logger } from '../logger';
 import type { SyncSourceType } from '../sync/index.js';
 
 // ============================================================================
@@ -119,7 +120,7 @@ export function createWatcher(config: WatcherConfig): WatcherInstance {
             status.lastSyncAt = new Date().toISOString();
           } catch (err) {
             status.lastError = err instanceof Error ? err.message : String(err);
-            console.error(`[watcher] Sync error for ${sourceType}:`, err);
+            logger.error(`[watcher] Sync error for ${sourceType}:`, err);
           }
         }
       }
@@ -160,12 +161,12 @@ export function createWatcher(config: WatcherConfig): WatcherInstance {
         if (result instanceof Promise) {
           result.catch((err) => {
             status.lastError = err instanceof Error ? err.message : String(err);
-            console.error(`[watcher] Periodic resync error for ${sourceType}:`, err);
+            logger.error(`[watcher] Periodic resync error for ${sourceType}:`, err);
           });
         }
       } catch (err) {
         status.lastError = err instanceof Error ? err.message : String(err);
-        console.error(`[watcher] Periodic resync error for ${sourceType}:`, err);
+        logger.error(`[watcher] Periodic resync error for ${sourceType}:`, err);
       }
     }
     status.lastSyncAt = new Date().toISOString();
@@ -177,7 +178,7 @@ export function createWatcher(config: WatcherConfig): WatcherInstance {
 
   async function start(): Promise<void> {
     if (status.running) {
-      console.log('[watcher] Already running, skipping start');
+      logger.debug('[watcher] Already running, skipping start');
       return;
     }
 
@@ -206,35 +207,35 @@ export function createWatcher(config: WatcherConfig): WatcherInstance {
           watcher.on('error', (err) => {
             const msg = err instanceof Error ? err.message : String(err);
             status.lastError = `Chokidar error on ${dir}: ${msg}`;
-            console.error(`[watcher] Chokidar error: ${dir}:`, msg);
+            logger.error(`[watcher] Chokidar error: ${dir}:`, msg);
           });
 
           watcher.on('ready', () => {
             const filesWatched = (watcher as any)._watched ? Object.keys((watcher as any)._watched).length : 0;
             status.filesWatched += filesWatched;
-            console.log(`[watcher] Ready on ${dir} — watching ${filesWatched} files`);
+            logger.debug(`[watcher] Ready on ${dir} — watching ${filesWatched} files`);
           });
 
           chokidarWatchers.set(`${sourceType}:${dir}`, watcher);
-          console.log(`[watcher] Watching ${sourceType}: ${dir}`);
+          logger.debug(`[watcher] Watching ${sourceType}: ${dir}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           watchErrors.push(`${sourceType}:${dir}: ${msg}`);
-          console.warn(`[watcher] Cannot watch ${dir}: ${msg}`);
+          logger.warn(`[watcher] Cannot watch ${dir}: ${msg}`);
         }
       }
     }
 
     if (watchErrors.length > 0) {
       status.lastError = watchErrors.join('; ');
-      console.warn(`[watcher] ${watchErrors.length} directories could not be watched`);
+      logger.warn(`[watcher] ${watchErrors.length} directories could not be watched`);
     }
 
     // Start periodic resync
     resyncInterval = setInterval(runPeriodicResync, config.resyncIntervalMs);
 
     status.running = true;
-    console.log('[watcher] Watcher started');
+    logger.info('[watcher] Watcher started');
   }
 
   // ==========================================================================
@@ -272,7 +273,7 @@ export function createWatcher(config: WatcherConfig): WatcherInstance {
     status.filesWatched = 0;
     status.sourceCount = 0;
 
-    console.log('[watcher] Watcher stopped');
+    logger.info('[watcher] Watcher stopped');
   }
 
   // ==========================================================================

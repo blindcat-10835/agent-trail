@@ -6,6 +6,7 @@
  */
 
 import { resolveToolDirs } from './tool-dirs';
+import { logger } from '../logger';
 import type { SourceToolId } from '@/lib/agent-tools/types';
 
 // ============================================================================
@@ -15,7 +16,7 @@ import type { SourceToolId } from '@/lib/agent-tools/types';
 export interface IngestConfig {
   port: number;
   dbPath: string;
-  logLevel: 'debug' | 'info' | 'warn' | 'error';
+  logLevel: 'silent' | 'debug' | 'info' | 'warn' | 'error';
   resyncIntervalMs: number;      // default 900000 (15 min)
   debounceMs: number;            // default 500
   startupSyncLimit: number;      // default 50 sessions per source before ready=true
@@ -71,12 +72,16 @@ export function loadConfig(): IngestConfig {
   }
 
   // Parse log level
-  const logLevelStr = process.env.INGEST_LOG_LEVEL || 'info';
-  const validLogLevels = ['debug', 'info', 'warn', 'error'];
+  const rawLogLevel =
+    process.env.AGENTS_TRACING_LOG_LEVEL ||
+    process.env.INGEST_LOG_LEVEL ||
+    (process.env.NODE_ENV === 'production' ? 'warn' : 'info');
+  const logLevelStr = rawLogLevel.toLowerCase();
+  const validLogLevels = ['silent', 'debug', 'info', 'warn', 'error'];
 
   if (!validLogLevels.includes(logLevelStr)) {
     throw new Error(
-      `Invalid INGEST_LOG_LEVEL: "${logLevelStr}" must be one of ${validLogLevels.join(', ')}`
+      `Invalid log level: "${rawLogLevel}" must be one of ${validLogLevels.join(', ')}`
     );
   }
 
@@ -159,7 +164,7 @@ export function loadConfig(): IngestConfig {
     toolDirs,
   };
 
-  console.log('Configuration loaded:', {
+  logger.debug('Configuration loaded:', {
     port: config.port,
     dbPath: config.dbPath,
     logLevel: config.logLevel,

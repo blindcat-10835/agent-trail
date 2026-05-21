@@ -15,6 +15,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { TraceSource } from '@/types/trace';
 import { getConfig } from '../config';
+import { logger } from '../logger';
 import type { SourceToolId } from '@/lib/agent-tools/types';
 
 // ============================================================================
@@ -201,7 +202,7 @@ async function discoverSingleOpenClawDir(agentsDir: string): Promise<DiscoveredS
   return sources.filter((s) => {
     if (!s.path) return true;
     if (!isWithinRoot(s.path, agentsDir)) {
-      console.warn(`[sources] Rejected path outside root: ${s.path} (root: ${agentsDir})`);
+      logger.warn(`[sources] Rejected path outside root: ${s.path} (root: ${agentsDir})`);
       return false;
     }
     return true;
@@ -226,7 +227,7 @@ export async function discoverClaudeSources(dirs?: string[]): Promise<Discovered
     allSources.push(...results.filter((s) => {
       if (!s.path) return true;
       if (!isWithinRoot(s.path, dir)) {
-        console.warn(`[sources] Rejected Claude path outside root: ${s.path} (root: ${dir})`);
+        logger.warn(`[sources] Rejected Claude path outside root: ${s.path} (root: ${dir})`);
         return false;
       }
       return true;
@@ -254,7 +255,7 @@ export async function discoverCodexSources(dirs?: string[]): Promise<DiscoveredS
     allSources.push(...results.filter((s) => {
       if (!s.path) return true;
       if (!isWithinRoot(s.path, dir)) {
-        console.warn(`[sources] Rejected Codex path outside root: ${s.path} (root: ${dir})`);
+        logger.warn(`[sources] Rejected Codex path outside root: ${s.path} (root: ${dir})`);
         return false;
       }
       return true;
@@ -308,7 +309,7 @@ export async function discoverOpencodeSources(dirs?: string[]): Promise<Discover
     db = new Database(dbPath, { readonly: true, fileMustExist: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to open database';
-    console.warn(`[sources] OpenCode DB locked or unreadable: ${dbPath}: ${msg}`);
+    logger.warn(`[sources] OpenCode DB locked or unreadable: ${dbPath}: ${msg}`);
     return [{ type: 'opencode', path: dbPath, sessionCount: 0, error: msg }];
   }
 
@@ -385,7 +386,7 @@ export async function discoverQoderSources(dbPaths?: string[]): Promise<Discover
     } catch (err) {
       // Locked DB / SQLITE_BUSY / any other error — graceful degradation (D-10)
       const msg = err instanceof Error ? err.message : 'Failed to open Qoder database';
-      console.warn(`[sources] Qoder discovery error for ${dbPath}: ${msg}`);
+      logger.warn(`[sources] Qoder discovery error for ${dbPath}: ${msg}`);
       results.push({
         type: 'qoder',
         path: dbPath,

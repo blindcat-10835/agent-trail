@@ -10,6 +10,7 @@ import { readFileSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from '../logger';
 
 // ============================================================================
 // Types
@@ -43,25 +44,25 @@ export function openDatabase(config: DatabaseConfig): Database.Database {
   // Create directory if it doesn't exist
   const dbDir = path.dirname(dbPath);
   fs.mkdir(dbDir, { recursive: true }).catch((err) => {
-    console.error(`Failed to create database directory: ${dbDir}`, err);
+    logger.error(`Failed to create database directory: ${dbDir}`, err);
     throw new Error(`Failed to create database directory: ${err.message}`);
   });
 
   // Open database
   try {
     db = new Database(dbPath);
-    console.log(`Database opened: ${dbPath}`);
+    logger.info(`Database opened: ${dbPath}`);
   } catch (err) {
-    console.error('Failed to open database', err);
+    logger.error('Failed to open database', err);
     throw new Error(`Failed to open database: ${(err as Error).message}`);
   }
 
   // Enable WAL mode for better concurrency
   try {
     db.pragma('journal_mode = WAL');
-    console.log('WAL mode enabled');
+    logger.debug('WAL mode enabled');
   } catch (err) {
-    console.error('Failed to enable WAL mode', err);
+    logger.error('Failed to enable WAL mode', err);
     throw new Error(`Failed to enable WAL mode: ${(err as Error).message}`);
   }
 
@@ -86,16 +87,16 @@ export function initSchema(): void {
   try {
     schemaContent = readFileSync(schemaPath, 'utf-8');
   } catch (err) {
-    console.error(`Failed to read schema file: ${schemaPath}`, err);
+    logger.error(`Failed to read schema file: ${schemaPath}`, err);
     throw new Error(`Failed to read schema file: ${(err as Error).message}`);
   }
 
   // Execute schema
   try {
     db.exec(schemaContent);
-    console.log('Schema initialized successfully');
+    logger.debug('Schema initialized successfully');
   } catch (err) {
-    console.error('Failed to initialize schema', err);
+    logger.error('Failed to initialize schema', err);
     throw new Error(`Failed to initialize schema: ${(err as Error).message}`);
   }
 
@@ -128,7 +129,7 @@ export function initSchema(): void {
     throw new Error(`Missing tables after schema initialization: ${missingTables.join(', ')}`);
   }
 
-  console.log(`Verified ${tables.length} tables created: ${tables.map((t) => t.name).join(', ')}`);
+  logger.debug(`Verified ${tables.length} tables created: ${tables.map((t) => t.name).join(', ')}`);
 }
 
 /**
@@ -147,11 +148,11 @@ export function runMigrations(): void {
   const targetVersion = 19;
 
   if (currentVersion >= targetVersion) {
-    console.log(`Schema at version ${currentVersion}, no migrations needed`);
+    logger.debug(`Schema at version ${currentVersion}, no migrations needed`);
     return;
   }
 
-  console.log(`Running migrations: v${currentVersion} → v${targetVersion}`);
+  logger.info(`Running migrations: v${currentVersion} → v${targetVersion}`);
 
   // Migration 1: Add file_hash and last_sync_at columns to sessions
   // Migration 2: Add name column for session display name
@@ -598,20 +599,20 @@ export function runMigrations(): void {
   for (const step of migrationSteps) {
     try {
       db.exec(step.sql);
-      console.log(`  ✓ ${step.desc}`);
+      logger.debug(`Migration applied: ${step.desc}`);
     } catch (err) {
       const msg = (err as Error).message;
       if (msg.includes('duplicate column name') || msg.includes('already exists')) {
-        console.log(`  ○ ${step.desc} (already applied)`);
+        logger.debug(`Migration already applied: ${step.desc}`);
       } else {
-        console.error(`  ✗ ${step.desc}: ${msg}`);
+        logger.error(`Migration failed: ${step.desc}: ${msg}`);
         throw err;
       }
     }
   }
 
   db.pragma(`user_version = ${targetVersion}`);
-  console.log(`Migrations complete — schema at v${targetVersion}`);
+  logger.info(`Migrations complete — schema at v${targetVersion}`);
 }
 
 /**
@@ -619,16 +620,16 @@ export function runMigrations(): void {
  */
 export function closeDatabase(): void {
   if (!db) {
-    console.warn('Database not open, nothing to close');
+    logger.debug('Database not open, nothing to close');
     return;
   }
 
   try {
     db.close();
     db = null;
-    console.log('Database closed');
+    logger.info('Database closed');
   } catch (err) {
-    console.error('Failed to close database', err);
+    logger.error('Failed to close database', err);
     throw new Error(`Failed to close database: ${(err as Error).message}`);
   }
 }

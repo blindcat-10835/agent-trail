@@ -14,5 +14,8 @@ fixtures
 image
 RELEASE.md
 .claude
+.codex
+.agents
 .local
+npm-package
 data/

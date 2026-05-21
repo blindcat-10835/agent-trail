@@ -8,9 +8,67 @@ const os = require("os");
 const { spawn } = require("child_process");
 
 const pkgRoot = path.resolve(__dirname, "..");
-const standaloneRoot = path.join(pkgRoot, ".next", "standalone");
+const standaloneCandidates = [path.join(pkgRoot, ".next", "standalone"), pkgRoot];
+const standaloneRoot =
+  standaloneCandidates.find((candidate) =>
+    fs.existsSync(path.join(candidate, "server.js")),
+  ) || standaloneCandidates[0];
 const serverEntry = path.join(standaloneRoot, "server.js");
 const ingestEntry = path.join(pkgRoot, "ingest", "dist", "index.js");
+const logLevel = (
+  process.env.AGENTS_TRACING_LOG_LEVEL ||
+  process.env.INGEST_LOG_LEVEL ||
+  "warn"
+).toLowerCase();
+const verboseLogs = logLevel === "debug";
+const silentLogs = logLevel === "silent";
+const maxBufferedLines = Number.parseInt(
+  process.env.AGENTS_TRACING_LOG_BUFFER_LINES || "200",
+  10,
+);
+const recentLogs = [];
+
+function keyLog(message) {
+  if (!silentLogs) console.log(message);
+}
+
+function rememberLog(label, stream, chunk) {
+  const text = chunk.toString();
+  if (verboseLogs) {
+    const output = stream === "stderr" ? process.stderr : process.stdout;
+    output.write(text);
+  }
+
+  for (const line of text.split(/\r?\n/)) {
+    if (!line) continue;
+    recentLogs.push(`[${label}:${stream}] ${line}`);
+    while (recentLogs.length > maxBufferedLines) recentLogs.shift();
+  }
+}
+
+function flushRecentLogs(reason) {
+  if (silentLogs || recentLogs.length === 0) return;
+  console.error(`[agents-tracing] ${reason}`);
+  console.error(`[agents-tracing] recent child logs:`);
+  for (const line of recentLogs) {
+    console.error(line);
+  }
+}
+
+function spawnManaged(label, command, args, options) {
+  const child = spawn(command, args, {
+    ...options,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.on("data", (chunk) => rememberLog(label, "stdout", chunk));
+  child.stderr.on("data", (chunk) => rememberLog(label, "stderr", chunk));
+  child.on("error", (err) => {
+    console.error(`[agents-tracing] failed to start ${label}: ${err.message}`);
+    flushRecentLogs(`${label} failed to spawn`);
+    exitWith(1);
+  });
+  return child;
+}
 
 for (const [label, entry] of [
   ["Next.js standalone server", serverEntry],
@@ -35,19 +93,18 @@ const baseEnv = {
   ...process.env,
   NODE_ENV: "production",
   NEXT_TELEMETRY_DISABLED: "1",
+  AGENTS_TRACING_LOG_LEVEL: logLevel,
+  INGEST_LOG_LEVEL: process.env.INGEST_LOG_LEVEL || logLevel,
   INGEST_PORT: ingestPort,
   INGEST_DB_PATH: ingestDbPath,
 };
 
-console.log(`[agents-tracing] starting ingest on port ${ingestPort}`);
-const ingest = spawn(process.execPath, [ingestEntry], {
-  stdio: "inherit",
+const ingest = spawnManaged("ingest", process.execPath, [ingestEntry], {
   env: baseEnv,
 });
 
-console.log(`[agents-tracing] starting dashboard on http://localhost:${port}`);
-const server = spawn(process.execPath, [serverEntry], {
-  stdio: "inherit",
+keyLog(`[agents-tracing] dashboard: http://localhost:${port}`);
+const server = spawnManaged("dashboard", process.execPath, [serverEntry], {
   cwd: standaloneRoot,
   env: { ...baseEnv, PORT: port, HOSTNAME: process.env.HOSTNAME || "0.0.0.0" },
 });
@@ -56,7 +113,7 @@ let shuttingDown = false;
 function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`[agents-tracing] received ${signal}, shutting down`);
+  if (verboseLogs) keyLog(`[agents-tracing] received ${signal}, shutting down`);
   for (const child of [ingest, server]) {
     if (!child.killed) child.kill(signal);
   }
@@ -75,17 +132,20 @@ function exitWith(code) {
 }
 
 server.on("exit", (code, signal) => {
-  if (signal) {
+  if (shuttingDown || signal) {
     exitWith(0);
   } else {
+    if ((code ?? 0) !== 0) {
+      flushRecentLogs(`dashboard exited unexpectedly (code=${code})`);
+    }
     exitWith(code ?? 0);
   }
 });
 
 ingest.on("exit", (code, signal) => {
   if (shuttingDown || exiting) return;
-  console.error(
-    `[agents-tracing] ingest exited unexpectedly (code=${code} signal=${signal})`,
+  flushRecentLogs(
+    `ingest exited unexpectedly (code=${code} signal=${signal})`,
   );
   exitWith(code ?? 1);
 });
