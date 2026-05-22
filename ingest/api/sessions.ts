@@ -35,7 +35,11 @@ function column(alias: string | undefined, name: string): string {
 }
 
 function updatedAtExpr(alias?: string): string {
-  return `MAX(COALESCE(${column(alias, 'ended_at')}, ''), COALESCE(${column(alias, 'started_at')}, ''), COALESCE(${column(alias, 'file_mtime')}, ''))`;
+  const source = column(alias, 'source');
+  return `CASE WHEN ${source} = 'qoder'
+    THEN MAX(COALESCE(${column(alias, 'ended_at')}, ''), COALESCE(${column(alias, 'started_at')}, ''))
+    ELSE MAX(COALESCE(${column(alias, 'ended_at')}, ''), COALESCE(${column(alias, 'started_at')}, ''), COALESCE(${column(alias, 'file_mtime')}, ''))
+  END`;
 }
 
 function sessionTotalTokensExpr(alias?: string): string {
