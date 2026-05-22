@@ -155,9 +155,28 @@ Bump `updated:` field (add it if missing) to today's date on any change.
 
 ## Action: archive
 
-Goal: move all `status: done` items into `_done/<version>/`. Typically invoked by `/ship-release` after a tag is pushed; the user shouldn't need to call this directly.
+Goal: move all `status: done` items into `_done/<version>/`. Typically invoked by `/ship-release` after a tag is pushed, or from `/worktree-flow cleanup` when the user opts to archive immediately.
 
-### Steps
+### Step 1 — Confirm the target version
+
+Check what version directories already exist:
+
+```bash
+ls docs/backlog/_done/ 2>/dev/null | sort -V
+```
+
+Find the latest version (highest semver). Then ask the user:
+
+> "The latest archive directory is `docs/backlog/_done/<latest>/`. Archive done items there, or create a new version?"
+
+Decision tree:
+- **User confirms the existing version** — proceed directly with that version.
+- **User wants a new version** — ask: "What version? (e.g., `v1.0.3`)" and use the supplied value.
+- **No `_done/` directories exist yet** — ask: "No archive versions found yet. What version should I create? (e.g., `v1.0.0`)"
+
+Don't proceed until the version is confirmed — archiving to the wrong directory is annoying to undo.
+
+### Step 2 — Collect and move
 
 ```bash
 mkdir -p docs/backlog/_done/<version>
@@ -170,6 +189,8 @@ git mv docs/backlog/<slug>.md docs/backlog/_done/<version>/<slug>.md
 ```
 
 Use `git mv` (not plain `mv`) so the move is tracked cleanly in the release commit.
+
+### Step 3 — Report
 
 Report the count and the version: "Archived 3 items into `docs/backlog/_done/v1.0.8/`."
 

@@ -221,11 +221,13 @@ For each removed worktree, find any `docs/backlog/*.md` whose `branch:` frontmat
 - `status: wip` (or `review`) → `status: done`
 - `updated: <today>`
 
-Don't clear `branch:` / `worktree:` — they're useful audit trail for which branch shipped the item. The release skill will archive these `done` items at tag time.
+Don't clear `branch:` / `worktree:` — they're useful audit trail for which branch shipped the item.
 
 If no items are linked, skip silently.
 
-After this step, tell the user how many backlog items were marked done (just a count). Example: "Removed 2 worktrees, marked 1 backlog item done. Run `/ship-release` when you're ready to publish."
+### Step 5 — Offer to archive done backlog items
+
+If any backlog items were marked done in Step 4, ask the user: "Archive done backlog items now, or leave for `/ship-release`?" If yes, run the **`backlog` skill's `archive` action** — follow its steps exactly (version confirmation included). If no, tell them "Run `/ship-release` when you're ready to publish."
 
 ---
 
