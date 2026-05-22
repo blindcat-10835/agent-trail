@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import Link from 'next/link'
 import { notifySessionsRefresh, syncAllSessions } from '@/lib/agent-tools/client-hooks'
 import { useUIStore } from '@/stores/ui-store'
 import { SourceSwitcher } from './source-switcher'
@@ -27,15 +28,15 @@ export function ShellHeader() {
 
   return (
     <header className="grid grid-cols-[280px_1fr_auto] items-center px-5 h-12 border-b border-border bg-gradient-to-b from-card to-background relative">
-      {/* Brand — fixed title */}
-      <div className="flex items-center gap-3">
-        <div className="hud-clip-sm w-7 h-7 bg-accent flex items-center justify-center text-background font-bold text-sm">
+      {/* Brand — links to ALL-OVR */}
+      <Link href="/all/dashboard" className="flex items-center gap-3 group">
+        <div className="hud-clip-sm w-7 h-7 bg-accent flex items-center justify-center text-background font-bold text-sm group-hover:opacity-80 transition-opacity">
           ◆
         </div>
-        <div className="text-base font-bold tracking-[0.3em] text-accent">
-          AGENTS TRACING
+        <div className="text-base font-bold tracking-[0.3em] text-accent group-hover:opacity-80 transition-opacity">
+          AGENTS TRAIL
         </div>
-      </div>
+      </Link>
 
       {/* Source switcher */}
       <SourceSwitcher />
