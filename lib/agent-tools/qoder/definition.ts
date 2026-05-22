@@ -37,12 +37,6 @@ const definition: AgentToolDefinition = {
       label: 'SES',
       title: 'Sessions',
     },
-    {
-      id: 'act',
-      href: (toolId) => `/${toolId}/activity`,
-      label: 'ACT',
-      title: 'Activity',
-    },
   ],
   ui: {
     brand: {
