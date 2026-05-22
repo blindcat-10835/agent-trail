@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import type { TraceSession, TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { formatSessionCost } from '@/lib/session-cost'
+import { SessionIdCopyButton } from '@/components/ui/session-id-copy-button'
 import { MarkdownContent } from './markdown-content'
 import { ToolBlock } from './tool-block'
 import { SkillBlock } from './skill-block'
@@ -512,6 +513,7 @@ export function TraceThread({
   const router = useRouter()
   const parentSessionId = session?.parentSessionId
   const parentHref = parentSessionId ? href(`/sessions/${parentSessionId}`) : null
+  const resolvedSessionId = session?.id ?? sessionId
 
   return (
     <div className="v2-root">
@@ -596,6 +598,13 @@ export function TraceThread({
           <span className="v2-kbd mono">/</span>
         </div>
         <div className="v2-cmd-controls">
+          <SessionIdCopyButton
+            sessionId={resolvedSessionId}
+            displayMode="head8"
+            showCopyIconOnHover
+            className="text-[10px] font-mono text-muted-foreground transition-colors hover:text-foreground"
+          />
+          <span className="v2-cmd-sep">{'\u2502'}</span>
           <button className="v2-step" onClick={() => moveFocus(-1)} disabled={loadedTotal === 0} title="Prev (k)">
             {'\u2039'}
           </button>

@@ -19,7 +19,8 @@ import { useUIStore } from '@/stores/ui-store'
 import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
 import { formatSessionCost } from '@/lib/session-cost'
 import { shortPath, projectColor } from '@/lib/utils'
-import type { AgentToolId, SourceToolId } from '@/lib/agent-tools/types'
+import { SessionIdCopyButton } from '@/components/ui/session-id-copy-button'
+import type { SourceToolId } from '@/lib/agent-tools/types'
 import type { TraceSession } from '@/types/trace'
 
 function relativeTime(dateStr: string | null | undefined): string {
@@ -80,7 +81,6 @@ export function SessionsRightRail({
 
 function AggregateSessionsRightRail({
   selectedSessionId,
-  onClearSelection,
 }: SessionsRightRailProps) {
   const { href } = useAgentTool()
   const router = useRouter()
@@ -115,10 +115,8 @@ function AggregateSessionsRightRail({
       error={syncError ?? error}
       total={totalCount}
       selectedSessionId={selectedSessionId}
-      onClearSelection={onClearSelection}
       onRefresh={handleRefresh}
       onSelect={handleSelect}
-      currentToolId="all"
       syncing={syncing}
       hasMore={hasMore}
       isLoadingMore={isLoadingMore}
@@ -129,7 +127,6 @@ function AggregateSessionsRightRail({
 
 function SourceSessionsRightRail({
   selectedSessionId,
-  onClearSelection,
   sourceToolId,
 }: SessionsRightRailProps & { sourceToolId: SourceToolId }) {
   const { href } = useAgentTool()
@@ -168,10 +165,8 @@ function SourceSessionsRightRail({
       error={syncError ?? error}
       total={pagination?.total}
       selectedSessionId={selectedSessionId}
-      onClearSelection={onClearSelection}
       onRefresh={handleRefresh}
       onSelect={handleSelect}
-      currentToolId={sourceToolId}
       syncing={syncing}
       hasMore={pagination?.hasMore ?? false}
       isLoadingMore={isLoadingMore}
@@ -186,10 +181,8 @@ function SessionsRailContent({
   error,
   total,
   selectedSessionId,
-  onClearSelection,
   onRefresh,
   onSelect,
-  currentToolId,
   syncing,
   hasMore,
   isLoadingMore,
@@ -200,10 +193,8 @@ function SessionsRailContent({
   error: string | null
   total: number | undefined
   selectedSessionId: string | null
-  onClearSelection: () => void
   onRefresh: () => void
   onSelect: (session: TraceSession) => void
-  currentToolId: AgentToolId
   syncing?: boolean
   hasMore?: boolean
   isLoadingMore?: boolean
@@ -390,7 +381,6 @@ function SessionsRailContent({
                     key={session.id || `${session.source}-${index}`}
                     session={session}
                     active={selectedSessionId === session.id}
-                    currentToolId={currentToolId}
                     onSelect={() => onSelect(session)}
                     isStarred={starredIsStarred(session.id)}
                     onToggleStar={() => starredToggle(session.id)}
@@ -405,7 +395,6 @@ function SessionsRailContent({
               key={session.id || `${session.source}-${index}`}
               session={session}
               active={selectedSessionId === session.id}
-              currentToolId={currentToolId}
               onSelect={() => onSelect(session)}
               isStarred={starredIsStarred(session.id)}
               onToggleStar={() => starredToggle(session.id)}
@@ -426,14 +415,12 @@ function SessionsRailContent({
 function SessionRailRow({
   session,
   active,
-  currentToolId,
   onSelect,
   isStarred,
   onToggleStar,
 }: {
   session: TraceSession
   active: boolean
-  currentToolId: AgentToolId
   onSelect: () => void
   isStarred: boolean
   onToggleStar: () => void
@@ -443,7 +430,6 @@ function SessionRailRow({
   const sc = RR_STATUS[displayStatus] || 'var(--muted-foreground)'
   const srcC = getSourceColor(session.source)
   const srcName = getSourceName(session.source)
-  const cost = session.estimatedCost != null ? formatSessionCost(session) : null
 
   return (
     <div
@@ -480,7 +466,11 @@ function SessionRailRow({
         </div>
         <div className="rr-label">{session.displayTitle || session.name || session.id}</div>
         <div className="rr-line2 mono">
-          <span>{session.id.slice(-8)}</span>
+          <SessionIdCopyButton
+            sessionId={session.id}
+            displayMode="tail8"
+            className="text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+          />
           {session.estimatedCost != null && (
             <>
               <span className="rr-sep">·</span>

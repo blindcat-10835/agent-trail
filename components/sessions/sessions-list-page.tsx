@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToolSessions, useAggregateSessions, useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
 import { useStarredStore } from '@/stores/starred-store'
 import { shortPath, projectColor } from '@/lib/utils'
 import { formatSessionCost, summarizeSessionCosts } from '@/lib/session-cost'
+import { SessionIdCopyButton } from '@/components/ui/session-id-copy-button'
 import type { TraceSession } from '@/types/trace'
 import type { AgentToolId } from '@/lib/agent-tools/types'
 
@@ -158,9 +159,10 @@ function SessionRow({
           <span className="sl-label">{label}</span>
         </span>
         <span className="sl-summary">{summary}</span>
-        <span className="sl-id mono">
-          {s.id}
-        </span>
+        <SessionIdCopyButton
+          sessionId={s.id}
+          className="sl-id mono"
+        />
       </span>
       <span className="sl-cell"><StatusCell status={status} /></span>
       <span className="sl-cell sl-cell-proj">
@@ -191,15 +193,11 @@ export function SessionsListPage() {
 
   const [q, setQ] = useState('')
   const [scope, setScope] = useState<'recent' | 'starred' | 'live'>('recent')
-  const [sort, setSort] = useState<string>('updated')
+  const sort = 'updated'
   const [groupByProject, setGroupByProject] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-
-  useEffect(() => {
-    if (!groupByProject) setExpandedProjects(new Set())
-  }, [groupByProject])
 
   const isStarred = useStarredStore((s) => s.isStarred)
   const toggleStar = useStarredStore((s) => s.toggle)
@@ -248,10 +246,14 @@ export function SessionsListPage() {
   const hasMore = isAll ? aggResult.hasMore : (toolResult.pagination?.hasMore ?? false)
   const isLoadingMore = isAll ? aggResult.isLoadingMore : toolResult.isLoadingMore
   const loadMore = isAll ? aggResult.loadMore : toolResult.loadMore
-  const groupCounts = isAll ? aggResult.groupCounts : toolResult.groupCounts
 
   function openSession(sessionId: string) {
     router.push(href('/sessions/' + sessionId))
+  }
+
+  function handleToggleGroupByProject() {
+    if (groupByProject) setExpandedProjects(new Set())
+    setGroupByProject((prev) => !prev)
   }
 
   const totals = useMemo(() => ({
@@ -346,7 +348,7 @@ export function SessionsListPage() {
         <button
           type="button"
           className={`sl-bar-toggle${groupByProject ? ' active' : ''}`}
-          onClick={() => setGroupByProject(p => !p)}
+          onClick={handleToggleGroupByProject}
         >
           <span className={`sl-bar-check${groupByProject ? ' sl-bar-check--on' : ''}`}>
             {groupByProject && (
