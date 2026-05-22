@@ -180,7 +180,7 @@ For schema details and migration history, see [`db-schema.md`](db-schema.md).
 ### Ingest
 
 - Set `INGEST_DEBUG=true` to surface real error messages and stack traces in HTTP responses (otherwise the global handler returns `{"error":"Internal server error"}`). **Disable before sharing logs** — bodies may include file paths.
-- Set `AGENTS_TRACING_LOG_LEVEL=debug` (or `INGEST_LOG_LEVEL=debug`) for verbose lifecycle logs. Packaged npm/Docker runs are quiet by default and print the recent child-log buffer when a child process fails.
+- Set `AGENT_TRAIL_LOG_LEVEL=debug` (or `INGEST_LOG_LEVEL=debug`) for verbose lifecycle logs. Packaged npm/Docker runs are quiet by default and print the recent child-log buffer when a child process fails.
 - The watcher records `[watcher] Sync error for <source>: <err>` on sync failures; in packaged default mode those lines stay in the failure diagnostics buffer.
 
 ### Frontend

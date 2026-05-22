@@ -16,7 +16,6 @@ vi.mock('fs', () => ({
 import {
   TOOL_DIR_REGISTRY,
   resolveToolDirs,
-  type ToolDirDef,
 } from '@/ingest/config/tool-dirs';
 
 describe('TOOL_DIR_REGISTRY', () => {
@@ -46,6 +45,7 @@ describe('resolveToolDirs', () => {
     delete process.env.CODEX_SESSIONS_DIR;
     delete process.env.OPENCODE_DB_PATH;
     delete process.env.QODER_DB_PATH;
+    delete process.env.AGENT_TRAIL_CONFIG;
     delete process.env.AGENTS_TRACING_CONFIG;
   });
 

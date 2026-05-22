@@ -180,7 +180,7 @@ curl -X POST http://localhost:3000/api/agent-tools/claude-code/sync \
 ### Ingest
 
 - 设置 `INGEST_DEBUG=true` 可在 HTTP 响应中显示真实的错误信息和堆栈跟踪（否则全局错误处理器会返回 `{"error":"Internal server error"}`）。**分享日志前请关闭此选项**——响应体可能包含文件路径。
-- 设置 `AGENTS_TRACING_LOG_LEVEL=debug`（或 `INGEST_LOG_LEVEL=debug`）可查看详细的生命周期日志。打包后的 npm/Docker 运行默认只显示关键输出，并在子进程失败时打印最近日志缓冲。
+- 设置 `AGENT_TRAIL_LOG_LEVEL=debug`（或 `INGEST_LOG_LEVEL=debug`）可查看详细的生命周期日志。打包后的 npm/Docker 运行默认只显示关键输出，并在子进程失败时打印最近日志缓冲。
 - 监视器在每次同步失败时都会记录 `[watcher] Sync error for <source>: <err>`；在默认打包运行中这些日志会进入失败诊断缓冲。
 
 ### 前端

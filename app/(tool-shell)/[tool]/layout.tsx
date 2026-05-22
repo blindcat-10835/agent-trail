@@ -13,9 +13,9 @@ export async function generateMetadata({ params }: ToolLayoutProps): Promise<Met
   const { tool } = await params
   try {
     const toolId = assertAgentToolId(tool)
-    return { title: `${toolId} — agent-tracing-dashboard` }
+    return { title: `${toolId} — Agent Trail` }
   } catch {
-    return { title: 'agent-tracing-dashboard' }
+    return { title: 'Agent Trail' }
   }
 }
 

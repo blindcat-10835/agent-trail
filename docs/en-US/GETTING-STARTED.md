@@ -23,8 +23,8 @@ You don't need all three. The dashboard will show only the sources it can find.
 ## 2. Install
 
 ```bash
-git clone <your-repo-url> agents-tracing-dashboard
-cd agents-tracing-dashboard
+git clone <your-repo-url> agent-trail
+cd agent-trail
 pnpm install
 ```
 
@@ -59,7 +59,7 @@ Create `.env.local` in the repo root:
 # INGEST_BACKGROUND_SYNC_ENABLED=true
 ```
 
-### Option B: Config file (`~/.agents-tracing/config.json`)
+### Option B: Config file (`~/.agent-trail/config.json`)
 
 If you prefer not to create a `.env.local` per project, use the global config file:
 
@@ -71,7 +71,7 @@ If you prefer not to create a `.env.local` per project, use the global config fi
 }
 ```
 
-The config file path can be overridden via the `AGENTS_TRACING_CONFIG` environment variable. Config values support multiple directories (as arrays) and relative paths (resolved against `$HOME`).
+The config file path can be overridden via the `AGENT_TRAIL_CONFIG` environment variable. The legacy `AGENTS_TRACING_CONFIG` variable remains supported as a fallback. Config values support multiple directories (as arrays) and relative paths (resolved against `$HOME`).
 
 The full variable list with defaults and validation rules lives in [`CONFIGURATION.md`](CONFIGURATION.md).
 
@@ -126,7 +126,7 @@ curl -I http://localhost:3000
 
 # 2. Ingest health — once warmup finishes, "ready" flips to true
 curl http://localhost:8078/health
-# → {"status":"ok","ready":true,"version":"0.1.0","uptime":12.3,"database":"connected","sync":{...}}
+# → {"status":"ok","ready":true,"version":"0.1.1","uptime":12.3,"database":"connected","sync":{...}}
 
 # 3. Sources discovered
 curl http://localhost:8078/api/v1/sources
@@ -165,7 +165,7 @@ For the full request path from URL to React, see [`DATA-FLOW.md`](DATA-FLOW.md).
 | `Port 3000 already in use` | Another dev server | `lsof -ti:3000 \| xargs kill` or run `PORT=3001 pnpm dev:next` |
 | `Port 8078 already in use` | Stale ingest from a prior session | `lsof -ti:8078 \| xargs kill`, or set `INGEST_PORT=8079` |
 | "INGEST OFFLINE" in the status bar | Ingest crashed or hasn't started | Check the `[INGEST]` lines for stack traces; restart with `pnpm dev:ingest` |
-| Empty session list for OpenClaw | `OPENCLAW_DIR` wrong, or `~/.openclaw/agents/*/sessions/` is empty | Verify with `curl http://localhost:8078/api/v1/sources/openclaw`; the `path` field in the response is what the discoverer is looking at. Paths are configurable via env vars or `~/.agents-tracing/config.json` |
+| Empty session list for OpenClaw | `OPENCLAW_DIR` wrong, or `~/.openclaw/agents/*/sessions/` is empty | Verify with `curl http://localhost:8078/api/v1/sources/openclaw`; the `path` field in the response is what the discoverer is looking at. Paths are configurable via env vars or `~/.agent-trail/config.json` |
 | Empty session list for Claude Code | Claude saves elsewhere (or hasn't run yet) | `ls ~/.claude/projects/` should show project directories with `.jsonl` files; if not, Claude Code hasn't recorded any sessions |
 | Type errors after pulling | Frontend and ingest share `types/trace.ts` — old build cache | `pnpm typecheck` to confirm; remove `tsconfig.tsbuildinfo` if it lies |
 | Compile storm / 100% CPU on `pnpm dev:next` | Don't switch to Turbopack — keep the `--webpack` flag | See `../../ERRORS_LEARNED.md` for context |

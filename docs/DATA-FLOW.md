@@ -55,7 +55,7 @@
 
 每个 AI 工具将对话历史写成 JSONL 文件（每行一个 JSON 对象）。Ingest 服务在启动时发现这些目录：
 
-- 扫描目录由 `ingest/config/tool-dirs.ts` 中的**工具目录注册表**集中管理，按优先级解析：环境变量 > 配置文件（`~/.agents-tracing/config.json`）> 内置默认值。
+- 扫描目录由 `ingest/config/tool-dirs.ts` 中的**工具目录注册表**集中管理，按优先级解析：环境变量 > 配置文件（`~/.agent-trail/config.json`，兼容旧 `~/.agents-tracing/config.json`）> 内置默认值。
 - 发现器（`ingest/sync/sources.ts`）从 `IngestConfig.toolDirs` 读取目录列表，每个数据源可配置多个目录。
 
 | Source | 默认路径 | Session ID |

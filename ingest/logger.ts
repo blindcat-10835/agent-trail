@@ -11,6 +11,7 @@ const VALID_LEVELS = new Set<LogLevel>(['silent', 'error', 'warn', 'info', 'debu
 
 export function getLogLevel(): LogLevel {
   const configured =
+    process.env.AGENT_TRAIL_LOG_LEVEL ||
     process.env.AGENTS_TRACING_LOG_LEVEL ||
     process.env.INGEST_LOG_LEVEL ||
     (process.env.NODE_ENV === 'production' ? 'warn' : 'info');

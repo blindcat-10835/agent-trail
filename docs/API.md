@@ -1,6 +1,6 @@
 # API 参考
 
-agent-tracing-dashboard 暴露两个 HTTP 接口：
+agent-trail 暴露两个 HTTP 接口：
 
 1. **摄取服务**，地址为 `http://localhost:8078` (Hono) — 规范的 REST + SSE API。
 2. **Next.js BFF**，地址为 `http://localhost:3000/api/...` — 浏览器使用的代理和聚合器。前端绝不直接调用摄取服务 (D-07)。
@@ -21,7 +21,7 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 {
   "status": "ok",
   "ready": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "uptime": 12.345,
   "database": "connected",
   "sync": {
@@ -47,8 +47,8 @@ agent-tracing-dashboard 暴露两个 HTTP 接口：
 
 ```json
 {
-  "version": "0.1.0",
-  "name": "agent-tracing-dashboard-ingest",
+  "version": "0.1.1",
+  "name": "agent-trail-ingest",
   "sources": ["openclaw", "claude-code", "codex", "opencode"]
 }
 ```
@@ -362,7 +362,7 @@ SSE 透传。`runtime = 'nodejs'`，`dynamic = 'force-dynamic'`。
 前端使用的健康检查。包装摄取服务 `/health`，不可达时返回 502。
 
 ```json
-{ "status": "ok", "ready": true, "version": "0.1.0", "sync": { ... } }
+{ "status": "ok", "ready": true, "version": "0.1.1", "sync": { ... } }
 // 失败时
 { "status": "error", "error": "<sanitized message>" }
 ```

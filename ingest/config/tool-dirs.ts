@@ -69,9 +69,12 @@ interface ToolConfigFile {
 }
 
 function loadConfigFile(): ToolConfigFile | null {
+  const preferredConfigPath = path.join(os.homedir(), '.agent-trail', 'config.json');
+  const legacyConfigPath = path.join(os.homedir(), '.agents-tracing', 'config.json');
   const configPath =
+    process.env.AGENT_TRAIL_CONFIG ||
     process.env.AGENTS_TRACING_CONFIG ||
-    path.join(os.homedir(), '.agents-tracing', 'config.json');
+    (fs.existsSync(preferredConfigPath) ? preferredConfigPath : legacyConfigPath);
 
   try {
     if (!fs.existsSync(configPath)) return null;

@@ -231,7 +231,7 @@ const { toolId, capabilities, href, definition } = useAgentTool()
 | `useSessionTurns(toolId, sessionId, { offset, limit })` | 通过 `/api/agent-tools/<tool>/sessions/<id>/turns?offset=&limit=` 获取 turns。 |
 | `syncToolSessions(toolId, { force? })` | POST 到 `/api/agent-tools/<tool>/sync`。非 OK 状态时抛出异常。 |
 | `syncAggregate({ force? })` | POST 到 `/api/sync` 进行全源同步。 |
-| `notifySessionsRefresh()` | 发送 `agent-tracing-dashboard:sessions-refresh` 窗口事件以触发跨组件刷新。 |
+| `notifySessionsRefresh()` | 发送 `agent-trail:sessions-refresh` 窗口事件以触发跨组件刷新。 |
 
 Hooks 通过 `EventSource('/api/agent-tools/<tool>/events?sessionId=...')`（每个会话）或 `'/api/agent-tools/<tool>/events'`（全局）订阅 SSE。收到 `session_updated` 事件时，它们会重新获取数据——事件仅携带 ID，从不内联数据（D-12）。
 

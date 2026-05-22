@@ -56,7 +56,7 @@ app.get('/health', (c) => {
   const health: HealthStatus = {
     status: context ? 'ok' : 'error',
     ready: Boolean(context?.syncState.startupComplete),
-    version: '0.1.0',
+    version: '0.1.1',
     uptime: process.uptime(),
     database: context?.db ? 'connected' : 'disconnected',
     sync: context?.syncState
@@ -72,8 +72,8 @@ app.get('/health', (c) => {
  */
 app.get('/version', (c) => {
   const version: VersionInfo = {
-    version: '0.1.0',
-    name: 'agent-tracing-dashboard-ingest',
+    version: '0.1.1',
+    name: 'agent-trail-ingest',
     sources: ['openclaw', 'claude-code', 'codex', 'opencode', 'qoder'] as TraceSource[],
   };
 

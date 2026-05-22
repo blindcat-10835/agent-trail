@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# agent-tracing-dashboard
+# agent-trail
 
 **Multi-source AI agent session tracing dashboard for OpenClaw, Claude Code, and Codex**
 
@@ -75,9 +75,9 @@ types/                  # 共享类型 (trace.ts 等)
 - `OPENCLAW_DIR` — OpenClaw 根目录（默认 `~/.openclaw/agents`）
 - `CLAUDE_PROJECTS_DIR` — Claude Code 项目目录（默认 `~/.claude/projects`）
 - `CODEX_SESSIONS_DIR` — Codex 会话目录（默认 `~/.codex/sessions`）
-- `AGENTS_TRACING_CONFIG` — 自定义配置文件路径（默认 `~/.agents-tracing/config.json`）
+- `AGENT_TRAIL_CONFIG` — 自定义配置文件路径（默认 `~/.agent-trail/config.json`）
 
-工具目录解析逻辑：环境变量 > `~/.agents-tracing/config.json` > 内置默认值。详见 `ingest/config/tool-dirs.ts`。
+工具目录解析逻辑：环境变量 > `~/.agent-trail/config.json`（兼容旧 `~/.agents-tracing/config.json`）> 内置默认值。详见 `ingest/config/tool-dirs.ts`。
 
 ## Rules (Important)
 

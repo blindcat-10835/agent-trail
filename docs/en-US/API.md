@@ -1,6 +1,6 @@
 # API reference
 
-agent-tracing-dashboard exposes two HTTP surfaces:
+agent-trail exposes two HTTP surfaces:
 
 1. **Ingest service** on `http://localhost:8078` (Hono) — the canonical REST + SSE API.
 2. **Next.js BFF** on `http://localhost:3000/api/...` — proxies and aggregators that the browser uses. The frontend never calls ingest directly (D-07).
@@ -21,7 +21,7 @@ Source-scoped frontend reads should always go through `/api/agent-tools/[tool]/.
 {
   "status": "ok",
   "ready": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "uptime": 12.345,
   "database": "connected",
   "sync": {
@@ -47,8 +47,8 @@ The route bypasses `/version` and `/health` from rate limiting in `rateLimiter`.
 
 ```json
 {
-  "version": "0.1.0",
-  "name": "agent-tracing-dashboard-ingest",
+  "version": "0.1.1",
+  "name": "agent-trail-ingest",
   "sources": ["openclaw", "claude-code", "codex", "opencode"]
 }
 ```
@@ -362,7 +362,7 @@ The browser-side `EventSource` should set the `Last-Event-ID` header automatical
 Frontend-facing health check. Wraps ingest `/health` and returns 502 on unreachable.
 
 ```json
-{ "status": "ok", "ready": true, "version": "0.1.0", "sync": { ... } }
+{ "status": "ok", "ready": true, "version": "0.1.1", "sync": { ... } }
 // or on failure
 { "status": "error", "error": "<sanitized message>" }
 ```

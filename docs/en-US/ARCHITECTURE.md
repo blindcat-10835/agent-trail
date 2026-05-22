@@ -1,6 +1,6 @@
 # Architecture
 
-agent-tracing-dashboard is a **two-process local application**: a Hono ingest service that watches local JSONL session files and indexes them into SQLite, and a Next.js frontend that consumes that data through a thin BFF (backend-for-frontend) proxy. This document explains the layout of the system, the boundaries between services, and the key invariants that hold them together.
+agent-trail is a **two-process local application**: a Hono ingest service that watches local JSONL session files and indexes them into SQLite, and a Next.js frontend that consumes that data through a thin BFF (backend-for-frontend) proxy. This document explains the layout of the system, the boundaries between services, and the key invariants that hold them together.
 
 For end-to-end data movement (file → DB → UI), see [`DATA-FLOW.md`](DATA-FLOW.md). For the SQLite contract, see [`db-schema.md`](db-schema.md). For per-service implementation details, see [`services/ingest.md`](services/ingest.md) and [`services/frontend.md`](services/frontend.md).
 
@@ -250,13 +250,13 @@ All knobs are environment variables — the project deliberately has **no `.env.
 | `OPENCLAW_DIR` | `~/.openclaw/agents` | OpenClaw source directory (multiple dirs configurable, see below) |
 | `CLAUDE_PROJECTS_DIR` | `~/.claude/projects` | Claude Code source directory |
 | `CODEX_SESSIONS_DIR` | `~/.codex/sessions` | Codex source directory |
-| `AGENTS_TRACING_CONFIG` | `~/.agents-tracing/config.json` | Path to config file (can define multiple directories) |
+| `AGENT_TRAIL_CONFIG` | `~/.agent-trail/config.json` | Path to config file (can define multiple directories; legacy `AGENTS_TRACING_CONFIG` remains supported) |
 | `INGEST_PORT` | `8078` | Hono port |
 | `INGEST_DB_PATH` | `./data/ingest.db` | SQLite file (path traversal blocked) |
 | `INGEST_STARTUP_SYNC_LIMIT` | `50` | Newest files per source indexed before `ready: true` |
 | `INGEST_BACKGROUND_SYNC_ENABLED` | `true` | Whether to do the full historical scan after warmup |
 
-The **tool directory registry** (`ingest/config/tool-dirs.ts`) centralises per-source scan directories. Directory resolution priority: environment variable > config file (`~/.agents-tracing/config.json`) > built-in defaults. The config file can specify multiple directories (as an array); environment variables support a single directory only.
+The **tool directory registry** (`ingest/config/tool-dirs.ts`) centralises per-source scan directories. Directory resolution priority: environment variable > config file (`~/.agent-trail/config.json`, with legacy `~/.agents-tracing/config.json` fallback) > built-in defaults. The config file can specify multiple directories (as an array); environment variables support a single directory only.
 
 Frontend env vars (`NEXT_PUBLIC_*`) live in `.env.local` (gitignored).
 

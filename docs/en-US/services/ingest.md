@@ -116,7 +116,7 @@ Scan directories are centralised by the tool directory registry in `ingest/confi
 | Claude Code | `CLAUDE_PROJECTS_DIR` | `claude_project_dirs` | `~/.claude/projects` |
 | Codex | `CODEX_SESSIONS_DIR` | `codex_sessions_dirs` | `~/.codex/sessions` |
 
-`resolveToolDirs()` resolves directories with priority: environment variable > config file (`AGENTS_TRACING_CONFIG` or default `~/.agents-tracing/config.json`) > built-in defaults. The config file can specify multiple directories (as an array); environment variables support a single directory only. The resolved result is stored in `IngestConfig.toolDirs` (`Map<SourceToolId, string[]>`).
+`resolveToolDirs()` resolves directories with priority: environment variable > config file (`AGENT_TRAIL_CONFIG` or default `~/.agent-trail/config.json`, with legacy `AGENTS_TRACING_CONFIG` / `~/.agents-tracing/config.json` fallback) > built-in defaults. The config file can specify multiple directories (as an array); environment variables support a single directory only. The resolved result is stored in `IngestConfig.toolDirs` (`Map<SourceToolId, string[]>`).
 
 ### 4.2 Discoverers (`sync/sources.ts`)
 

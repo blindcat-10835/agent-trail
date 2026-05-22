@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-const CONNECTED_ONCE_STORAGE_KEY = 'agents-tracing-dashboard:ingest-connected-once'
+const CONNECTED_ONCE_STORAGE_KEY = 'agent-trail:ingest-connected-once'
 
 function readHasConnectedOnce(): boolean {
   if (typeof window === 'undefined') return false

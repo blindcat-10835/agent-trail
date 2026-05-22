@@ -67,7 +67,7 @@ COPY --from=ingest-deps /ingest-node_modules/better-sqlite3 ./node_modules/bette
 COPY --from=ingest-deps /ingest-node_modules/bindings ./node_modules/bindings
 COPY --from=ingest-deps /ingest-node_modules/file-uri-to-path ./node_modules/file-uri-to-path
 
-COPY bin/agents-tracing.js ./bin/agents-tracing.js
+COPY bin/agent-trail.js ./bin/agent-trail.js
 COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 

@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const CONNECTED_ONCE_STORAGE_KEY = 'agents-tracing-dashboard:ingest-connected-once'
+const CONNECTED_ONCE_STORAGE_KEY = 'agent-trail:ingest-connected-once'
 
 describe('useIngestHealthStore', () => {
   afterEach(() => {

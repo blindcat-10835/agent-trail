@@ -231,7 +231,7 @@ Data hooks all hit the BFF. They never call ingest directly.
 | `useSessionTurns(toolId, sessionId, { offset, limit })` | Fetch turns via `/api/agent-tools/<tool>/sessions/<id>/turns?offset=&limit=`. |
 | `syncToolSessions(toolId, { force? })` | POST to `/api/agent-tools/<tool>/sync`. Throws on non-OK. |
 | `syncAggregate({ force? })` | POST to `/api/sync` for all-source sync. |
-| `notifySessionsRefresh()` | Dispatches `agent-tracing-dashboard:sessions-refresh` window event for cross-component refresh. |
+| `notifySessionsRefresh()` | Dispatches `agent-trail:sessions-refresh` window event for cross-component refresh. |
 
 Hooks subscribe to SSE via `EventSource('/api/agent-tools/<tool>/events?sessionId=...')` (per-session) or `'/api/agent-tools/<tool>/events'` (global). On `session_updated`, they refetch — events carry only IDs, never inline data (D-12).
 

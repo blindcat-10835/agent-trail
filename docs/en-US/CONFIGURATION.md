@@ -1,6 +1,6 @@
 # Configuration
 
-agent-tracing-dashboard is configured through environment variables and an optional config file. Source directory resolution follows a three-layer priority: **env var > config.json > built-in defaults**. Both services parse `process.env` at startup. This document lists every variable the code actually reads, where it's read, the default, and the validation that runs against it.
+agent-trail is configured through environment variables and an optional config file. Source directory resolution follows a three-layer priority: **env var > config.json > built-in defaults**. Both services parse `process.env` at startup. This document lists every variable the code actually reads, where it's read, the default, and the validation that runs against it.
 
 > **Convention.** Variables prefixed `NEXT_PUBLIC_` are exposed to browser bundles by Next.js — never put secrets there. Variables prefixed `INGEST_` are read only by the ingest service. Variables without a prefix (e.g. `WORKSPACE_PATH`) are read by both services.
 
@@ -11,7 +11,7 @@ agent-tracing-dashboard is configured through environment variables and an optio
 | File | Loaded by | Committed? |
 | --- | --- | --- |
 | `.env.local` | Next.js automatically; the ingest service when launched via `pnpm dev:ingest` (which inherits the parent shell env) | No (gitignored — see `.gitignore`) |
-| `~/.agents-tracing/config.json` | `ingest/config/tool-dirs.ts → loadConfigFile` — multi-path source directory configuration | No (user home directory) |
+| `~/.agent-trail/config.json` | `ingest/config/tool-dirs.ts → loadConfigFile` — multi-path source directory configuration | No (user home directory) |
 | Shell exports / launcher script | Both services when started directly | n/a |
 | `.ovao-config.json` | `lib/gateway-config.ts` (Gateway URL/Token persistence) | No (gitignored) — managed at runtime, do not hand-edit |
 
@@ -23,11 +23,12 @@ There is **no** `.env.example` checked into the repo. The minimum local setup is
 
 Source directories are managed centrally via `TOOL_DIR_REGISTRY` and `resolveToolDirs()` in `ingest/config/tool-dirs.ts`. Resolution follows a three-layer priority: **env var > config.json > built-in defaults**.
 
-### `AGENTS_TRACING_CONFIG`
+### `AGENT_TRAIL_CONFIG`
 
-- **Default:** `~/.agents-tracing/config.json`.
+- **Default:** `~/.agent-trail/config.json`.
 - **Read at:** `ingest/config/tool-dirs.ts → loadConfigFile`.
-- **Purpose:** Override the config file path. If unset, reads `~/.agents-tracing/config.json`. If the file does not exist, it is silently ignored (returns `null`).
+- **Purpose:** Override the config file path. If unset, Agent Trail prefers `~/.agent-trail/config.json`; if that file does not exist, it falls back to the legacy `~/.agents-tracing/config.json`. If neither exists, it is silently ignored (returns `null`).
+- **Compatibility:** The legacy `AGENTS_TRACING_CONFIG` variable is still supported, but new docs use `AGENT_TRAIL_CONFIG`.
 
 ### `OPENCLAW_DIR`
 
@@ -67,7 +68,7 @@ Source directories are managed centrally via `TOOL_DIR_REGISTRY` and `resolveToo
 
 ### Config file format
 
-`~/.agents-tracing/config.json` supports multi-directory scanning:
+`~/.agent-trail/config.json` supports multi-directory scanning:
 
 ```json
 {
@@ -90,7 +91,7 @@ Each key accepts an array of paths. Relative paths are resolved from the user's 
 | --- | --- | --- | --- |
 | `INGEST_PORT` | `8078` | Integer in `[1024, 65535]` | TCP port for the Hono server. |
 | `INGEST_DB_PATH` | `./data/ingest.db` | Non-empty; cannot contain `..` (path traversal) | Resolved to absolute path. Parent directory is created on open. |
-| `AGENTS_TRACING_LOG_LEVEL` / `INGEST_LOG_LEVEL` | `info` in development, `warn` in production/package runs | One of `silent \| error \| warn \| info \| debug` | Controls runtime logs. The npm/Docker launcher buffers child logs by default and prints them on failure; set `debug` to stream verbose logs live. |
+| `AGENT_TRAIL_LOG_LEVEL` / `INGEST_LOG_LEVEL` | `info` in development, `warn` in production/package runs | One of `silent \| error \| warn \| info \| debug` | Controls runtime logs. The npm/Docker launcher buffers child logs by default and prints them on failure; set `debug` to stream verbose logs live. The legacy `AGENTS_TRACING_LOG_LEVEL` variable remains supported as a fallback. |
 | `INGEST_RESYNC_INTERVAL_MS` | `900000` (15 min) | Integer ≥ 5000 | Periodic directory-consistency resync interval for the file watcher. |
 | `INGEST_DEBOUNCE_MS` | `500` | Integer ≥ 100 | Debounce window between filesystem events and a sync trigger. |
 | `INGEST_STARTUP_SYNC_LIMIT` | `50` | Integer ≥ 0 | Newest files per source parsed during the warmup pass before `/health` reports `ready: true`. `0` skips warmup entirely. |
@@ -134,7 +135,7 @@ CLAUDE_PROJECTS_DIR=/Users/<you>/.claude/projects
 CODEX_SESSIONS_DIR=/Users/<you>/.codex/sessions
 ```
 
-`OPENCLAW_DIR`, `CLAUDE_PROJECTS_DIR`, `CODEX_SESSIONS_DIR`, and `OPENCODE_DB_PATH` control source discovery. You can also configure them via `~/.agents-tracing/config.json` (which supports multiple directories). Keep the `NEXT_PUBLIC_*` variables for parity with older OpenClaw tooling unless you're sure nothing in your local stack reads them.
+`OPENCLAW_DIR`, `CLAUDE_PROJECTS_DIR`, `CODEX_SESSIONS_DIR`, and `OPENCODE_DB_PATH` control source discovery. You can also configure them via `~/.agent-trail/config.json` (which supports multiple directories); legacy `~/.agents-tracing/config.json` remains supported as a fallback. Keep the `NEXT_PUBLIC_*` variables for parity with older OpenClaw tooling unless you're sure nothing in your local stack reads them.
 
 ---
 
@@ -170,7 +171,7 @@ These don't appear in source but show up in operational practice:
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | Ingest exits immediately on `pnpm dev:ingest` | Bad `INGEST_*` value (e.g. unparseable port) | Read the printed `Error:` line; values must satisfy the validation table above |
-| `/api/v1/sources` shows `error: "ENOENT: ..."` for a source | Source root does not exist | Set the matching `OPENCLAW_DIR` / `CLAUDE_PROJECTS_DIR` / `CODEX_SESSIONS_DIR` / `OPENCODE_DB_PATH` env var, or configure paths in `~/.agents-tracing/config.json`, or create the directory |
+| `/api/v1/sources` shows `error: "ENOENT: ..."` for a source | Source root does not exist | Set the matching `OPENCLAW_DIR` / `CLAUDE_PROJECTS_DIR` / `CODEX_SESSIONS_DIR` / `OPENCODE_DB_PATH` env var, or configure paths in `~/.agent-trail/config.json`, or create the directory |
 | OpenClaw source appears with `sessionCount: 0, error: "No agent sessions found"` | `~/.openclaw/agents/<agent>/sessions/` is empty | Run an OpenClaw session to create some, or point `OPENCLAW_DIR` at a directory that has them |
 | `[sources] Rejected path outside root: ...` warnings | Symlink leaving the configured root, or a weird absolute path discovered | Fix the symlink; `isWithinRoot` is intentional and not configurable |
 | BFF returns 502 `Ingest service unreachable` | Ingest crashed or wrong `INGEST_URL` | Check `pnpm dev` logs; `curl http://localhost:8078/health`; reset `INGEST_URL` |

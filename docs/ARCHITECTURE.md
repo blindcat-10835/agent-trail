@@ -1,6 +1,6 @@
 # 架构
 
-agent-tracing-dashboard 是一个**双进程本地应用**：一个 Hono 摄取服务，监视本地 JSONL 会话文件并将其索引到 SQLite；一个 Next.js 前端，通过轻量 BFF（backend-for-frontend）代理消费这些数据。本文档说明系统布局、服务之间的边界，以及维系它们的关键不变量。
+agent-trail 是一个**双进程本地应用**：一个 Hono 摄取服务，监视本地 JSONL 会话文件并将其索引到 SQLite；一个 Next.js 前端，通过轻量 BFF（backend-for-frontend）代理消费这些数据。本文档说明系统布局、服务之间的边界，以及维系它们的关键不变量。
 
 关于端到端数据流转（文件 → 数据库 → UI），请参阅 [`DATA-FLOW.md`](DATA-FLOW.md)。关于 SQLite 契约，请参阅 [`db-schema.md`](db-schema.md)。关于每个服务的实现细节，请参阅 [`services/ingest.md`](services/ingest.md) 和 [`services/frontend.md`](services/frontend.md)。
 
@@ -251,13 +251,13 @@ useSessionTurns(toolId, sessionId, ...)
 | `OPENCLAW_DIR` | `~/.openclaw/agents` | OpenClaw 源目录（可配置多个，见下文） |
 | `CLAUDE_PROJECTS_DIR` | `~/.claude/projects` | Claude Code 源目录 |
 | `CODEX_SESSIONS_DIR` | `~/.codex/sessions` | Codex 源目录 |
-| `AGENTS_TRACING_CONFIG` | `~/.agents-tracing/config.json` | 配置文件路径（可在其中定义多目录） |
+| `AGENT_TRAIL_CONFIG` | `~/.agent-trail/config.json` | 配置文件路径（可在其中定义多目录；旧 `AGENTS_TRACING_CONFIG` 仍兼容） |
 | `INGEST_PORT` | `8078` | Hono 端口 |
 | `INGEST_DB_PATH` | `./data/ingest.db` | SQLite 文件（阻止路径穿越） |
 | `INGEST_STARTUP_SYNC_LIMIT` | `50` | 每个数据源在 `ready: true` 之前索引的最新文件数 |
 | `INGEST_BACKGROUND_SYNC_ENABLED` | `true` | 预热后是否进行全量历史扫描 |
 
-**工具目录注册表**（`ingest/config/tool-dirs.ts`）集中管理每个数据源的扫描目录。目录解析优先级：环境变量 > 配置文件（`~/.agents-tracing/config.json`）> 内置默认值。配置文件中可指定多个目录（数组），环境变量仅支持单个目录。
+**工具目录注册表**（`ingest/config/tool-dirs.ts`）集中管理每个数据源的扫描目录。目录解析优先级：环境变量 > 配置文件（`~/.agent-trail/config.json`，并兼容旧 `~/.agents-tracing/config.json`）> 内置默认值。配置文件中可指定多个目录（数组），环境变量仅支持单个目录。
 
 前端环境变量 (`NEXT_PUBLIC_*`) 存放在 `.env.local`（gitignore 中）。
 

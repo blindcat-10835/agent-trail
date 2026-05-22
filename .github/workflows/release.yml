@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: camtrik/agent-trail
   PNPM_VERSION: 11.1.3
 
 jobs:
@@ -113,5 +113,5 @@ jobs:
         run: |
           echo "## Release ${{ github.ref_name }} published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Docker: \`ghcr.io/${{ github.repository }}:${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- npm: \`npm i -g @camtrik/agents-tracing-dashboard@${GITHUB_REF_NAME#v}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker: \`ghcr.io/camtrik/agent-trail:${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- npm: \`npm i -g @camtrik/agent-trail@${GITHUB_REF_NAME#v}\`" >> $GITHUB_STEP_SUMMARY

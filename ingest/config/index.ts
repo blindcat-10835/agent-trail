@@ -73,6 +73,7 @@ export function loadConfig(): IngestConfig {
 
   // Parse log level
   const rawLogLevel =
+    process.env.AGENT_TRAIL_LOG_LEVEL ||
     process.env.AGENTS_TRACING_LOG_LEVEL ||
     process.env.INGEST_LOG_LEVEL ||
     (process.env.NODE_ENV === 'production' ? 'warn' : 'info');

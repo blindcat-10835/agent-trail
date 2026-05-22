@@ -120,7 +120,7 @@ initializeSourcesAndSync()                             // 后台执行
 | Claude Code | `CLAUDE_PROJECTS_DIR` | `claude_project_dirs` | `~/.claude/projects` |
 | Codex | `CODEX_SESSIONS_DIR` | `codex_sessions_dirs` | `~/.codex/sessions` |
 
-`resolveToolDirs()` 按优先级解析目录：环境变量 > 配置文件（`AGENTS_TRACING_CONFIG` 或默认 `~/.agents-tracing/config.json`）> 内置默认值。配置文件中可指定多个目录（数组），环境变量仅支持单个目录。解析结果存储在 `IngestConfig.toolDirs`（`Map<SourceToolId, string[]>`）中。
+`resolveToolDirs()` 按优先级解析目录：环境变量 > 配置文件（`AGENT_TRAIL_CONFIG` 或默认 `~/.agent-trail/config.json`，并兼容旧 `AGENTS_TRACING_CONFIG` / `~/.agents-tracing/config.json`）> 内置默认值。配置文件中可指定多个目录（数组），环境变量仅支持单个目录。解析结果存储在 `IngestConfig.toolDirs`（`Map<SourceToolId, string[]>`）中。
 
 ### 4.2 发现器（`sync/sources.ts`）
 

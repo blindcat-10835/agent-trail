@@ -55,7 +55,7 @@ This document explains the complete data pipeline — from raw JSONL files that 
 
 Each AI tool writes conversation history to JSONL files (one JSON object per line). The ingest service discovers these directories on startup:
 
-- Scan directories are centralised by the **tool directory registry** in `ingest/config/tool-dirs.ts`, resolved with priority: environment variable > config file (`~/.agents-tracing/config.json`) > built-in defaults.
+- Scan directories are centralised by the **tool directory registry** in `ingest/config/tool-dirs.ts`, resolved with priority: environment variable > config file (`~/.agent-trail/config.json`, with legacy `~/.agents-tracing/config.json` fallback) > built-in defaults.
 - Discoverers (`ingest/sync/sources.ts`) read the directory list from `IngestConfig.toolDirs`; each source can be configured with multiple directories.
 
 | Source | Default path | Session ID |

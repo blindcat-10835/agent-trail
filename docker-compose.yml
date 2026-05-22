@@ -1,13 +1,13 @@
 services:
-  agents-tracing-dashboard:
+  agent-trail:
     build:
       context: .
       dockerfile: Dockerfile
-    image: agents-tracing-dashboard:local
+    image: agent-trail:local
     ports:
       - "127.0.0.1:3030:3030"
     volumes:
-      - agents-tracing-data:/data
+      - agent-trail-data:/data
       # Mount your agent session directories read-only.
       # Adjust the host paths if yours differ from the defaults.
       - "${HOME}/.claude/projects:/agents/claude:ro"
@@ -23,4 +23,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  agents-tracing-data:
+  agent-trail-data:

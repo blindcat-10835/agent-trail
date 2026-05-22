@@ -1,4 +1,4 @@
-# Agents Tracing Dashboard
+# Agent Trail
 
 **A local dashboard for tracking and replaying AI coding agent sessions — token usage, cost, tool calls, and subagent trees, all in one place.**
 
@@ -37,16 +37,16 @@ Open any session and step through every turn exactly as it happened. The replay 
 ### Option 1 — npm (any Node.js 22+)
 
 ```bash
-npm install -g @camtrik/agents-tracing-dashboard
-agents-tracing
+npm install -g @camtrik/agent-trail
+agent-trail
 ```
 
 Update an existing global install:
 
 ```bash
-npm update -g @camtrik/agents-tracing-dashboard
+npm update -g @camtrik/agent-trail
 # Or force the latest published version:
-npm install -g @camtrik/agents-tracing-dashboard@latest
+npm install -g @camtrik/agent-trail@latest
 ```
 
 Works across Node 22, 24, and newer — `npm install` resolves native modules (better-sqlite3) for your local ABI. First install takes ~30s while deps are fetched.
@@ -54,7 +54,7 @@ Works across Node 22, 24, and newer — `npm install` resolves native modules (b
 Runtime logs are quiet by default. For verbose diagnostics:
 
 ```bash
-AGENTS_TRACING_LOG_LEVEL=debug agents-tracing
+AGENT_TRAIL_LOG_LEVEL=debug agent-trail
 ```
 
 ### Option 2 — Docker local build (no Node.js required)
@@ -81,7 +81,7 @@ Or run the published image directly:
 docker run --rm -p 127.0.0.1:3030:3030 \
   -v "$HOME/.claude/projects:/agents/claude:ro" \
   -e CLAUDE_PROJECTS_DIR=/agents/claude \
-  ghcr.io/camtrik/agents-tracing-dashboard:latest
+  ghcr.io/camtrik/agent-trail:latest
 ```
 
 Open [http://localhost:3030](http://localhost:3030). Mount additional agent directories with `-v` and the matching env var (`OPENCLAW_DIR`, `CODEX_SESSIONS_DIR`, `OPENCODE_DB_PATH`).
@@ -102,13 +102,13 @@ See [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) for full setup and envi
 ### npm global install
 
 ```bash
-npm uninstall -g @camtrik/agents-tracing-dashboard
+npm uninstall -g @camtrik/agent-trail
 ```
 
 Optional cleanup for the local index/config created by the packaged app:
 
 ```bash
-rm -rf ~/.agents-tracing
+rm -rf ~/.agent-trail
 ```
 
 This does not delete your original Claude Code, OpenClaw, Codex, OpenCode, or Qoder session files.
@@ -134,8 +134,8 @@ docker compose -f docker-compose.image.yml down -v
 Optional image cleanup:
 
 ```bash
-docker image rm agents-tracing-dashboard:local
-docker image rm ghcr.io/camtrik/agents-tracing-dashboard:latest
+docker image rm agent-trail:local
+docker image rm ghcr.io/camtrik/agent-trail:latest
 ```
 
 ---

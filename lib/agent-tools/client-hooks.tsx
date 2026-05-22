@@ -46,7 +46,7 @@ import type {
   TimeWindow,
 } from '@/types/overview'
 
-export const SESSION_REFRESH_EVENT = 'agent-tracing-dashboard:sessions-refresh'
+export const SESSION_REFRESH_EVENT = 'agent-trail:sessions-refresh'
 
 export const DEFAULT_SESSIONS_RAIL_QUERY: Record<string, string> = {
   limit: '100',

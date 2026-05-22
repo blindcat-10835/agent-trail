@@ -19,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const stageDir = resolve(repoRoot, "npm-package");
 
-const PACKAGE_NAME = "@camtrik/agents-tracing-dashboard";
+const PACKAGE_NAME = "@camtrik/agent-trail";
 
 function log(msg) {
   console.log(`[prepare-npm] ${msg}`);
@@ -54,7 +54,7 @@ requireDir(join(repoRoot, ".next", "standalone"), "run `pnpm build` first");
 requireDir(join(repoRoot, ".next", "static"), "run `pnpm build` first");
 requireFile(join(repoRoot, "ingest", "dist", "index.js"), "run `pnpm build:ingest` first");
 requireFile(join(repoRoot, "ingest", "dist", "schema.sql"), "run `pnpm build:ingest` first");
-requireFile(join(repoRoot, "bin", "agents-tracing.js"), "bin entry missing — check repo state");
+requireFile(join(repoRoot, "bin", "agent-trail.js"), "bin entry missing — check repo state");
 
 if (existsSync(stageDir)) {
   log(`clearing existing ${stageDir}`);
@@ -109,11 +109,11 @@ copyFileSync(
 );
 
 // bin entry
-log("copying bin/agents-tracing.js");
+log("copying bin/agent-trail.js");
 mkdirSync(join(stageDir, "bin"), { recursive: true });
 copyFileSync(
-  join(repoRoot, "bin", "agents-tracing.js"),
-  join(stageDir, "bin", "agents-tracing.js"),
+  join(repoRoot, "bin", "agent-trail.js"),
+  join(stageDir, "bin", "agent-trail.js"),
 );
 
 // README + LICENSE
@@ -151,7 +151,8 @@ const publishedPkg = {
   license: sourcePkg.license || "MIT",
   author: sourcePkg.author || "camtrik",
   bin: {
-    "agents-tracing": "./bin/agents-tracing.js",
+    "agent-trail": "./bin/agent-trail.js",
+    "agents-tracing": "./bin/agent-trail.js",
   },
   engines: {
     node: ">=22.0.0",
