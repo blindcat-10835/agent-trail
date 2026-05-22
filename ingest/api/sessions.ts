@@ -208,16 +208,8 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
       LOWER(COALESCE(s.name, '')) LIKE ?
       OR LOWER(s.project) LIKE ?
       OR LOWER(s.id) LIKE ?
-      OR LOWER(COALESCE(s.git_branch, '')) LIKE ?
-      OR EXISTS (
-        SELECT 1
-        FROM messages mq
-        WHERE mq.session_id = s.id
-          AND mq.role IN ('user', 'assistant')
-          AND LOWER(mq.content) LIKE ?
-      )
     )`);
-    params.push(like, like, like, like, like);
+    params.push(like, like, like);
   }
 
   if (!includeChildren) {
@@ -243,7 +235,8 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
             : sort === 'project' ? 'project'
               : sort === 'turns' ? 'user_message_count'
                 : sort === 'activity' ? 'activity_count'
-                  : 'computed_total_tokens';
+                  : sort === 'cost' ? 'source_cost_usd'
+                    : 'computed_total_tokens';
   const orderDir = order === 'asc' ? 'ASC' : 'DESC';
 
   const sessions = db.prepare(`
@@ -292,7 +285,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
       ) as activity_count
     FROM sessions s
     ${whereClause}
-    ORDER BY ${orderBy} ${orderDir}, updated_at DESC, id ASC
+    ORDER BY ${orderBy} ${orderDir} NULLS LAST, updated_at DESC, id ASC
     LIMIT ? OFFSET ?
   `).all(...params, cappedLimit, offset) as SessionRow[];
 

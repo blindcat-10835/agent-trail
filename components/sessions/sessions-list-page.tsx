@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToolSessions, useAggregateSessions, useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { getSourceColor, getSourceName } from '@/lib/agent-tools/registry'
@@ -110,6 +110,35 @@ function ActivityChips({ tools, subagents }: { tools: number; subagents: number 
 }
 
 
+function SortHeader({
+  col,
+  current,
+  order,
+  onClick,
+  className,
+  children,
+}: {
+  col: keyof typeof SORT_QUERY
+  current: keyof typeof SORT_QUERY
+  order: 'asc' | 'desc'
+  onClick: (col: keyof typeof SORT_QUERY) => void
+  className?: string
+  children: ReactNode
+}) {
+  const active = current === col
+  return (
+    <button
+      type="button"
+      className={`sl-th sl-th-sort${active ? ' sl-th-sort--active' : ''}${className ? ` ${className}` : ''}`}
+      onClick={() => onClick(col)}
+      title={active ? `Sort ${order === 'desc' ? 'ascending' : 'descending'}` : `Sort by ${String(col)}`}
+    >
+      {children}
+      <span className="sl-th-sort-arrow">{active ? (order === 'desc' ? '▼' : '▲') : '⇅'}</span>
+    </button>
+  )
+}
+
 function SessionRow({
   s,
   openSession,
@@ -196,7 +225,8 @@ export function SessionsListPage() {
 
   const [q, setQ] = useState('')
   const [scope, setScope] = useState<'recent' | 'starred' | 'live'>('recent')
-  const sort = 'updated'
+  const [sort, setSort] = useState<keyof typeof SORT_QUERY>('updated')
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc')
   const [groupByProject, setGroupByProject] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
   const [dateFrom, setDateFrom] = useState('')
@@ -206,18 +236,29 @@ export function SessionsListPage() {
   const toggleStar = useStarredStore((s) => s.toggle)
   const starredIds = useStarredStore((s) => s.ids)
 
+  const isMetricSort = sort === 'turns' || sort === 'cost' || sort === 'tokens' || sort === 'tools'
+
+  function handleSortClick(col: keyof typeof SORT_QUERY) {
+    if (sort === col) {
+      setOrder(prev => prev === 'desc' ? 'asc' : 'desc')
+    } else {
+      setSort(col)
+      setOrder('desc')
+    }
+  }
+
   const query = useMemo(() => {
     const next: Record<string, string> = {
-      limit: '100',
+      limit: isMetricSort ? '1000' : '100',
       sort: SORT_QUERY[sort] ?? 'updated_at',
-      order: 'desc',
+      order,
     }
     const trimmedQuery = q.trim()
     if (trimmedQuery) next.q = trimmedQuery
     if (scope === 'starred') next.starred = 'true'
     if (scope === 'live') next.status = 'active'
     return next
-  }, [q, sort, scope])
+  }, [q, sort, order, scope, isMetricSort])
 
   const effectiveToolId = (isAll ? 'openclaw' : toolId) as AgentToolId
   const toolResult = useToolSessions(effectiveToolId, query, { enabled: !isAll })
@@ -378,12 +419,12 @@ export function SessionsListPage() {
         <span className="sl-th">PROJECT</span>
         <span className="sl-th">MODEL</span>
         <span className="sl-th">TOOL</span>
-        <span className="sl-th sl-th-num">TURNS</span>
+        <SortHeader col="turns" current={sort} order={order} onClick={handleSortClick} className="sl-th-num">TURNS</SortHeader>
         <span className="sl-th">ACTIVITY</span>
-        <span className="sl-th sl-th-num">TOKENS I/O</span>
+        <SortHeader col="tokens" current={sort} order={order} onClick={handleSortClick} className="sl-th-num">TOKENS I/O</SortHeader>
         <span className="sl-th sl-th-num">DUR</span>
-        <span className="sl-th sl-th-num">COST</span>
-        <span className="sl-th sl-th-num">UPDATED</span>
+        <SortHeader col="cost" current={sort} order={order} onClick={handleSortClick} className="sl-th-num">COST</SortHeader>
+        <SortHeader col="updated" current={sort} order={order} onClick={handleSortClick} className="sl-th-num">UPDATED</SortHeader>
       </div>
 
       {/* ROWS */}

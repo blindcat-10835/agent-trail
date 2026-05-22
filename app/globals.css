@@ -1075,6 +1075,37 @@
   text-align: right;
 }
 
+.sl-th-sort {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font: 700 9px/1 var(--font-sans);
+  letter-spacing: 0.22em;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  white-space: nowrap;
+  justify-content: flex-end;
+}
+
+.sl-th-sort:hover {
+  color: var(--foreground);
+}
+
+.sl-th-sort--active {
+  color: var(--accent-foreground);
+}
+
+.sl-th-sort-arrow {
+  font-size: 8px;
+  opacity: 0.6;
+}
+
+.sl-th-sort--active .sl-th-sort-arrow {
+  opacity: 1;
+}
+
 .sl-th-proj {
   grid-column: span 1;
 }
