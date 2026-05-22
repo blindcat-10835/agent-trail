@@ -2,9 +2,8 @@
  * Qoder Agent Tool Definition
  *
  * Session browsing + replay focused with subagent support.
- * No live Gateway, no office/workspace, no cost tracking, no approvals UI.
- * Cost is intentionally excluded — Qoder records only product-tier model keys
- * (ultimate / experts-ultimate) without verifiable underlying provider billing.
+ * No live Gateway, no office/workspace, no approvals UI.
+ * Cost is estimated from Qoder Credits rules on root sessions.
  */
 
 import type { AgentToolDefinition } from '../types'
@@ -21,7 +20,7 @@ const definition: AgentToolDefinition = {
     office: false,
     workspace: false,
     subagents: true,
-    cost: false,
+    cost: true,
     approvals: false,
   },
   nav: [
@@ -48,6 +47,7 @@ const definition: AgentToolDefinition = {
       { id: 'label', header: 'SESSION', accessor: 'label', sortable: true },
       { id: 'status', header: 'STATUS', accessor: 'status' },
       { id: 'model', header: 'MODEL', accessor: 'model', sortable: true },
+      { id: 'cost', header: 'COST', accessor: 'estimatedCost', sortable: true },
       { id: 'project', header: 'PROJECT', accessor: 'project' },
       { id: 'updatedAt', header: 'UPDATED', accessor: 'updatedAt', sortable: true },
     ],

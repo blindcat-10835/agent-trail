@@ -438,6 +438,90 @@ describe('overview endpoints', () => {
       }
     });
 
+    it('uses Qoder root-session credit estimates without double-counting subagents', async () => {
+      const db = getDatabase();
+      db.prepare(`
+        INSERT INTO sessions (
+          id, source, project, name, started_at, ended_at, status,
+          relationship_type, parent_session_id,
+          message_count, user_message_count, total_output_tokens, total_input_tokens,
+          total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens,
+          total_tokens, has_tool_calls, file_path, source_cost_usd,
+          cost_source, cost_pricing_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'qoder-root-cost-test',
+        'qoder',
+        'qoder-project',
+        'Qoder root cost test',
+        '2026-05-18 00:00:00',
+        '2026-05-18 00:01:00',
+        'idle',
+        'root',
+        null,
+        2,
+        1,
+        2000,
+        1000,
+        0,
+        0,
+        0,
+        3000,
+        0,
+        '/tmp/qoder.db#qoder-root-cost-test',
+        0.96,
+        'qoder-credit-estimate',
+        'priced',
+      );
+      db.prepare(`
+        INSERT INTO sessions (
+          id, source, project, name, started_at, ended_at, status,
+          relationship_type, parent_session_id,
+          message_count, user_message_count, total_output_tokens, total_input_tokens,
+          total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens,
+          total_tokens, has_tool_calls, file_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'qoder-child-cost-test',
+        'qoder',
+        'qoder-project',
+        'Qoder subagent cost test',
+        '2026-05-18 00:00:10',
+        '2026-05-18 00:00:40',
+        'idle',
+        'subagent',
+        'qoder-root-cost-test',
+        2,
+        1,
+        700,
+        300,
+        0,
+        0,
+        0,
+        1000,
+        0,
+        '/tmp/qoder.db#qoder-child-cost-test',
+      );
+
+      try {
+        const res = await app.request('/api/v1/overview/aggregates?source=qoder&window=all');
+        expect(res.status).toBe(200);
+        const body = await res.json();
+
+        expect(body.sessionCount).toBe(2);
+        expect(body.inputTokens).toBe(1300);
+        expect(body.outputTokens).toBe(2700);
+        expect(body.totalTokens).toBe(4000);
+        expect(body.totalCost).toBe(0.96);
+        expect(body.pricingStatus).toBe('priced');
+      } finally {
+        db.prepare('DELETE FROM sessions WHERE id IN (?, ?)').run(
+          'qoder-root-cost-test',
+          'qoder-child-cost-test',
+        );
+      }
+    });
+
     it('returns all data when source is omitted (no source filter)', async () => {
       const res = await app.request('/api/v1/overview/aggregates?window=30d');
       expect(res.status).toBe(200);
@@ -817,6 +901,98 @@ describe('overview endpoints', () => {
       });
     });
 
+    it('uses source-reported Qoder cost in cost-sorted model rankings', async () => {
+      const db = getDatabase();
+      db.prepare(`
+        INSERT INTO sessions (
+          id, source, project, name, started_at, ended_at, status,
+          relationship_type, parent_session_id,
+          message_count, user_message_count, total_output_tokens, total_input_tokens,
+          total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens,
+          total_tokens, has_tool_calls, file_path, source_cost_usd,
+          cost_source, cost_pricing_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'qoder-top-model-root',
+        'qoder',
+        'qoder-project',
+        'Qoder top model root',
+        '2026-05-18 00:00:00',
+        '2026-05-18 00:01:00',
+        'idle',
+        'root',
+        null,
+        2,
+        1,
+        2000,
+        1000,
+        0,
+        0,
+        0,
+        3000,
+        0,
+        '/tmp/qoder.db#qoder-top-model-root',
+        0.96,
+        'qoder-credit-estimate',
+        'priced',
+      );
+      db.prepare(`
+        INSERT INTO sessions (
+          id, source, project, name, started_at, ended_at, status,
+          relationship_type, parent_session_id,
+          message_count, user_message_count, total_output_tokens, total_input_tokens,
+          total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens,
+          total_tokens, has_tool_calls, file_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'qoder-top-model-child',
+        'qoder',
+        'qoder-project',
+        'Qoder top model child',
+        '2026-05-18 00:00:10',
+        '2026-05-18 00:00:40',
+        'idle',
+        'subagent',
+        'qoder-top-model-root',
+        2,
+        1,
+        700,
+        300,
+        0,
+        0,
+        0,
+        1000,
+        0,
+        '/tmp/qoder.db#qoder-top-model-child',
+      );
+      db.prepare(`
+        INSERT INTO messages (id, session_id, ordinal, role, content, model)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run('msg-qtr-1', 'qoder-top-model-root', 1, 'assistant', 'root', 'ultimate');
+      db.prepare(`
+        INSERT INTO messages (id, session_id, ordinal, role, content, model)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run('msg-qtc-1', 'qoder-top-model-child', 1, 'assistant', 'child', 'ultimate');
+
+      try {
+        const res = await app.request('/api/v1/overview/top-models?source=qoder&window=all&sortBy=cost');
+        expect(res.status).toBe(200);
+        const body = await res.json();
+
+        expect(body.models[0]).toMatchObject({
+          name: 'ultimate',
+          cost: 0.96,
+          pricingStatus: 'priced',
+        });
+      } finally {
+        db.prepare('DELETE FROM messages WHERE id IN (?, ?)').run('msg-qtr-1', 'msg-qtc-1');
+        db.prepare('DELETE FROM sessions WHERE id IN (?, ?)').run(
+          'qoder-top-model-root',
+          'qoder-top-model-child',
+        );
+      }
+    });
+
     it('filters blank and synthetic model placeholders from the ranking', async () => {
       const res = await app.request('/api/v1/overview/top-models');
       expect(res.status).toBe(200);
@@ -1120,18 +1296,8 @@ describe('overview endpoints', () => {
       expect(body.capabilities.codex.cost).toBe(false);
       expect(body.capabilities.codex.automations).toBe(true);
 
-      // Qoder excluded from cost rollups (QDR-109); exposes only
-      // sessions/replay/activity per SPEC §6.
-      expect(body.capabilities.qoder.cost).toBe(false);
-      expect(body.capabilities.qoder.agents).toBe(false);
-      expect(body.capabilities.qoder.automations).toBe(false);
-      expect(body.capabilities.qoder.sessions).toBe(true);
-      expect(body.capabilities.qoder.replay).toBe(true);
-      expect(body.capabilities.qoder.activity).toBe(true);
-
-      // Qoder is excluded from cost rollups (QDR-109) and exposes only
-      // sessions/replay/activity (SPEC §6).
-      expect(body.capabilities.qoder.cost).toBe(false);
+      // Qoder now surfaces root-session credit estimates.
+      expect(body.capabilities.qoder.cost).toBe(true);
       expect(body.capabilities.qoder.agents).toBe(false);
       expect(body.capabilities.qoder.automations).toBe(false);
       expect(body.capabilities.qoder.sessions).toBe(true);

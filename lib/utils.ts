@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import type { TraceSession } from '@/types/trace'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -49,4 +50,31 @@ export function projectColor(name: string): string {
     hash = (hash * 31 + name.charCodeAt(i)) >>> 0
   }
   return PROJECT_COLOR_PALETTE[hash % PROJECT_COLOR_PALETTE.length]
+}
+
+
+export function formatSessionCost(session: Pick<TraceSession, 'estimatedCost' | 'costSource'>): string {
+  if (session.estimatedCost == null || !Number.isFinite(session.estimatedCost)) {
+    return '—'
+  }
+
+  const prefix = session.costSource?.includes('estimate') ? '~' : ''
+  return `${prefix}$${session.estimatedCost.toFixed(2)}`
+}
+
+export function summarizeSessionCosts(
+  sessions: Array<Pick<TraceSession, 'estimatedCost' | 'costSource'>>
+): { total: number | null; hasEstimate: boolean } {
+  const costed = sessions.filter(
+    (session) => session.estimatedCost != null && Number.isFinite(session.estimatedCost)
+  )
+
+  if (costed.length === 0) {
+    return { total: null, hasEstimate: false }
+  }
+
+  return {
+    total: costed.reduce((sum, session) => sum + (session.estimatedCost ?? 0), 0),
+    hasEstimate: costed.some((session) => session.costSource?.includes('estimate')),
+  }
 }

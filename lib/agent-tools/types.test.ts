@@ -196,6 +196,13 @@ describe('getDefinition', () => {
     expect(def.shortLabel).toBe('CODEX')
     expect(def.ui.brand.name).toBe('Codex')
   })
+
+  it('returns qoder definition with cost-aware session columns', () => {
+    const def = getDefinition('qoder')
+    expect(def.label).toBe('Qoder')
+    expect(def.capabilities.cost).toBe(true)
+    expect(def.ui.sessionColumns.some((col) => col.id === 'cost')).toBe(true)
+  })
 })
 
 describe('TOOL_IDS', () => {

@@ -41,6 +41,7 @@ import type {
   MessageRole,
 } from '@/types/trace';
 import type { ParseResult, ParseError } from './types';
+import { estimateQoderSessionCost } from '../pricing/qoder-pricing.js';
 
 // ============================================================================
 // Types
@@ -668,6 +669,17 @@ export async function parseQoderSession(
     // ------------------------------------------------------------------
     // 6. Build TraceSession
     // ------------------------------------------------------------------
+    const isSubagentSession = Boolean(sessionRow.parent_session_id);
+    const costEstimate = estimateQoderSessionCost({
+      dbPath,
+      startedAt,
+      mode: sessionRow.mode,
+      model: resolvedModel,
+      maxInputTokens: sessionMaxInputTokens,
+      userMessageCount,
+      isSubagent: isSubagentSession,
+    });
+
     const session: TraceSession = {
       id: `qoder:${rawSessionId}`,
       source: 'qoder' as TraceSource,
@@ -683,7 +695,7 @@ export async function parseQoderSession(
       rootSessionId: sessionRow.parent_session_id
         ? `qoder:${sessionRow.parent_session_id}`
         : `qoder:${rawSessionId}`,
-      relationshipType: sessionRow.parent_session_id ? 'subagent' : 'root',
+      relationshipType: isSubagentSession ? 'subagent' : 'root',
       sourceVersion: sessionRow.version == null ? undefined : String(sessionRow.version),
       agentName: sessionRow.session_type || sessionRow.mode || undefined,
       model: resolvedModel,
@@ -701,6 +713,9 @@ export async function parseQoderSession(
         isTruncated: false,
         terminationStatus: sessionRow.stop_reason || undefined,
       },
+      sourceCostUsd: costEstimate.costUsd,
+      costSource: costEstimate.costSource,
+      costPricingStatus: costEstimate.pricingStatus,
       turns: [],
     };
 
