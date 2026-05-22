@@ -52,42 +52,22 @@ export function ReplaySearchBar({ turns }: ReplaySearchBarProps) {
       }
     }
     setSearchMatches(matches)
-    if (matches.length > 0) {
-      setCurrentMatchIndex(1)
-      scrollToTurn(matches[0].turnId)
-    } else {
-      setCurrentMatchIndex(0)
-    }
+    setCurrentMatchIndex(matches.length > 0 ? 1 : 0)
   }, [searchQuery, turns, setSearchMatches, setCurrentMatchIndex])
-
-  // Scroll to current match — target the <mark> inside the turn card
-  const scrollToTurn = useCallback((turnId: string) => {
-    const turn = turns.find((t) => t.id === turnId)
-    if (turn) {
-      const card = document.getElementById(`turn-${turn.index}`)
-      const mark = card?.querySelector('mark')
-      const target = mark ?? card
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }, [turns])
 
   // Handle Enter / Shift+Enter for match navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
       if (e.shiftKey) {
-        // Previous match
         const prev = currentMatchIndex > 1 ? currentMatchIndex - 1 : searchMatches.length
         setCurrentMatchIndex(prev)
-        scrollToTurn(searchMatches[prev - 1]?.turnId)
       } else {
-        // Next match
         const next = currentMatchIndex < searchMatches.length ? currentMatchIndex + 1 : 1
         setCurrentMatchIndex(next)
-        scrollToTurn(searchMatches[next - 1]?.turnId)
       }
     }
-  }, [currentMatchIndex, searchMatches, setCurrentMatchIndex, scrollToTurn])
+  }, [currentMatchIndex, searchMatches.length, setCurrentMatchIndex])
 
   const handleClear = () => {
     setLocalQuery('')
@@ -109,30 +89,57 @@ export function ReplaySearchBar({ turns }: ReplaySearchBarProps) {
   }, [])
 
   return (
-    <div className="relative flex items-center gap-2">
-      <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-3" />
+    <>
+      <span className="v2-search-icon">
+        <Search size={13} />
+      </span>
       <input
         ref={inputRef}
         type="text"
         value={localQuery}
         onChange={(e) => setLocalQuery(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Search turns..."
-        className="w-full pl-8 pr-16 py-2 text-[12px] bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent/50 transition-colors"
+        placeholder="Search turns…"
+        className="v2-search-input"
       />
-      {localQuery && (
+      {searchMatches.length > 0 && (
+        <span
+          className="mono"
+          style={{
+            position: 'absolute',
+            right: localQuery ? 34 : 10,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: 9,
+            color: 'var(--muted-foreground)',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+          }}
+        >
+          {currentMatchIndex}/{searchMatches.length}
+        </span>
+      )}
+      {localQuery ? (
         <button
           onClick={handleClear}
-          className="absolute right-10 p-0.5 text-muted-foreground hover:text-foreground"
+          style={{
+            position: 'absolute',
+            right: 10,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: 'var(--muted-foreground)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 2,
+            display: 'inline-flex',
+          }}
         >
           <X className="w-3 h-3" />
         </button>
+      ) : (
+        <span className="v2-kbd mono">/</span>
       )}
-      {searchMatches.length > 0 && (
-        <span className="absolute right-12 text-[10px] text-muted-foreground font-mono tabular-nums">
-          {currentMatchIndex} of {searchMatches.length}
-        </span>
-      )}
-    </div>
+    </>
   )
 }

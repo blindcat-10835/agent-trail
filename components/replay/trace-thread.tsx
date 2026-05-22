@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Search, CornerLeftUp } from 'lucide-react'
+import { CornerLeftUp, Search, ChevronUp, ChevronDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type { TraceSession, TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
@@ -15,6 +15,8 @@ import { SubagentBlock } from './subagent-block'
 import { ThinkingBlock } from './thinking-block'
 import { SystemEventBlock } from './system-event-block'
 import { getActivityKey, getMessageKey } from './key-utils'
+import { ReplaySearchBar } from './replay-search-bar'
+import { useReplayStore } from '@/stores/replay-store'
 
 interface TraceThreadProps {
   session: TraceSession | null
@@ -128,6 +130,7 @@ function TurnCard({
   projectPath?: string
 }) {
   const ref = useRef<HTMLElement>(null)
+  const searchQuery = useReplayStore((s) => s.searchQuery)
   const userContent = turn.userMessage?.content || ''
   const tokenIn = turn.tokenUsage?.inputTokens ?? 0
   const tokenOut = turn.tokenUsage?.outputTokens ?? 0
@@ -167,7 +170,7 @@ function TurnCard({
             <span className="v2-role" style={{ marginBottom: 0 }}>USER</span>
             <span className="v2-time mono">{formatTime(turn.startedAt)}</span>
           </div>
-          <MarkdownContent content={userContent} className="v2-msg" />
+          <MarkdownContent content={userContent} searchQuery={searchQuery} className="v2-msg" />
         </div>
 
         {unanchoredActivityEntries.map(({ activity, idx }) => (
@@ -187,7 +190,7 @@ function TurnCard({
               {showMessage && (
                 <div className="v2-bubble asst">
                   <span className="v2-role">ASSISTANT</span>
-                  <MarkdownContent content={msg.content} className="v2-msg" />
+                  <MarkdownContent content={msg.content} searchQuery={searchQuery} className="v2-msg" />
                 </div>
               )}
               {attachedActivities.map(({ activity, idx }) => (
@@ -376,30 +379,21 @@ export function TraceThread({
 }: TraceThreadProps) {
   const [focused, setFocused] = useState(0)
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [query, setQuery] = useState('')
+  const searchMatches = useReplayStore((s) => s.searchMatches)
+  const currentMatchIndex = useReplayStore((s) => s.currentMatchIndex)
+  const setCurrentMatchIndex = useReplayStore((s) => s.setCurrentMatchIndex)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
   const isProgrammaticScroll = useRef(false)
   const skipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const loadedTotal = turns.length
   const totalAvailable = totalTurns ?? loadedTotal
   const totalLabel = totalAvailable > loadedTotal ? `${loadedTotal}/${totalAvailable}` : String(totalAvailable)
 
-  const filtered = useMemo(() => {
-    if (!query) return turns
-    const q = query.toLowerCase()
-    return turns.filter(
-      (t) =>
-        (t.userMessage?.content || '').toLowerCase().includes(q) ||
-        t.assistantMessages.some((m) => m.content.toLowerCase().includes(q))
-    )
-  }, [query, turns])
-
-  const isVirtual = filtered.length > VIRTUALIZATION_THRESHOLD || hasMore
+  const isVirtual = turns.length > VIRTUALIZATION_THRESHOLD || hasMore
 
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual owns its scroll subscription.
   const rowVirtualizer = useVirtualizer({
-    count: isVirtual ? filtered.length + (hasMore ? 1 : 0) : filtered.length,
+    count: isVirtual ? turns.length + (hasMore ? 1 : 0) : turns.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 260,
     overscan: 4,
@@ -417,17 +411,17 @@ export function TraceThread({
 
   useEffect(() => {
     if (!isVirtual || !hasMore || loadingMore || lastVirtualIndex == null) return
-    if (lastVirtualIndex >= filtered.length - 1) {
+    if (lastVirtualIndex >= turns.length - 1) {
       onLoadMore()
     }
-  }, [filtered.length, hasMore, isVirtual, lastVirtualIndex, loadingMore, onLoadMore])
+  }, [turns.length, hasMore, isVirtual, lastVirtualIndex, loadingMore, onLoadMore])
 
   const scrollToTurn = useCallback((idx: number) => {
     const container = scrollRef.current
     if (!container) return
-    const filteredIndex = filtered.findIndex((turn) => turn.index === idx)
-    if (isVirtual && filteredIndex !== -1) {
-      rowVirtualizer.scrollToIndex(filteredIndex, { align: 'start' })
+    const turnIndex = turns.findIndex((turn) => turn.index === idx)
+    if (isVirtual && turnIndex !== -1) {
+      rowVirtualizer.scrollToIndex(turnIndex, { align: 'start' })
       return
     }
     const el =
@@ -440,7 +434,7 @@ export function TraceThread({
       top: elRect.top - containerRect.top + container.scrollTop - 24,
       behavior: 'smooth',
     })
-  }, [filtered, isVirtual, rowVirtualizer])
+  }, [turns, isVirtual, rowVirtualizer])
 
   const focus = useCallback(
     (idx: number) => {
@@ -466,12 +460,20 @@ export function TraceThread({
 
   useEffect(() => () => clearTimeout(skipTimer.current), [])
 
+  // Scroll to matching turn when currentMatchIndex changes
+  useEffect(() => {
+    if (!searchMatches.length || currentMatchIndex === 0) return
+    const match = searchMatches[currentMatchIndex - 1]
+    if (!match) return
+    const turn = turns.find((t) => t.id === match.turnId)
+    if (turn) focus(turn.index)
+  }, [currentMatchIndex, searchMatches, turns, focus])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.key === 'j') { e.preventDefault(); moveFocus(1) }
       if (e.key === 'k') { e.preventDefault(); moveFocus(-1) }
-      if (e.key === '/') { e.preventDefault(); searchInputRef.current?.focus() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -585,17 +587,40 @@ export function TraceThread({
 
       <div className="v2-cmd">
         <div className="v2-search">
-          <span className="v2-search-icon">
-            <Search size={13} />
-          </span>
-          <input
-            ref={searchInputRef}
-            className="v2-search-input"
-            placeholder="Search turns\u2026"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <span className="v2-kbd mono">/</span>
+          <ReplaySearchBar turns={turns} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            className="v2-step"
+            onClick={() => {
+              if (searchMatches.length > 0) {
+                setCurrentMatchIndex(currentMatchIndex < searchMatches.length ? currentMatchIndex + 1 : 1)
+              } else {
+                document.querySelector<HTMLInputElement>('.v2-search-input')?.focus()
+              }
+            }}
+            title="Search (Enter for next match)"
+          >
+            <Search size={11} />
+          </button>
+          {searchMatches.length > 0 && (
+            <>
+              <button
+                className="v2-step"
+                onClick={() => setCurrentMatchIndex(currentMatchIndex > 1 ? currentMatchIndex - 1 : searchMatches.length)}
+                title="Prev match (Shift+Enter)"
+              >
+                <ChevronUp size={11} />
+              </button>
+              <button
+                className="v2-step"
+                onClick={() => setCurrentMatchIndex(currentMatchIndex < searchMatches.length ? currentMatchIndex + 1 : 1)}
+                title="Next match (Enter)"
+              >
+                <ChevronDown size={11} />
+              </button>
+            </>
+          )}
         </div>
         <div className="v2-cmd-controls">
           <SessionIdCopyButton
@@ -620,13 +645,13 @@ export function TraceThread({
       </div>
 
       <div className="v2-grid">
-        <Spine turns={filtered} focused={focused} onPick={focus} />
+        <Spine turns={turns} focused={focused} onPick={focus} />
 
         <main className="v2-trace" ref={scrollRef}>
           <div className="v2-trace-pad">
-            {filtered.length === 0 && !hasMore ? (
+            {turns.length === 0 && !hasMore ? (
               <div className="v2-trace-end mono">
-                {'\u2014'} {query ? 'NO MATCHING TURNS' : 'NO TURNS'} {'\u2014'}
+                {'\u2014'} NO TURNS {'\u2014'}
               </div>
             ) : isVirtual ? (
               <div
@@ -634,7 +659,7 @@ export function TraceThread({
                 style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
               >
                 {virtualItems.map((virtualItem) => {
-                  const turn = filtered[virtualItem.index]
+                  const turn = turns[virtualItem.index]
                   if (!turn) {
                     return (
                       <div
@@ -675,7 +700,7 @@ export function TraceThread({
                 })}
               </div>
             ) : (
-              filtered.map((t) => (
+              turns.map((t) => (
                 <TurnCard
                   key={t.id}
                   turn={t}
@@ -685,7 +710,7 @@ export function TraceThread({
                 />
               ))
             )}
-            {!hasMore && filtered.length > 0 && (
+            {!hasMore && turns.length > 0 && (
               <div className="v2-trace-end mono">{'\u2014'} END OF TRACE {'\u2014'}</div>
             )}
           </div>
