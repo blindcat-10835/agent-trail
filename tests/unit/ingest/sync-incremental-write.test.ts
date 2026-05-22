@@ -93,6 +93,27 @@ describe('incremental sync append writer', () => {
     });
   });
 
+  it('does not overwrite an existing project when an append delta has no project patch', () => {
+    db.prepare(`UPDATE sessions SET project = ? WHERE id = ?`)
+      .run('/Users/example/Work/project-with-hyphen', 'append-session');
+    const delta = makeDelta({
+      sessionPatch: {
+        endedAt: '2026-05-15T00:00:02.000Z',
+        status: 'idle',
+      },
+    });
+
+    const result = appendSessionDeltaToDatabase(delta, db, filePath, makeDecision(delta));
+
+    const row = db.prepare(`
+      SELECT project
+      FROM sessions
+      WHERE id = ?
+    `).get('append-session') as { project: string };
+    expect(result.errors).toEqual([]);
+    expect(row.project).toBe('/Users/example/Work/project-with-hyphen');
+  });
+
   it('inserts a result event under an existing tool call', () => {
     seedExistingToolCall(db, 'append-session', 'call-existing');
     const delta = makeDelta({

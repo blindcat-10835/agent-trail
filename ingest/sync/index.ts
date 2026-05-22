@@ -20,6 +20,8 @@ import { logger } from '../logger';
 
 export const PARSER_CACHE_VERSION = 'parser-v9-token-channel-accounting';
 
+const claudeProjectPathCache = new Map<string, string | null>();
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -424,7 +426,7 @@ function truncateDisplayName(line: string): string {
  *
  * - Claude Code: ~/.claude/projects/{encoded-path}/ → decode to actual cwd
  * - OpenClaw: extract agent name from agents/{name}/sessions structure
- * - Codex: use parent directory name
+ * - Codex: use session metadata, not date directory names
  */
 function extractProjectFromPath(filePath: string, sourceType: SyncSourceType): string {
   if (sourceType === 'claude-code') {
@@ -432,8 +434,7 @@ function extractProjectFromPath(filePath: string, sourceType: SyncSourceType): s
     const relative = path.relative(projectsRoot, path.dirname(filePath))
     if (!relative || relative.startsWith('..')) return 'default'
     const encoded = relative.split(path.sep)[0]
-    // Claude encodes cwd by replacing '/' with '-': /Users/ebbi/work → -Users-ebbi-work
-    return '/' + encoded.replace(/-/g, '/')
+    return decodeClaudeProjectPath(encoded) ?? 'default'
   }
 
   if (sourceType === 'openclaw') {
@@ -445,14 +446,63 @@ function extractProjectFromPath(filePath: string, sourceType: SyncSourceType): s
     return 'default'
   }
 
-  // Codex: use parent directory name
-  return path.basename(path.dirname(filePath)) || 'default'
+  // Codex stores sessions under date directories like YYYY/MM/DD; the real
+  // project comes from session metadata (`cwd`) when available.
+  return 'default'
+}
+
+function decodeClaudeProjectPath(encoded: string): string | null {
+  const cached = claudeProjectPathCache.get(encoded);
+  if (cached !== undefined) return cached;
+
+  const resolved = resolveExistingHyphenEncodedAbsolutePath(encoded);
+  claudeProjectPathCache.set(encoded, resolved);
+  return resolved;
+}
+
+function resolveExistingHyphenEncodedAbsolutePath(encoded: string): string | null {
+  if (!encoded.startsWith('-')) return null;
+
+  const parts = encoded.slice(1).split('-').filter(Boolean);
+  if (parts.length === 0) return null;
+
+  let current: string = path.sep;
+  let index = 0;
+
+  while (index < parts.length) {
+    let matched: string | null = null;
+    let matchedEnd = index;
+
+    for (let end = parts.length; end > index; end--) {
+      const candidate = parts.slice(index, end).join('-');
+      const candidatePath = path.join(current, candidate);
+      try {
+        if (fs.statSync(candidatePath).isDirectory()) {
+          matched = candidate;
+          matchedEnd = end;
+          break;
+        }
+      } catch {
+        // Keep trying shorter segment groupings.
+      }
+    }
+
+    if (!matched) return null;
+    current = path.join(current, matched);
+    index = matchedEnd;
+  }
+
+  return current;
 }
 
 function extractProjectFromParsedSession(
   parseResult: ParseResult,
   fallbackProject: string
 ): string {
+  if (parseResult.session.cwd?.trim()) {
+    return parseResult.session.cwd.trim()
+  }
+
   if (parseResult.session.project && parseResult.session.project !== 'default') {
     return parseResult.session.project
   }
@@ -1014,8 +1064,13 @@ export function writeSessionToDatabase(
     const existing = database.prepare(
       'SELECT id, file_hash, name, project FROM sessions WHERE id = ?'
     ).get(parseResult.session.id) as { id: string; file_hash: string | null; name: string | null; project: string | null } | undefined;
+    const parsedProject =
+      parseResult.session.project && parseResult.session.project !== 'default'
+        ? parseResult.session.project
+        : '';
 
-    // Skip cache: if hash matches AND force is not set, skip full re-parse but still patch name/project if empty.
+    // Skip cache: if hash matches AND force is not set, skip derived-row writes
+    // but still refresh metadata that can be repaired cheaply from the parser.
     if (existing && cacheFileHash && existing.file_hash === cacheFileHash && !options?.force) {
       database.prepare(`
         UPDATE sessions SET
@@ -1023,10 +1078,22 @@ export function writeSessionToDatabase(
           file_mtime = ?,
           last_sync_at = ?,
           name = CASE WHEN (name IS NULL OR name = '') THEN ? ELSE name END,
-          project = CASE WHEN (project IS NULL OR project = '' OR project = 'default') THEN ? ELSE project END,
+          project = COALESCE(NULLIF(?, ''), project),
+          cwd = COALESCE(NULLIF(?, ''), cwd),
+          git_branch = COALESCE(NULLIF(?, ''), git_branch),
           agent_name = COALESCE(?, agent_name)
         WHERE id = ?
-      `).run(fileSize, fileMtime, lastSyncAt, parseResult.session.name || '', parseResult.session.project || '', parseResult.session.agentName || null, parseResult.session.id);
+      `).run(
+        fileSize,
+        fileMtime,
+        lastSyncAt,
+        parseResult.session.name || '',
+        parsedProject,
+        parseResult.session.cwd || '',
+        parseResult.session.gitBranch || '',
+        parseResult.session.agentName || null,
+        parseResult.session.id
+      );
 
       return {
         sessionsInserted: 0,
@@ -1358,6 +1425,10 @@ export function appendSessionDeltaToDatabase(
     const existingSession = db
       .prepare('SELECT id FROM sessions WHERE id = ?')
       .get(sessionId) as { id: string } | undefined;
+    const projectPatch =
+      delta.sessionPatch.project && delta.sessionPatch.project !== 'default'
+        ? delta.sessionPatch.project
+        : '';
     const toolCallsByOrdinal = new Map<number, IncrementalParseDelta['toolCalls']>();
     for (const toolCall of delta.toolCalls) {
       if (typeof toolCall.messageOrdinal !== 'number') continue;
@@ -1390,7 +1461,7 @@ export function appendSessionDeltaToDatabase(
             last_sync_at = ?
           WHERE id = ?
         `).run(
-          delta.sessionPatch.project || '',
+          projectPatch,
           delta.sessionPatch.endedAt || null,
           delta.sessionPatch.status || null,
           delta.sessionPatch.cwd || null,
@@ -1416,7 +1487,7 @@ export function appendSessionDeltaToDatabase(
         `).run(
           sessionId,
           delta.sourceType,
-          delta.sessionPatch.project || 'default',
+          projectPatch || 'default',
           delta.sessionPatch.startedAt || null,
           delta.sessionPatch.endedAt || null,
           delta.sessionPatch.status || 'idle',

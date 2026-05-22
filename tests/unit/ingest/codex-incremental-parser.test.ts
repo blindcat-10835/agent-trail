@@ -69,6 +69,40 @@ describe('Codex incremental parser', () => {
     expect(delta.messages[0].model).toBe('gpt-5.5');
   });
 
+  it('does not use a fallback date directory as the Codex project during append', async () => {
+    const jsonl = `${JSON.stringify({
+      type: 'response_item',
+      response_item: { type: 'text', text: 'No cwd in this append', token_count: 3 },
+      timestamp: '2026-05-15T00:00:00.000Z',
+    })}\n`;
+    const filePath = writeJsonl('date-dir-append.jsonl', jsonl);
+
+    const delta = await parseCodexSessionAppend(filePath, '22', {
+      ...baseOptions(),
+      endOffset: statSync(filePath).size,
+    });
+
+    expect(delta.sessionPatch.project).toBeUndefined();
+  });
+
+  it('promotes appended Codex turn_context cwd to the session project', async () => {
+    const cwd = '/Users/example/Work/ai-dashboard-projects/agents-tracing-dashboard';
+    const jsonl = `${JSON.stringify({
+      type: 'turn_context',
+      turn_context: { turn_id: 'turn-new', cwd, model: 'gpt-5.5' },
+      timestamp: '2026-05-15T00:00:00.000Z',
+    })}\n`;
+    const filePath = writeJsonl('cwd-turn-context.jsonl', jsonl);
+
+    const delta = await parseCodexSessionAppend(filePath, '22', {
+      ...baseOptions(),
+      endOffset: statSync(filePath).size,
+    });
+
+    expect(delta.sessionPatch.cwd).toBe(cwd);
+    expect(delta.sessionPatch.project).toBe(cwd);
+  });
+
   it('represents function_call_output for a known previous Codex call', async () => {
     const jsonl = `${JSON.stringify({
       type: 'response_item',

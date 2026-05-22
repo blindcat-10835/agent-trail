@@ -108,7 +108,7 @@ describe('ingest database migrations', () => {
     );
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(19);
+    expect(version).toBe(20);
   });
 
   it('initializes ingest file cursor schema idempotently', () => {
@@ -153,7 +153,104 @@ describe('ingest database migrations', () => {
     expect(indexes.map((index) => index.name)).toContain('idx_ingest_file_cursors_session_id');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(19);
+    expect(version).toBe(20);
+  });
+
+  it('repairs stale Claude/Codex project labels during v20 migration', () => {
+    dbPath = join(tmpdir(), `ingest-project-repair-${randomUUID()}.db`);
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    initSchema();
+
+    const dbWrite = new Database(dbPath);
+    dbWrite.prepare(`
+      INSERT INTO sessions (
+        id, source, project, status, message_count, user_message_count,
+        has_tool_calls, file_path, file_hash, cwd, name, total_input_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'codex:date-project',
+      'codex',
+      '22',
+      'idle',
+      0,
+      0,
+      0,
+      '/Users/example/.codex/sessions/2026/05/22/rollout.jsonl',
+      'codex-hash',
+      '/Users/example/Work/ai-dashboard-projects/agents-tracing-dashboard',
+      'codex repair witness',
+      100
+    );
+    dbWrite.prepare(`
+      INSERT INTO sessions (
+        id, source, project, status, message_count, user_message_count,
+        has_tool_calls, file_path, file_hash, cwd, name, total_input_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'claude:split-project',
+      'claude-code',
+      '//Users/example/Work/ai/dashboard/projects/agents/tracing/dashboard',
+      'idle',
+      0,
+      0,
+      0,
+      '/Users/example/.claude/projects/-Users-example-Work-ai-dashboard-projects-agents-tracing-dashboard/session.jsonl',
+      'claude-hash',
+      '/Users/example/Work/ai-dashboard-projects/agents-tracing-dashboard',
+      'claude repair witness',
+      100
+    );
+    dbWrite.prepare(`
+      INSERT INTO ingest_file_cursors (
+        source_type, file_path, session_id, parser_version, file_size
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run('codex', '/Users/example/.codex/sessions/2026/05/22/rollout.jsonl', 'codex:date-project', 'parser-v9', 100);
+    dbWrite.prepare(`
+      INSERT INTO ingest_file_cursors (
+        source_type, file_path, session_id, parser_version, file_size
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run('claude-code', '/Users/example/.claude/projects/-Users-example-Work-ai-dashboard-projects-agents-tracing-dashboard/session.jsonl', 'claude:split-project', 'parser-v9', 100);
+    dbWrite.pragma('user_version = 19');
+    dbWrite.close();
+
+    closeDatabase();
+    openedByTest = false;
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    expect(() => initSchema()).not.toThrow();
+
+    const dbRead = new Database(dbPath, { readonly: true });
+    const rows = dbRead.prepare(`
+      SELECT id, project, file_hash
+      FROM sessions
+      WHERE id IN ('codex:date-project', 'claude:split-project')
+      ORDER BY id
+    `).all() as { id: string; project: string; file_hash: string | null }[];
+    const cursorCount = (
+      dbRead.prepare(`
+        SELECT COUNT(*) as c
+        FROM ingest_file_cursors
+        WHERE session_id IN ('codex:date-project', 'claude:split-project')
+      `).get() as { c: number }
+    ).c;
+    const version = dbRead.pragma('user_version', { simple: true });
+    dbRead.close();
+
+    expect(version).toBe(20);
+    expect(rows).toEqual([
+      {
+        id: 'claude:split-project',
+        project: '/Users/example/Work/ai-dashboard-projects/agents-tracing-dashboard',
+        file_hash: null,
+      },
+      {
+        id: 'codex:date-project',
+        project: '/Users/example/Work/ai-dashboard-projects/agents-tracing-dashboard',
+        file_hash: null,
+      },
+    ]);
+    expect(cursorCount).toBe(0);
   });
 
   it('repairs v15 databases whose source CHECK constraints only include opencode', () => {
@@ -274,7 +371,7 @@ describe('ingest database migrations', () => {
       `SELECT COUNT(*) as c FROM subagent_links WHERE session_id = 'codex:legacy-parent'`
     ).get() as { c: number };
 
-    expect(version).toBe(19);
+    expect(version).toBe(20);
     expect(sessionSql.sql).toContain("'qoder'");
     expect(linkSql.sql).toContain("'qoder'");
     expect(cursorSql.sql).toContain("'qoder'");
@@ -517,7 +614,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(19);
+    expect(version).toBe(20);
     // All three pre-existing rows survive the rebuild.
     const ids = sessionRows.map((r) => r.id);
     expect(ids).toEqual(

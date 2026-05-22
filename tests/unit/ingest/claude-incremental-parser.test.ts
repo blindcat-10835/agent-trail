@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { appendFileSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -54,6 +54,40 @@ describe('Claude incremental parser', () => {
     expect(delta.messages[0].content).toBe('Complete');
     expect(delta.cursorUpdate.lastIndexedOffset).toBe(Buffer.byteLength(complete));
     expect(delta.cursorUpdate.lastIndexedLine).toBe(1);
+  });
+
+  it('does not use a lossy encoded Claude project fallback during append', async () => {
+    const filePath = writeJsonl(
+      'encoded-project-append.jsonl',
+      `${JSON.stringify(claudeLine('assistant-1', 'assistant', 'No cwd here'))}\n`
+    );
+
+    const delta = await parseClaudeSessionAppend(
+      filePath,
+      '//Users/example/Work/ai/dashboard/projects',
+      {
+        ...baseOptions(),
+        endOffset: statSync(filePath).size,
+      }
+    );
+
+    expect(delta.sessionPatch.project).toBeUndefined();
+  });
+
+  it('promotes appended Claude cwd metadata to the session project', async () => {
+    const cwd = '/Users/example/Work/ai-dashboard-projects/agents-tracing-dashboard';
+    const filePath = writeJsonl(
+      'cwd-append.jsonl',
+      `${JSON.stringify({ ...claudeLine('assistant-1', 'assistant', 'Has cwd'), cwd })}\n`
+    );
+
+    const delta = await parseClaudeSessionAppend(filePath, 'default', {
+      ...baseOptions(),
+      endOffset: statSync(filePath).size,
+    });
+
+    expect(delta.sessionPatch.cwd).toBe(cwd);
+    expect(delta.sessionPatch.project).toBe(cwd);
   });
 
   it('represents a Claude tool result for a known previous tool call', async () => {

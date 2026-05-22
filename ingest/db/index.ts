@@ -145,7 +145,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 19;
+  const targetVersion = 20;
 
   if (currentVersion >= targetVersion) {
     logger.debug(`Schema at version ${currentVersion}, no migrations needed`);
@@ -593,6 +593,40 @@ export function runMigrations(): void {
     {
       desc: 'Invalidate Qoder parser cache to preserve injected user context as system events',
       sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'qoder'",
+    },
+    {
+      desc: 'Clear cursors for stale Claude/Codex project labels',
+      sql: `
+        DELETE FROM ingest_file_cursors
+        WHERE session_id IN (
+          SELECT id
+          FROM sessions
+          WHERE (source = 'claude-code' AND project LIKE '//%')
+             OR (
+               source = 'codex'
+               AND project GLOB '[0-9][0-9]'
+               AND file_path LIKE '%/.codex/sessions/%'
+             )
+        )
+      `,
+    },
+    {
+      desc: 'Repair stale Claude/Codex project labels from cwd',
+      sql: `
+        UPDATE sessions
+        SET
+          project = CASE
+            WHEN cwd IS NOT NULL AND trim(cwd) != '' THEN cwd
+            ELSE 'default'
+          END,
+          file_hash = NULL
+        WHERE (source = 'claude-code' AND project LIKE '//%')
+           OR (
+             source = 'codex'
+             AND project GLOB '[0-9][0-9]'
+             AND file_path LIKE '%/.codex/sessions/%'
+           )
+      `,
     },
   ];
 

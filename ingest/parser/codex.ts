@@ -1111,6 +1111,9 @@ export async function parseCodexSessionAppend(
         sessionCwd = turnContext.cwd || sessionCwd;
         sessionGitBranch = turnContext.git_branch || sessionGitBranch;
         delta.sessionPatch.cwd = sessionCwd || delta.sessionPatch.cwd;
+        if (turnContext.cwd) {
+          delta.sessionPatch.project = turnContext.cwd;
+        }
         delta.sessionPatch.gitBranch = sessionGitBranch || delta.sessionPatch.gitBranch;
         if (!currentTurnId) {
           ensureTurn(turnContext.turn_id || `turn-${record.lineNumber}`, turnStartedAt);
@@ -1432,7 +1435,6 @@ function createCodexIncrementalDelta(
     sessionPatch: {
       id: options.sessionId || context.uuid,
       source: 'codex',
-      project: context.project,
       sourceSessionId: options.sessionId || context.uuid,
       sourceVersion: '1.0',
     },

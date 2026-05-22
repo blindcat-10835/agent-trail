@@ -696,7 +696,11 @@ export async function parseClaudeSessionAppend(
 
       if (parsed.session) {
         delta.sessionPatch.sourceSessionId = parsed.session.id;
-        delta.sessionPatch.cwd = parsed.session.cwd || sessionCwd || delta.sessionPatch.cwd;
+        const parsedSessionCwd = parsed.session.cwd || sessionCwd;
+        delta.sessionPatch.cwd = parsedSessionCwd || delta.sessionPatch.cwd;
+        if (parsedSessionCwd) {
+          delta.sessionPatch.project = parsedSessionCwd;
+        }
         delta.sessionPatch.gitBranch =
           parsed.session.gitBranch || sessionGitBranch || delta.sessionPatch.gitBranch;
         if (parsed.session.type === 'subagent') {
@@ -870,7 +874,6 @@ function createClaudeIncrementalDelta(
     sessionPatch: {
       id: options.sessionId || context.uuid,
       source: 'claude-code',
-      project: context.project,
       sourceSessionId: context.sourceSessionId,
       sourceVersion: context.sourceVersion || 'unknown',
     },
