@@ -468,9 +468,6 @@ function SessionRailRow({
                   ? '⚠'
                   : null}
           </span>
-          {relativeTime(session.updatedAt || session.startedAt) && (
-            <span className="rr-updated mono">{relativeTime(session.updatedAt || session.startedAt)}</span>
-          )}
           <button
             type="button"
             className={`rr-star-toggle${isStarred ? ' active' : ''}`}
@@ -491,6 +488,9 @@ function SessionRailRow({
             </>
           )}
         </div>
+        {relativeTime(session.updatedAt || session.startedAt) && (
+          <span className="rr-updated mono">{relativeTime(session.updatedAt || session.startedAt)}</span>
+        )}
         {srcName && (
           <span className="rr-src-corner mono" title={srcName}>
             {srcName}

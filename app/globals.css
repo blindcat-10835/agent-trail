@@ -2421,10 +2421,15 @@
 }
 
 .rr-updated {
-  font-size: 9px;
+  position: absolute;
+  right: 0;
+  top: 1px;
+  font-size: 10.5px;
   color: var(--muted-foreground);
   opacity: 0.7;
   letter-spacing: 0.03em;
+  text-align: center;
+  width: 74px;
 }
 
 .rr-empty {
