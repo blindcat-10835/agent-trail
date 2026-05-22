@@ -160,7 +160,6 @@ function SessionRow({
         <span className="sl-summary">{summary}</span>
         <span className="sl-id mono">
           {s.id}
-          {s.gitBranch && <span className="sl-branch"> {'⎇'} {s.gitBranch}</span>}
         </span>
       </span>
       <span className="sl-cell"><StatusCell status={status} /></span>
