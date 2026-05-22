@@ -30,30 +30,6 @@ const definition: AgentToolDefinition = {
       title: 'Overview',
     },
     {
-      id: 'agt',
-      href: (toolId) => `/${toolId}/dashboard?tab=agents`,
-      label: 'AGT',
-      title: 'Agents',
-    },
-    {
-      id: 'usd',
-      href: (toolId) => `/${toolId}/dashboard?tab=costs`,
-      label: 'USD',
-      title: 'Costs & Usage',
-    },
-    {
-      id: 'skl',
-      href: (toolId) => `/${toolId}/dashboard?tab=skills`,
-      label: 'SKL',
-      title: 'Skills',
-    },
-    {
-      id: 'act',
-      href: (toolId) => `/${toolId}/activity`,
-      label: 'ACT',
-      title: 'Activity',
-    },
-    {
       id: 'ses',
       href: (toolId) => `/${toolId}/sessions`,
       label: 'SES',
