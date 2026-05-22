@@ -1,7 +1,7 @@
 ---
 type: feat
 title: Live Data Updates During Indexing
-status: wip
+status: done
 priority: p2
 created: 2026-05-22
 updated: 2026-05-22
