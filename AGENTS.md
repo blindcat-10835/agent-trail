@@ -86,6 +86,7 @@ types/                  # 共享类型 (trace.ts 等)
 - **shadcn 添加组件**：`pnpm dlx shadcn@latest add <name>`，组件落在 `components/ui/`。preset 是 `radix-nova`，不要换成默认。
 - **BFF 代理**：前端不直连 ingest，所有请求走 `app/api/agent-tools/[tool]/...`（D-07）。
 - **GSD 工作流**：项目用 `.planning/` 跟踪 milestone/phase/plan。开新工作前看 `.planning/STATE.md` 了解当前 phase。不要手编 `.planning/` 里的 STATE/ROADMAP —— 用 `/gsd-*` 命令。
+- **清理废弃代码**：修改代码时发现不再被任何地方引用的组件、函数、类型、文件，且判断未来也不太可能被使用，应当删除而不是留在代码库中。
 
 ## Documentation
 
