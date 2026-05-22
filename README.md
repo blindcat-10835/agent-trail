@@ -60,8 +60,8 @@ AGENT_TRAIL_LOG_LEVEL=debug agent-trail
 ### Option 2 — Docker local build (no Node.js required)
 
 ```bash
-git clone https://github.com/camtrik/agents-tracing-dashboard.git
-cd agents-tracing-dashboard
+git clone https://github.com/camtrik/agent-trail.git
+cd agent-trail
 docker compose up --build
 ```
 

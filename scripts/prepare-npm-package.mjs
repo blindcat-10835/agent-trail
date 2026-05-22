@@ -140,13 +140,13 @@ const publishedPkg = {
     "dashboard",
     "observability",
   ],
-  homepage: "https://github.com/camtrik/agents-tracing-dashboard#readme",
+  homepage: "https://github.com/camtrik/agent-trail#readme",
   bugs: {
-    url: "https://github.com/camtrik/agents-tracing-dashboard/issues",
+    url: "https://github.com/camtrik/agent-trail/issues",
   },
   repository: {
     type: "git",
-    url: "git+https://github.com/camtrik/agents-tracing-dashboard.git",
+    url: "git+https://github.com/camtrik/agent-trail.git",
   },
   license: sourcePkg.license || "MIT",
   author: sourcePkg.author || "camtrik",
