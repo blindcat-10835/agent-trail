@@ -103,33 +103,19 @@ If both sources are empty, skip the "Closed items" section entirely.
 
 ## Step 4 — Draft release notes
 
+Backlog items are the primary source of truth for release content. Closed backlog items (from Step 3) map directly into Features / Bug Fixes / Refactor by their `type` field — they ARE the features, not a separate "Closed Items" section. Individual commits that are not already covered by a backlog item can be added to the relevant section as supplementary entries.
+
 Generate the notes in this exact shape (English, plain markdown, no emoji unless the user asks):
 
 ```markdown
-## Highlights
-
-<one or two sentences summarizing the most notable changes — what shipped, why it matters. Skip this section if there's only mechanical noise (chore/docs/test only).>
-
-## Closed items
-- <title> (<slug>) — <type>
-
 ## Features
-- <subject> (<shortsha>)
+- <backlog item title, or commit subject if no covering backlog item>
 
 ## Bug Fixes
-- <subject> (<shortsha>)
+- <backlog item title, or commit subject if no covering backlog item>
 
 ## Refactor
-- <subject> (<shortsha>)
-
-## Performance
-- <subject> (<shortsha>)
-
-## Docs
-- <subject> (<shortsha>)
-
-## Chores
-- <subject> (<shortsha>)
+- <backlog item title, or commit subject if no covering backlog item>
 
 ## Breaking Changes
 - <description from BREAKING CHANGE footer or commit body>
@@ -138,13 +124,14 @@ Generate the notes in this exact shape (English, plain markdown, no emoji unless
 ```
 
 Rules:
-- Omit any section with zero entries (don't print `## Features` followed by nothing)
-- Strip the `type(scope):` prefix from subjects — they're already categorized. Capitalize the first letter.
-- Use 7-character short SHAs
-- Order sections as above (Closed items right after Highlights — backlog items are higher-signal than raw commits)
-- For the "Highlights" paragraph, look at the actual feature/fix subjects *and* closed backlog item titles, and write a brief human summary — don't just list types. If there's nothing exciting, omit Highlights.
-- Always include the compare link at the end
-- Resolve `<owner>/<repo>` from `git remote get-url origin`
+- **No Highlights section. No Closed Items section.** Backlog items appear directly under Features / Bug Fixes / Refactor based on their `type` field.
+- **Only include Features, Bug Fixes, Refactor, and Breaking Changes sections.** Never emit Docs, Chores, Tests, Performance, Build/CI, or Other sections — these are implementation noise, not user-facing changes.
+- **No commit SHAs** in any section.
+- If a commit is already represented by a backlog item, do not list it again as a separate entry.
+- Omit any section with zero entries (don't print `## Features` followed by nothing).
+- Use the backlog item's `title` field (not the commit subject). Capitalize the first letter.
+- Always include the compare link at the end.
+- Resolve `<owner>/<repo>` from `git remote get-url origin`.
 
 ## Step 5 — Present and confirm
 
