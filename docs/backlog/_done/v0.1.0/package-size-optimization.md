@@ -1,7 +1,8 @@
 ---
 type: refactor
 title: Optimize npm package size and build pipeline clarity
-status: todo
+status: done
+updated: 2026-05-22
 priority: p2
 created: 2026-05-21
 branch:
