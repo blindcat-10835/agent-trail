@@ -1471,6 +1471,36 @@
   border-color: var(--accent);
 }
 
+.v2-hud-star {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  clip-path: var(--clip-sm);
+  color: var(--muted-foreground);
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: color 0.12s, border-color 0.12s, text-shadow 0.12s;
+}
+
+.v2-hud-star:hover,
+.v2-hud-star:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.v2-hud-star.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  text-shadow: 0 0 8px color-mix(in oklch, var(--accent) 50%, transparent);
+  outline: none;
+}
+
 .v2-cmd {
   display: flex;
   align-items: center;
