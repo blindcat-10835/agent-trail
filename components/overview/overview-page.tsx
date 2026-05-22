@@ -139,7 +139,7 @@ export function OverviewPage() {
       <OverviewAgents capabilities={capabilities} toolId={toolId} capsLoading={capsLoading} />
 
       {/* ═══ ROW A: Models · Projects · Activity ═══ */}
-      <section>
+      <section className="mt-4">
         <div
           className="grid gap-3"
           style={{ gridTemplateColumns: '1fr 1fr 1fr' }}
