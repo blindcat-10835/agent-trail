@@ -9,9 +9,10 @@ import { SessionIdCopyButton } from '@/components/ui/session-id-copy-button'
 interface TurnNavigatorProps {
   turns: TraceTurn[]
   sessionId?: string
+  sourceSessionId?: string
 }
 
-export function TurnNavigator({ turns, sessionId }: TurnNavigatorProps) {
+export function TurnNavigator({ turns, sessionId, sourceSessionId }: TurnNavigatorProps) {
   const currentTurnIndex = useReplayStore((s) => s.currentTurnIndex)
   const setCurrentTurnIndex = useReplayStore((s) => s.setCurrentTurnIndex)
   const collapseAll = useReplayStore((s) => s.collapseAll)
@@ -98,6 +99,8 @@ export function TurnNavigator({ turns, sessionId }: TurnNavigatorProps) {
       {sessionId && (
         <SessionIdCopyButton
           sessionId={sessionId}
+          displaySessionId={sourceSessionId ?? sessionId}
+          copySessionId={sourceSessionId ?? sessionId}
           displayMode="head8"
           iconPlacement="end"
           showCopyIconOnHover

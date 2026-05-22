@@ -425,6 +425,7 @@ function SessionRailRow({
   isStarred: boolean
   onToggleStar: () => void
 }) {
+  const visibleSessionId = session.sourceSessionId ?? session.id
   const pc = projectColor(session.project)
   const displayStatus = deriveDisplayStatus(session)
   const sc = RR_STATUS[displayStatus] || 'var(--muted-foreground)'
@@ -464,10 +465,12 @@ function SessionRailRow({
             ★
           </button>
         </div>
-        <div className="rr-label">{session.displayTitle || session.name || session.id}</div>
+        <div className="rr-label">{session.displayTitle || session.name || visibleSessionId}</div>
         <div className="rr-line2 mono">
           <SessionIdCopyButton
             sessionId={session.id}
+            displaySessionId={visibleSessionId}
+            copySessionId={visibleSessionId}
             displayMode="tail8"
             className="text-[10px] text-muted-foreground transition-colors hover:text-foreground"
           />

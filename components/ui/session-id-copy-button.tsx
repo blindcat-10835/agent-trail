@@ -16,6 +16,8 @@ type SessionIdDisplayMode = 'full' | 'head8' | 'tail8'
 
 export interface SessionIdCopyButtonProps extends Omit<ComponentPropsWithoutRef<'button'>, 'children'> {
   sessionId?: string | null
+  displaySessionId?: string | null
+  copySessionId?: string | null
   displayText?: string
   displayMode?: SessionIdDisplayMode
   iconPlacement?: 'start' | 'end'
@@ -40,6 +42,8 @@ function formatSessionId(sessionId: string, displayMode: SessionIdDisplayMode): 
 
 export function SessionIdCopyButton({
   sessionId,
+  displaySessionId,
+  copySessionId,
   displayText,
   displayMode = 'full',
   iconPlacement = 'start',
@@ -58,7 +62,8 @@ export function SessionIdCopyButton({
 }: SessionIdCopyButtonProps) {
   const [copied, setCopied] = useState(false)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const resolvedSessionId = sessionId ?? ''
+  const resolvedCopySessionId = copySessionId ?? sessionId ?? ''
+  const resolvedDisplaySessionId = displaySessionId ?? resolvedCopySessionId
 
   const clearResetTimer = useCallback(() => {
     if (resetTimerRef.current) {
@@ -72,10 +77,10 @@ export function SessionIdCopyButton({
   const handleCopy = useCallback(async (event: ReactMouseEvent<HTMLButtonElement>) => {
     if (stopPropagation) event.stopPropagation()
     onClick?.(event)
-    if (event.defaultPrevented || !resolvedSessionId) return
+    if (event.defaultPrevented || !resolvedCopySessionId) return
 
     try {
-      await navigator.clipboard.writeText(resolvedSessionId)
+      await navigator.clipboard.writeText(resolvedCopySessionId)
       clearResetTimer()
       setCopied(true)
       resetTimerRef.current = setTimeout(() => {
@@ -85,7 +90,7 @@ export function SessionIdCopyButton({
     } catch {
       // Ignore clipboard failures; the button remains safe to click in unsupported contexts.
     }
-  }, [clearResetTimer, onClick, resolvedSessionId, stopPropagation])
+  }, [clearResetTimer, onClick, resolvedCopySessionId, stopPropagation])
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (stopPropagation && (event.key === 'Enter' || event.key === ' ')) {
@@ -94,11 +99,11 @@ export function SessionIdCopyButton({
     onKeyDown?.(event)
   }, [onKeyDown, stopPropagation])
 
-  if (!resolvedSessionId) return null
+  if (!resolvedCopySessionId) return null
 
-  const label = displayText ?? formatSessionId(resolvedSessionId, displayMode)
-  const buttonTitle = title ?? (copied ? 'Copied session ID' : `Copy session ID: ${resolvedSessionId}`)
-  const buttonAriaLabel = ariaLabel ?? (copied ? 'Copied session ID' : `Copy session ID ${resolvedSessionId}`)
+  const label = displayText ?? formatSessionId(resolvedDisplaySessionId, displayMode)
+  const buttonTitle = title ?? (copied ? 'Copied session ID' : `Copy session ID: ${resolvedCopySessionId}`)
+  const buttonAriaLabel = ariaLabel ?? (copied ? 'Copied session ID' : `Copy session ID ${resolvedCopySessionId}`)
 
   const icon = copied ? (
     <Check className={cn('h-3 w-3 flex-shrink-0 text-accent', copiedIconClassName)} />

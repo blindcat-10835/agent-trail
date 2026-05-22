@@ -121,6 +121,7 @@ function SessionRow({
   isStarred: (id: string) => boolean
   toggleStar: (id: string) => void
 }) {
+  const visibleSessionId = s.sourceSessionId ?? s.id
   const pc = projectColor(s.project)
   const srcC = getSourceColor(s.source)
   const status = deriveStatus(s)
@@ -128,10 +129,10 @@ function SessionRow({
   const outputTokens = s.metrics.outputTokens ?? s.outputTokens ?? 0
   const turns = s.totalTurns ?? s.metrics.userMessageCount
   const cost = s.estimatedCost != null ? `$${s.estimatedCost.toFixed(2)}` : '—'
-  const label = s.displayTitle || s.name || s.id
+  const label = s.displayTitle || s.name || visibleSessionId
   const toolCount = s.activityCounts?.toolCalls ?? 0
   const subagentCount = s.activityCounts?.subagents ?? 0
-  const summary = s.summary || s.gitBranch || s.id
+  const summary = s.summary || s.gitBranch || visibleSessionId
   const model = s.model || '—'
   const starred = isStarred(s.id)
 
@@ -161,6 +162,8 @@ function SessionRow({
         <span className="sl-summary">{summary}</span>
         <SessionIdCopyButton
           sessionId={s.id}
+          displaySessionId={visibleSessionId}
+          copySessionId={visibleSessionId}
           className="sl-id mono"
         />
       </span>

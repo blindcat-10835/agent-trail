@@ -514,6 +514,7 @@ export function TraceThread({
   const parentSessionId = session?.parentSessionId
   const parentHref = parentSessionId ? href(`/sessions/${parentSessionId}`) : null
   const resolvedSessionId = session?.id ?? sessionId
+  const visibleSessionId = session?.sourceSessionId ?? resolvedSessionId
 
   return (
     <div className="v2-root">
@@ -522,9 +523,9 @@ export function TraceThread({
           {'\u2039'} SESSIONS
         </button>
         <div className="v2-title-block">
-          <div className="v2-title">{session?.displayTitle || session?.name || session?.id || '\u2014'}</div>
+          <div className="v2-title">{session?.displayTitle || session?.name || visibleSessionId || '\u2014'}</div>
           <div className="v2-subline mono">
-            <span className="v2-hash">{'\u25C6'} {session?.id ?? sessionId}</span>
+            <span className="v2-hash">{'\u25C6'} {visibleSessionId}</span>
             <span className="v2-sep">/</span>
             <span>{session?.project || '\u2014'}</span>
             {model && (
@@ -600,6 +601,8 @@ export function TraceThread({
         <div className="v2-cmd-controls">
           <SessionIdCopyButton
             sessionId={resolvedSessionId}
+            displaySessionId={visibleSessionId}
+            copySessionId={visibleSessionId}
             displayMode="head8"
             showCopyIconOnHover
             className="text-[10px] font-mono text-muted-foreground transition-colors hover:text-foreground"
