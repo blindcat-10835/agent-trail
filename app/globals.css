@@ -2420,6 +2420,13 @@
   font-weight: 700;
 }
 
+.rr-updated {
+  font-size: 9px;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  letter-spacing: 0.03em;
+}
+
 .rr-empty {
   padding: 24px 14px;
   text-align: center;
