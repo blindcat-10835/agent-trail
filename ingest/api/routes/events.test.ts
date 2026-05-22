@@ -4,14 +4,15 @@
  * Tests for eventsRoutes (global + per-session SSE endpoints),
  * sync pipeline SSE emission, and ServiceContext integration.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import Database from 'better-sqlite3';
 import { eventsRoutes } from './events';
+import { sourcesRoutes } from '../sources';
 import { sseManager } from '../../src/sse';
-import { getDatabase, openDatabase, initSchema, closeDatabase } from '../../db';
-import { writeSessionToDatabase, syncSource } from '../../sync';
-import type { ParseResult } from '../../parser/types';
+
+vi.mock('../../index.js', () => ({
+  getServiceContext: () => null,
+}));
 
 // Session ID validation regex (must match events.ts implementation)
 const SESSION_ID_REGEX = /^[a-zA-Z0-9:\-_.]{1,256}$/;
@@ -66,13 +67,34 @@ describe('GET /api/v1/events - Global SSE endpoint', () => {
 
   it('creates a new subscriber in the SSE manager', () => {
     const statsBefore = sseManager.getStats();
-    const { stream, close } = sseManager.subscribe();
+    const { close } = sseManager.subscribe();
     const statsAfter = sseManager.getStats();
     expect(statsAfter.globalSubscribers).toBe(statsBefore.globalSubscribers + 1);
 
     close();
     const statsClean = sseManager.getStats();
     expect(statsClean.globalSubscribers).toBe(statsBefore.globalSubscribers);
+  });
+});
+
+describe('GET /api/v1/events - Composed ingest route order', () => {
+  it('uses the real SSE route when sources routes are mounted first', async () => {
+    const app = new Hono();
+    app.route('/', sourcesRoutes);
+    app.route('/', eventsRoutes);
+
+    const res = await app.request('/api/v1/events');
+    expect(res.status).toBe(200);
+    expect(res.body).toBeInstanceOf(ReadableStream);
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const { value } = await reader.read();
+    reader.cancel();
+
+    const text = decoder.decode(value);
+    expect(text).toContain('event: connected');
+    expect(text).toContain('data: {}');
   });
 });
 
@@ -118,7 +140,7 @@ describe('SSE Manager emits events to subscribers', () => {
 
     const reader = stream.getReader();
     const decoder = new TextDecoder();
-    reader.read().then(function process({ done, value }): any {
+    reader.read().then(function process({ done, value }: ReadableStreamReadResult<Uint8Array>): Promise<void> | void {
       if (done) return;
       if (value) events.push(decoder.decode(value));
       return reader.read().then(process);
@@ -152,7 +174,7 @@ describe('SSE Manager emits events to subscribers', () => {
     ) => {
       const r = stream.getReader();
       const d = new TextDecoder();
-      return r.read().then(function process({ done, value }): any {
+      return r.read().then(function process({ done, value }: ReadableStreamReadResult<Uint8Array>): Promise<void> | void {
         if (done) return;
         if (value) collector.push(d.decode(value));
         return r.read().then(process);
@@ -182,7 +204,7 @@ describe('Sync pipeline SSE emission', () => {
 
     const reader = stream.getReader();
     const decoder = new TextDecoder();
-    reader.read().then(function process({ done, value }): any {
+    reader.read().then(function process({ done, value }: ReadableStreamReadResult<Uint8Array>): Promise<void> | void {
       if (done) return;
       if (value) events.push(decoder.decode(value));
       return reader.read().then(process);
@@ -214,7 +236,7 @@ describe('Sync pipeline SSE emission', () => {
 
     const reader = stream.getReader();
     const decoder = new TextDecoder();
-    reader.read().then(function process({ done, value }): any {
+    reader.read().then(function process({ done, value }: ReadableStreamReadResult<Uint8Array>): Promise<void> | void {
       if (done) return;
       if (value) events.push(decoder.decode(value));
       return reader.read().then(process);

@@ -330,6 +330,25 @@
 .ov3-toolbar-meta { font-size: 9.5px; letter-spacing: .18em; color: var(--muted-foreground); text-transform: uppercase; font-family: var(--font-mono); }
 .ov3-toolbar-meta b { color: var(--accent); font-weight: 700; }
 
+.live-indexing-chip {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  clip-path: var(--clip-sm);
+  border: 1px solid color-mix(in oklch, var(--status-warning) 72%, var(--border));
+  background: color-mix(in oklch, var(--status-warning) 12%, var(--card));
+  color: var(--status-warning);
+  font: 700 9.5px/1 var(--font-mono);
+  letter-spacing: .16em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  box-shadow:
+    0 0 14px color-mix(in oklch, var(--status-warning) 18%, transparent),
+    inset 0 0 12px color-mix(in oklch, var(--status-warning) 8%, transparent);
+  animation: hud-pulse 1.4s ease-in-out infinite;
+}
+
 /* Range toggle — separated HUD chips */
 .range-toggle { display: flex; gap: 6px; align-items: stretch; position: relative; }
 .range-tab {

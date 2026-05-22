@@ -14,7 +14,7 @@
  */
 
 import { NextRequest } from 'next/server'
-import { assertSourceToolId } from '@/lib/agent-tools/registry'
+import { assertAgentToolId } from '@/lib/agent-tools/registry'
 import { getIngestBaseUrl } from '@/lib/ingest-url'
 
 export const runtime = 'nodejs'
@@ -27,7 +27,7 @@ export async function GET(
   const { tool } = await params
 
   try {
-    assertSourceToolId(tool)
+    assertAgentToolId(tool)
 
     // Proxy SSE stream from ingest
     const ingestUrl = getIngestBaseUrl()

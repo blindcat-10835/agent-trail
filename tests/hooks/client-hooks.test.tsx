@@ -14,7 +14,9 @@ import {
   syncAllSessions,
   syncToolSessions,
   useAggregateSessions,
+  useIngestLiveUpdates,
   useIngestStatus,
+  useOverviewAggregates,
   useSSE,
   useSessionTurns,
   useToolSessions,
@@ -54,6 +56,126 @@ describe('useSSE', () => {
   })
 })
 
+type MockEventListener = (event: MessageEvent) => void
+
+class MockEventSource {
+  static instances: MockEventSource[] = []
+
+  onopen: (() => void) | null = null
+  onmessage: ((event: MessageEvent) => void) | null = null
+  onerror: (() => void) | null = null
+  listeners = new Map<string, MockEventListener[]>()
+  closed = false
+
+  constructor(public url: string) {
+    MockEventSource.instances.push(this)
+  }
+
+  addEventListener(type: string, listener: MockEventListener) {
+    const listeners = this.listeners.get(type) ?? []
+    listeners.push(listener)
+    this.listeners.set(type, listeners)
+  }
+
+  close() {
+    this.closed = true
+  }
+
+  emit(type: string, data: Record<string, unknown>) {
+    const event = { data: JSON.stringify(data) } as MessageEvent
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event)
+    }
+  }
+}
+
+describe('useIngestLiveUpdates', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    MockEventSource.instances = []
+    vi.stubGlobal('EventSource', MockEventSource)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('dispatches a coalesced refresh for matching SSE events and refreshes indexing status', async () => {
+    const listener = vi.fn()
+    window.addEventListener(SESSION_REFRESH_EVENT, listener)
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'ok',
+        ready: false,
+        sync: {
+          phase: 'indexing',
+          currentSource: 'codex',
+          scheduler: { active: true, activeSourceType: 'codex' },
+        },
+      }),
+    })
+
+    let latest: ReturnType<typeof useIngestLiveUpdates> | undefined
+    function Consumer() {
+      latest = useIngestLiveUpdates('codex')
+      return null
+    }
+
+    render(<Consumer />)
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/agent-tools/codex/health')
+    expect(latest?.indexing).toBe(true)
+    expect(latest?.currentSource).toBe('codex')
+    expect(MockEventSource.instances[0]?.url).toBe('/api/agent-tools/codex/events')
+
+    act(() => {
+      MockEventSource.instances[0].emit('session_updated', { source: 'codex', sessionId: 's1' })
+      vi.advanceTimersByTime(349)
+    })
+    expect(listener).not.toHaveBeenCalled()
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+    })
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SESSION_REFRESH_EVENT, listener)
+  })
+
+  it('ignores source-specific SSE events from another source', async () => {
+    const listener = vi.fn()
+    window.addEventListener(SESSION_REFRESH_EVENT, listener)
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: 'ok', ready: true, sync: { phase: 'idle' } }),
+    })
+
+    function Consumer() {
+      useIngestLiveUpdates('codex')
+      return null
+    }
+
+    render(<Consumer />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(MockEventSource.instances).toHaveLength(1)
+
+    act(() => {
+      MockEventSource.instances[0].emit('session_updated', { source: 'openclaw', sessionId: 's1' })
+      vi.advanceTimersByTime(350)
+    })
+
+    expect(listener).not.toHaveBeenCalled()
+    window.removeEventListener(SESSION_REFRESH_EVENT, listener)
+  })
+})
+
 describe('useIngestStatus', () => {
   it('is an exported function from client-hooks', () => {
     expect(typeof useIngestStatus).toBe('function')
@@ -86,6 +208,34 @@ describe('session refresh event', () => {
 
     expect(listener).toHaveBeenCalledTimes(1)
     window.removeEventListener(SESSION_REFRESH_EVENT, listener)
+  })
+
+  it('refetches cached overview data when the global refresh event is dispatched', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ totalSessions: 1 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ totalSessions: 2 }),
+      })
+
+    let latest: ReturnType<typeof useOverviewAggregates> | undefined
+    function Consumer() {
+      latest = useOverviewAggregates('codex', '30d')
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.loading).toBe(false))
+    expect(latest?.aggregates).toEqual({ totalSessions: 1 })
+
+    notifySessionsRefresh()
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(latest?.aggregates).toEqual({ totalSessions: 2 })
   })
 })
 

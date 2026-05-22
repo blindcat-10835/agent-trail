@@ -2,15 +2,28 @@
 
 import { useCallback, useState } from 'react'
 import Link from 'next/link'
-import { notifySessionsRefresh, syncAllSessions } from '@/lib/agent-tools/client-hooks'
+import { getSourceName } from '@/lib/agent-tools/registry'
+import {
+  notifySessionsRefresh,
+  syncAllSessions,
+  useAgentTool,
+  useIngestLiveUpdates,
+} from '@/lib/agent-tools/client-hooks'
 import { useUIStore } from '@/stores/ui-store'
 import { SourceSwitcher } from './source-switcher'
 import { ThemeToggle } from '@/components/hud/theme-toggle'
 
 export function ShellHeader() {
+  const { toolId } = useAgentTool()
   const rightRailOpen = useUIStore((s) => s.rightRailOpen)
   const toggleRightRail = useUIStore((s) => s.toggleRightRail)
   const [syncing, setSyncing] = useState(false)
+  const liveUpdates = useIngestLiveUpdates(toolId)
+  const indexingSourceLabel = liveUpdates.currentSource
+    ? getSourceName(liveUpdates.currentSource)
+    : toolId === 'all'
+      ? 'All'
+      : getSourceName(toolId)
 
   const handleSync = useCallback(async () => {
     if (syncing) return
@@ -43,6 +56,14 @@ export function ShellHeader() {
 
       {/* Controls */}
       <div className="flex items-center gap-3.5 text-xs tracking-[0.12em]">
+        {liveUpdates.indexing && (
+          <span
+            className="live-indexing-chip"
+            title={`Ingest is ${liveUpdates.phase ?? 'syncing'}${liveUpdates.connected ? '' : ' (SSE reconnecting)'}`}
+          >
+            INDEXING {indexingSourceLabel}
+          </span>
+        )}
         <button
           onClick={handleSync}
           disabled={syncing}

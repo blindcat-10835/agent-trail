@@ -47,6 +47,39 @@ import type {
 } from '@/types/overview'
 
 export const SESSION_REFRESH_EVENT = 'agent-trail:sessions-refresh'
+const LIVE_REFRESH_DEBOUNCE_MS = 350
+
+const LIVE_REFRESH_EVENTS = new Set([
+  'session_created',
+  'session_updated',
+  'session_removed',
+  'sync_complete',
+])
+
+const INDEXING_PHASES = new Set(['starting', 'discovering', 'warming', 'indexing'])
+
+interface IngestSchedulerStatus {
+  active?: boolean
+  queued?: boolean
+  activeSourceType?: string | null
+}
+
+interface IngestHealthResponse {
+  status?: string
+  ready?: boolean
+  sync?: {
+    phase?: string | null
+    currentSource?: string | null
+    scheduler?: IngestSchedulerStatus | null
+  } | null
+}
+
+export interface IngestLiveUpdateStatus {
+  connected: boolean
+  indexing: boolean
+  phase: string | null
+  currentSource: string | null
+}
 
 export const DEFAULT_SESSIONS_RAIL_QUERY: Record<string, string> = {
   limit: '100',
@@ -372,6 +405,28 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback
 }
 
+function liveStatusFromHealth(health: IngestHealthResponse): Omit<IngestLiveUpdateStatus, 'connected'> {
+  const phase = health.sync?.phase ?? null
+  const scheduler = health.sync?.scheduler ?? null
+  const currentSource = scheduler?.activeSourceType ?? health.sync?.currentSource ?? null
+
+  return {
+    indexing:
+      health.ready === false ||
+      (phase !== null && INDEXING_PHASES.has(phase)) ||
+      scheduler?.active === true ||
+      scheduler?.queued === true,
+    phase,
+    currentSource,
+  }
+}
+
+function eventMatchesTool(toolId: AgentToolId, event: SSEEvent): boolean {
+  if (toolId === 'all') return true
+  const source = event.data.source
+  return typeof source !== 'string' || source === toolId
+}
+
 function useCachedToolApi<T>(
   toolId: string,
   path: string,
@@ -432,6 +487,41 @@ function useCachedToolApi<T>(
     }
     // cacheKey fully represents path + query; avoiding query identity prevents
     // repeated background requests when callers pass equivalent object literals.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheKey, toolId, path, emptyData, fallbackError])
+
+  useEffect(() => {
+    let cancelled = false
+
+    function handleRefresh() {
+      fetchCachedToolApi<T>(cacheKey, toolId, path, query)
+        .then((data) => {
+          if (cancelled) return
+          setState({
+            cacheKey,
+            data,
+            loading: false,
+            error: null,
+          })
+        })
+        .catch((err) => {
+          if (cancelled) return
+          setState((prev) => ({
+            cacheKey,
+            data: prev.cacheKey === cacheKey ? prev.data : emptyData,
+            loading: false,
+            error: errorMessage(err, fallbackError),
+          }))
+        })
+    }
+
+    window.addEventListener(SESSION_REFRESH_EVENT, handleRefresh)
+    return () => {
+      cancelled = true
+      window.removeEventListener(SESSION_REFRESH_EVENT, handleRefresh)
+    }
+    // cacheKey fully represents path + query; avoiding query identity prevents
+    // repeated listener churn when callers pass equivalent object literals.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheKey, toolId, path, emptyData, fallbackError])
 
@@ -1397,6 +1487,11 @@ export function useSSE(
   const [connected, setConnected] = useState(false)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const mountedRef = useRef(true)
+  const onEventRef = useRef(onEvent)
+
+  useEffect(() => {
+    onEventRef.current = onEvent
+  }, [onEvent])
 
   useEffect(() => {
     mountedRef.current = true
@@ -1425,7 +1520,7 @@ export function useSSE(
             event: msg.type || 'message',
             data: JSON.parse(msg.data),
           }
-          onEvent?.(event)
+          onEventRef.current?.(event)
         } catch {
           // Ignore parse errors on malformed SSE data
         }
@@ -1442,7 +1537,7 @@ export function useSSE(
       for (const eventType of eventTypes) {
         es.addEventListener(eventType, ((msg: MessageEvent) => {
           try {
-            onEvent?.({ event: eventType, data: JSON.parse(msg.data) })
+            onEventRef.current?.({ event: eventType, data: JSON.parse(msg.data) })
           } catch {
             // Ignore parse errors
           }
@@ -1475,6 +1570,78 @@ export function useSSE(
   }, [toolId, sessionId])
 
   return { connected }
+}
+
+export function useIngestLiveUpdates(toolId: AgentToolId): IngestLiveUpdateStatus {
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [status, setStatus] = useState<Omit<IngestLiveUpdateStatus, 'connected'>>({
+    indexing: false,
+    phase: null,
+    currentSource: null,
+  })
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const health = await fetchToolApi<IngestHealthResponse>(toolId, '/health')
+      setStatus(liveStatusFromHealth(health))
+    } catch {
+      setStatus({
+        indexing: false,
+        phase: null,
+        currentSource: null,
+      })
+    }
+  }, [toolId])
+
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimerRef.current) return
+
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = undefined
+      notifySessionsRefresh()
+      void refreshStatus()
+    }, LIVE_REFRESH_DEBOUNCE_MS)
+  }, [refreshStatus])
+
+  const handleLiveEvent = useCallback((event: SSEEvent) => {
+    if (LIVE_REFRESH_EVENTS.has(event.event) && eventMatchesTool(toolId, event)) {
+      scheduleRefresh()
+      return
+    }
+
+    if (event.event === 'sync_complete') {
+      void refreshStatus()
+    }
+  }, [refreshStatus, scheduleRefresh, toolId])
+
+  const { connected } = useSSE(toolId, undefined, handleLiveEvent)
+
+  useEffect(() => {
+    let cancelled = false
+
+    void Promise.resolve().then(() => {
+      if (!cancelled) {
+        void refreshStatus()
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [refreshStatus])
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current)
+      }
+    }
+  }, [])
+
+  return {
+    connected,
+    ...status,
+  }
 }
 
 // ============================================================================
