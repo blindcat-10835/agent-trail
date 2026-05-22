@@ -34,7 +34,7 @@ const VALID_SOURCES = ['openclaw', 'claude-code', 'codex', 'opencode', 'qoder'] 
 const COST_EXCLUDED_SOURCES = ['qoder'] as const;
 
 const UPDATED_AT_EXPR =
-  "MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, ''))";
+  "CASE WHEN source = 'qoder' THEN MAX(COALESCE(ended_at, ''), COALESCE(started_at, '')) ELSE MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, '')) END";
 
 function sessionTotalTokensExpr(alias?: string): string {
   const prefix = alias ? `${alias}.` : '';

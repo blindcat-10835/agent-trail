@@ -86,6 +86,69 @@ describe('sessions API', () => {
     expect(body.sessions[0].updatedAt).toBe('2025-01-01T00:00:00.000Z')
   })
 
+  it('ignores whole-database file_mtime for Qoder updated_at sorting', async () => {
+    const db = getDatabase()
+    const insert = db.prepare(`
+      INSERT INTO sessions (
+        id, source, project, name, started_at, ended_at, status,
+        message_count, user_message_count, total_output_tokens, has_tool_calls,
+        parser_malformed_lines, is_truncated, termination_status,
+        file_path, file_mtime, last_sync_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    insert.run(
+      'qoder:older-session-fresh-db',
+      'qoder',
+      '/project',
+      'Older session in recently touched DB',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:10:00.000Z',
+      'idle',
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      '',
+      '/tmp/qoder/local.db#older',
+      '2026-05-01T00:00:00.000Z',
+      '2026-05-01T00:00:00.000Z',
+    )
+    insert.run(
+      'qoder:newer-session-stale-db',
+      'qoder',
+      '/project',
+      'Newer session in stale DB',
+      '2026-02-01T00:00:00.000Z',
+      '2026-02-01T00:10:00.000Z',
+      'idle',
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      '',
+      '/tmp/qoder/local.db#newer',
+      '2026-02-01T00:10:00.000Z',
+      '2026-02-01T00:10:00.000Z',
+    )
+
+    const response = await sessionsRoutes.request(
+      'http://localhost/api/v1/sessions?source=qoder&sort=updated_at&order=desc',
+    )
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.sessions.map((session: { id: string }) => session.id)).toEqual([
+      'qoder:newer-session-stale-db',
+      'qoder:older-session-fresh-db',
+    ])
+    expect(body.sessions[1].updatedAt).toBe('2026-01-01T00:10:00.000Z')
+  })
+
   describe('Codex subagent filtering via relationship_type', () => {
     function insertSessionRow(
       db: Database.Database,
