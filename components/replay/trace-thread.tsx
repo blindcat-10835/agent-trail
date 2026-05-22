@@ -15,6 +15,7 @@ import { SubagentBlock } from './subagent-block'
 import { ThinkingBlock } from './thinking-block'
 import { SystemEventBlock } from './system-event-block'
 import { getActivityKey, getMessageKey } from './key-utils'
+import { useStarredStore } from '@/stores/starred-store'
 
 interface TraceThreadProps {
   session: TraceSession | null
@@ -516,6 +517,9 @@ export function TraceThread({
   const resolvedSessionId = session?.id ?? sessionId
   const visibleSessionId = session?.sourceSessionId ?? resolvedSessionId
 
+  const isStarred = useStarredStore((s) => s.isStarred(resolvedSessionId))
+  const toggleStar = useStarredStore((s) => s.toggle)
+
   return (
     <div className="v2-root">
       <div className="v2-hud">
@@ -550,6 +554,13 @@ export function TraceThread({
             )}
           </div>
         </div>
+        <button
+          className={`v2-hud-star${isStarred ? ' active' : ''}`}
+          title={isStarred ? 'Remove from favorites' : 'Add to favorites'}
+          onClick={() => toggleStar(resolvedSessionId)}
+        >
+          ★
+        </button>
         <div className="v2-hud-stats">
           <div className="v2-hud-stat">
             <span className="v2-hud-k">TURNS</span>
