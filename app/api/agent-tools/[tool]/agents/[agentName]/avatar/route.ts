@@ -6,8 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { assertSourceToolId } from '@/lib/agent-tools/registry'
+import { getIngestBaseUrl } from '@/lib/ingest-url'
 
-const INGEST_BASE = process.env.INGEST_URL || 'http://localhost:8078'
+const INGEST_BASE = getIngestBaseUrl()
 const INGEST_FETCH_TIMEOUT_MS = 5_000
 
 export async function GET(
@@ -17,7 +18,7 @@ export async function GET(
   const { tool, agentName } = await params
 
   try {
-    const toolId = assertSourceToolId(tool)
+    assertSourceToolId(tool)
 
     // Validate agent name (prevent path traversal)
     if (!agentName || !/^[a-zA-Z0-9_-]{1,64}$/.test(agentName)) {

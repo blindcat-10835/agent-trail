@@ -634,6 +634,67 @@ describe('overview endpoints', () => {
       });
     });
 
+    it('merges same-model totals across sources after canonical normalization', async () => {
+      const db = getDatabase();
+      const now = new Date();
+      const today = now.toISOString().replace('T', ' ').split('.')[0];
+      const fiveDaysAgo = new Date(now.getTime() - 5 * 86400000)
+        .toISOString().replace('T', ' ').split('.')[0];
+
+      const insertSession = db.prepare(`
+        INSERT INTO sessions (
+          id, source, project, name, agent_name, started_at, ended_at, status,
+          message_count, user_message_count, total_output_tokens, total_input_tokens,
+          has_tool_calls, file_path, file_mtime
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const insertMessage = db.prepare(`
+        INSERT INTO messages (id, session_id, ordinal, role, content, model)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      insertSession.run(
+        'cx-2', 'codex', 'project-delta', 'GLM compare', null,
+        fiveDaysAgo, fiveDaysAgo, 'idle',
+        6, 3, 2000, 1000,
+        0, '/tmp/cx-2.jsonl', fiveDaysAgo,
+      );
+      insertSession.run(
+        'op-1', 'opencode', 'project-epsilon', 'OpenCode GLM', null,
+        today, today, 'idle',
+        4, 2, 1200, 800,
+        0, '/tmp/op-1.db', today,
+      );
+      insertMessage.run('msg-cx2-1', 'cx-2', 1, 'user', 'Compare vendors', null);
+      insertMessage.run('msg-cx2-2', 'cx-2', 2, 'assistant', 'Using GLM', 'glm-5.1');
+      insertMessage.run('msg-op1-1', 'op-1', 1, 'user', 'Use OpenCode', null);
+      insertMessage.run('msg-op1-2', 'op-1', 2, 'assistant', 'Provider-prefixed GLM', 'zhipuai-coding-plan/glm-5.1');
+
+      const res = await app.request('/api/v1/overview/top-models');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const byName = new Map(
+        body.models.map((model: {
+          name: string;
+          sessionCount: number;
+          totalTokens: number;
+          cost: number | null;
+        }) => [model.name, model]),
+      );
+
+      expect(byName.get('glm5.1')).toMatchObject({
+        sessionCount: 2,
+        totalTokens: 5000,
+        cost: 0.0166,
+      });
+      expect(byName.has('glm-5.1')).toBe(false);
+      expect(byName.has('zhipuai-coding-plan/glm-5.1')).toBe(false);
+
+      db.prepare(`DELETE FROM messages WHERE session_id IN ('cx-2', 'op-1')`).run();
+      db.prepare(`DELETE FROM sessions WHERE id IN ('cx-2', 'op-1')`).run();
+    });
+
     it('sorts models by estimated cost when requested', async () => {
       const res = await app.request('/api/v1/overview/top-models?sortBy=cost');
       expect(res.status).toBe(200);

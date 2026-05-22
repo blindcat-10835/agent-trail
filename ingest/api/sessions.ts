@@ -11,6 +11,7 @@ import { Hono } from 'hono';
 import { getDatabase } from '../db';
 import { TraceSession, SessionStatus, TraceSource } from '@/types/trace';
 import { estimateModelCost } from '../pricing/model-pricing.js';
+import { getDisplayModelName } from '../pricing/normalize-model.js';
 
 export const sessionsRoutes = new Hono();
 
@@ -503,7 +504,7 @@ function parseSessionRow(row: SessionRow): TraceSession {
     cwd: row.cwd || undefined,
     gitBranch: row.git_branch || undefined,
     agentName: row.agent_name || undefined,
-    model: row.model || undefined,
+    model: getDisplayModelName(row.model) || undefined,
     summary: summary || undefined,
     metrics: {
       messageCount: row.message_count,

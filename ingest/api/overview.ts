@@ -21,6 +21,10 @@ import {
   type PricingStatus,
   type TokenUsageForPricing,
 } from '../pricing/model-pricing.js';
+import {
+  getCanonicalModelKey,
+  getDisplayModelName,
+} from '../pricing/normalize-model.js';
 
 export const overviewRoutes = new Hono();
 
@@ -566,27 +570,66 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
     total_tokens: number;
   }>;
 
-  const mapped = models.map((m) => {
-    const costEstimate = estimateModelCost(m.name, {
-      inputTokens: m.input_tokens,
-      outputTokens: m.output_tokens,
-      cacheReadTokens: m.cache_read_tokens,
-      cacheWriteTokens: m.cache_write_tokens,
-      reasoningTokens: m.reasoning_tokens,
+  const mergedByCanonicalModel = new Map<string, {
+    canonicalName: string;
+    sessionCount: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    reasoningTokens: number;
+    totalTokens: number;
+  }>();
+
+  for (const modelRow of models) {
+    const canonicalName = getCanonicalModelKey(modelRow.name);
+    if (!canonicalName) continue;
+
+    const existing = mergedByCanonicalModel.get(canonicalName);
+    if (existing) {
+      existing.sessionCount += modelRow.session_count;
+      existing.inputTokens += modelRow.input_tokens;
+      existing.outputTokens += modelRow.output_tokens;
+      existing.cacheReadTokens += modelRow.cache_read_tokens;
+      existing.cacheWriteTokens += modelRow.cache_write_tokens;
+      existing.reasoningTokens += modelRow.reasoning_tokens;
+      existing.totalTokens += modelRow.total_tokens;
+      continue;
+    }
+
+    mergedByCanonicalModel.set(canonicalName, {
+      canonicalName,
+      sessionCount: modelRow.session_count,
+      inputTokens: modelRow.input_tokens,
+      outputTokens: modelRow.output_tokens,
+      cacheReadTokens: modelRow.cache_read_tokens,
+      cacheWriteTokens: modelRow.cache_write_tokens,
+      reasoningTokens: modelRow.reasoning_tokens,
+      totalTokens: modelRow.total_tokens,
+    });
+  }
+
+  const mapped = [...mergedByCanonicalModel.values()].map((model) => {
+    const costEstimate = estimateModelCost(model.canonicalName, {
+      inputTokens: model.inputTokens,
+      outputTokens: model.outputTokens,
+      cacheReadTokens: model.cacheReadTokens,
+      cacheWriteTokens: model.cacheWriteTokens,
+      reasoningTokens: model.reasoningTokens,
     });
 
     return {
-      name: m.name,
-      sessionCount: m.session_count,
-      inputTokens: m.input_tokens,
-      outputTokens: m.output_tokens,
-      cacheReadTokens: m.cache_read_tokens,
-      cacheWriteTokens: m.cache_write_tokens,
-      reasoningTokens: m.reasoning_tokens,
-      totalTokens: m.total_tokens,
+      name: getDisplayModelName(model.canonicalName) ?? model.canonicalName,
+      sessionCount: model.sessionCount,
+      inputTokens: model.inputTokens,
+      outputTokens: model.outputTokens,
+      cacheReadTokens: model.cacheReadTokens,
+      cacheWriteTokens: model.cacheWriteTokens,
+      reasoningTokens: model.reasoningTokens,
+      totalTokens: model.totalTokens,
       sharePercent:
         totalRow.total_tokens > 0
-          ? Math.round((m.total_tokens / totalRow.total_tokens) * 10000) / 100
+          ? Math.round((model.totalTokens / totalRow.total_tokens) * 10000) / 100
           : 0,
       cost: costEstimate.cost,
       pricingStatus: costEstimate.pricingStatus,
@@ -596,7 +639,7 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
   // Sort by cost when requested (nulls last)
   const result = sortBy === 'cost'
     ? [...mapped].sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1))
-    : mapped;
+    : [...mapped].sort((a, b) => b.totalTokens - a.totalTokens);
 
   return c.json({ models: result.slice(0, limit) });
 });

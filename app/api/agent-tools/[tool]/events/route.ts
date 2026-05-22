@@ -15,6 +15,7 @@
 
 import { NextRequest } from 'next/server'
 import { assertSourceToolId } from '@/lib/agent-tools/registry'
+import { getIngestBaseUrl } from '@/lib/ingest-url'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -29,7 +30,7 @@ export async function GET(
     assertSourceToolId(tool)
 
     // Proxy SSE stream from ingest
-    const ingestUrl = process.env.INGEST_URL || 'http://localhost:8078'
+    const ingestUrl = getIngestBaseUrl()
 
     // Forward sessionId query param if present (for per-session SSE)
     const sessionId = request.nextUrl.searchParams.get('sessionId')
@@ -61,7 +62,7 @@ export async function GET(
         'X-Accel-Buffering': 'no',
       },
     })
-  } catch (err) {
+  } catch {
     return new Response(JSON.stringify({ error: 'SSE proxy error' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },

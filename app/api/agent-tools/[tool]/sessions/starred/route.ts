@@ -5,13 +5,14 @@
  * Stars are global (not scoped to a specific tool source).
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { getIngestBaseUrl } from '@/lib/ingest-url'
 
-const INGEST_PORT = process.env.INGEST_PORT || '8078'
+const INGEST_BASE = getIngestBaseUrl()
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
   try {
-    const res = await fetch(`http://localhost:${INGEST_PORT}/api/v1/sessions/starred`)
+    const res = await fetch(`${INGEST_BASE}/api/v1/sessions/starred`)
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch (err) {

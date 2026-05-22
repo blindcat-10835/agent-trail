@@ -33,6 +33,7 @@ describe('model pricing', () => {
 
   it('matches dashboard model aliases from the pricing table', () => {
     expect(estimateModelCost('glm-5.1', { inputTokens: 1_000_000, outputTokens: 0 }).cost).toBe(1.4);
+    expect(estimateModelCost('zhipuai-coding-plan/glm-5.1', { inputTokens: 1_000_000, outputTokens: 0 }).cost).toBe(1.4);
     expect(estimateModelCost('MiniMax-M2.5-highspeed', { inputTokens: 0, outputTokens: 1_000_000 }).cost).toBe(1.213);
     expect(estimateModelCost('claude-opus-4-7', { inputTokens: 0, outputTokens: 1_000_000 }).cost).toBe(25);
   });

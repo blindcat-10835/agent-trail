@@ -460,7 +460,7 @@ describe('parseOpencodeSession', () => {
     expect(result.session.relationshipType).toBe('subagent');
   });
 
-  it('parses model JSON to provider/id format', async () => {
+  it('normalizes model JSON to a canonical model key', async () => {
     const sessionId = randomUUID();
 
     const fixture = track(createOpencodeTestDB([
@@ -473,7 +473,23 @@ describe('parseOpencodeSession', () => {
 
     const result = await parseOpencodeSession(fixture.dbPath, sessionId);
 
-    expect(result.session.model).toBe('anthropic/claude-sonnet-4-20250514');
+    expect(result.session.model).toBe('claude-sonnet-4-20250514');
+  });
+
+  it('drops OpenCode provider plan prefixes from model keys', async () => {
+    const sessionId = randomUUID();
+
+    const fixture = track(createOpencodeTestDB([
+      makeSession({
+        id: sessionId,
+        model: { id: 'glm-5.1', providerID: 'zhipuai-coding-plan' },
+        messages: [],
+      }),
+    ]));
+
+    const result = await parseOpencodeSession(fixture.dbPath, sessionId);
+
+    expect(result.session.model).toBe('glm-5.1');
   });
 
   it('preserves cost 0 with non-zero tokens', async () => {

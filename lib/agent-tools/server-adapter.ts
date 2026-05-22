@@ -16,13 +16,14 @@
 
 import type { TraceSession, TraceTurn } from '@/types/trace'
 import type { SourceToolId } from './types'
+import { getIngestBaseUrl } from '@/lib/ingest-url'
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
 /** Base URL of the ingest service (configurable via env for deployment) */
-const INGEST_BASE = process.env.INGEST_URL || 'http://localhost:8078'
+const INGEST_BASE = getIngestBaseUrl()
 
 /**
  * Session ID validation regex.

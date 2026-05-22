@@ -251,6 +251,30 @@ describe('sessions API', () => {
       expect(body.sessions[0].estimatedCost).toBeGreaterThan(0)
     })
 
+    it('normalizes provider-prefixed model labels in session rows', async () => {
+      const db = getDatabase()
+      insertTableSession(db, 'opencode-glm', {
+        source: 'opencode',
+        name: 'OpenCode GLM session',
+        inputTokens: 800,
+        outputTokens: 1200,
+        totalTokens: 2000,
+      })
+      insertUserMessage(db, 'opencode-glm', 'Normalize this model', 'zhipuai-coding-plan/glm-5.1')
+
+      const response = await sessionsRoutes.request(
+        'http://localhost/api/v1/sessions?source=opencode',
+      )
+      const body = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(body.sessions[0]).toMatchObject({
+        id: 'opencode-glm',
+        model: 'glm5.1',
+      })
+      expect(body.sessions[0].estimatedCost).toBeGreaterThan(0)
+    })
+
     it('sorts by activity count on the backend', async () => {
       const db = getDatabase()
       insertTableSession(db, 'low-activity')

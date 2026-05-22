@@ -24,11 +24,12 @@ import {
   SourceMetadata,
 } from '@/types/trace';
 import { ParseResult, ParseError } from './types';
+import { normalizeModelName } from '../pricing/normalize-model.js';
 
 const BUSY_RETRIES = 3;
 const BUSY_DELAY_MS = 100;
 const REQUIRED_TABLES = ['session', 'message', 'part', 'project'] as const;
-const OPENCODE_SKIP_KEY_VERSION = 'opencode-parser-v2-cost-token-channels';
+const OPENCODE_SKIP_KEY_VERSION = 'opencode-parser-v3-model-normalization';
 type OpencodeTimestamp = string | number | null;
 
 export interface OpencodeSessionRow {
@@ -170,11 +171,17 @@ function parseModelJson(modelStr: string | null): string | undefined {
     if (parsed && typeof parsed === 'object') {
       const provider = parsed.providerID ?? parsed.providerId ?? '';
       const id = parsed.id ?? '';
-      return provider ? `${provider}/${id}` : id || undefined;
+      const normalized = normalizeModelName(provider ? `${provider}/${id}` : id);
+      return normalized || undefined;
     }
-    return typeof parsed === 'string' ? parsed : undefined;
+    if (typeof parsed === 'string') {
+      const normalized = normalizeModelName(parsed);
+      return normalized || undefined;
+    }
+    return undefined;
   } catch {
-    return modelStr || undefined;
+    const normalized = normalizeModelName(modelStr);
+    return normalized || undefined;
   }
 }
 

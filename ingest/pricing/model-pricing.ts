@@ -5,6 +5,8 @@
  * Units: USD per 1M tokens.
  */
 
+import { normalizeModelName } from './normalize-model.js';
+
 export type PricingStatus = 'priced' | 'partial' | 'unknown';
 
 export interface TokenUsageForPricing {
@@ -261,13 +263,6 @@ function findPricingRule(model: string | null | undefined): PricingRule | null {
   const normalized = normalizeModelName(model);
   if (!normalized) return null;
   return PRICING_RULES.find((rule) => rule.match.some((pattern) => pattern.test(normalized))) ?? null;
-}
-
-function normalizeModelName(model: string | null | undefined): string {
-  return (model ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/_/g, '-');
 }
 
 function selectTier(rule: PricingRule, inputTokens: number): PricingTier {

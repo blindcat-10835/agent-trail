@@ -6,8 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { getIngestBaseUrl } from '@/lib/ingest-url'
 
-const INGEST_PORT = process.env.INGEST_PORT || '8078'
+const INGEST_BASE = getIngestBaseUrl()
 
 export async function POST(
   _request: NextRequest,
@@ -16,7 +17,7 @@ export async function POST(
   const { sessionId } = await params
   try {
     const res = await fetch(
-      `http://localhost:${INGEST_PORT}/api/v1/sessions/${encodeURIComponent(sessionId)}/star`,
+      `${INGEST_BASE}/api/v1/sessions/${encodeURIComponent(sessionId)}/star`,
       { method: 'POST' },
     )
     const data = await res.json()
@@ -34,7 +35,7 @@ export async function DELETE(
   const { sessionId } = await params
   try {
     const res = await fetch(
-      `http://localhost:${INGEST_PORT}/api/v1/sessions/${encodeURIComponent(sessionId)}/star`,
+      `${INGEST_BASE}/api/v1/sessions/${encodeURIComponent(sessionId)}/star`,
       { method: 'DELETE' },
     )
     const data = await res.json()
