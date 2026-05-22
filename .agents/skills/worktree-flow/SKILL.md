@@ -40,7 +40,7 @@ This skill handles three actions. Detect intent from the user's phrasing — if 
 
 ## Action: new
 
-Goal: create a fresh worktree at `.worktree/<type>-<desc>/` tracking branch `<type>/<desc>`, branched from up-to-date `main`. If the work corresponds to a backlog item, link them so the item gets auto-updated when the work merges.
+Goal: create a fresh worktree at `.worktree/<type>-<desc>/` on branch `<type>/<desc>`, branched from the local `main` branch. If the work corresponds to a backlog item, link them so the item gets auto-updated when the work merges.
 
 ### Step 1 — Resolve type and description (and optional backlog link)
 
@@ -79,20 +79,35 @@ Decision tree:
 - **Worktree path `.worktree/<type>-<desc>` already exists** — refuse, suggest a different desc.
 - **Current checkout has uncommitted changes on main** — that's fine; worktree creation doesn't touch the current checkout. Just note it.
 
-### Step 3 — Sync main
+### Step 3 — Refresh and verify main
 
-We want the new branch to start from latest main, so fetch first:
+Fetch first so remote state is visible:
 
 ```bash
 git fetch origin main
 ```
 
-We do **not** need to switch to main or pull into the current checkout — `git worktree add` can branch directly from `origin/main`. This keeps the user's current working directory untouched.
+Then compare local `main` with `origin/main`:
+
+```bash
+git log --oneline main..origin/main
+git log --oneline origin/main..main
+```
+
+Use local `main` as the branch point. Local `main` may intentionally contain unpushed project setup, backlog, or planning commits that the new work depends on.
+
+Decision tree:
+- **Local `main` is ahead of `origin/main`** — proceed from local `main`; note that the new branch includes those unpushed commits.
+- **Local `main` is equal to `origin/main`** — proceed from local `main`.
+- **`origin/main` is ahead of local `main`** — stop and ask whether to update local `main` first, or proceed from the current local `main`. Do not silently branch from `origin/main`.
+- **Both have unique commits** — stop and surface the divergence; the user should reconcile `main` before creating a new worktree.
+
+Do **not** switch branches, pull into the main checkout, or stash user work.
 
 ### Step 4 — Create the worktree
 
 ```bash
-git worktree add .worktree/<type>-<desc> -b <type>/<desc> origin/main
+git worktree add .worktree/<type>-<desc> -b <type>/<desc> main
 ```
 
 If `.worktree/` doesn't exist yet, `git worktree add` creates it. Confirm it's in `.gitignore` (it should be — see project setup notes below).
