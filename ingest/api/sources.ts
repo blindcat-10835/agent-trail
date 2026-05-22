@@ -181,16 +181,3 @@ sourcesRoutes.get('/api/v1/sources/:type/status', (c) => {
     sync: ctx?.syncScheduler?.getStatus() ?? null,
   });
 });
-
-// ============================================================================
-// GET /api/v1/events - SSE skeleton endpoint (Phase 6 will implement real push)
-// ============================================================================
-
-sourcesRoutes.get('/api/v1/events', async (c) => {
-  // Return SSE-compatible headers but no real events yet
-  return c.newResponse(null, 200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
-  });
-});
