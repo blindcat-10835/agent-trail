@@ -88,11 +88,18 @@ If `package.json` version disagrees with the last tag, mention it; usually the t
 
 ## Step 3 — Collect closed backlog items
 
-Scan `docs/backlog/*.md` for items with `status: done`. These are work items that finished between the last release and now — they belong in the release notes as a "Closed items" section so users can see exactly what tracked work shipped.
+Closed items can live in **two** places by the time you reach this step:
 
-For each `done` item, capture: `title`, `type`, slug (filename minus `.md`), and `branch` (for the compare link).
+1. **Pre-archived** in `docs/backlog/_done/vX.Y.Z/*.md` — the user (or the `backlog` skill) may have already moved items into the folder matching the new version *before* running ship-release. **Check this folder first** using the recommended next version from Step 2. If it exists and has `.md` files, those are the canonical "shipped" set for this release.
+2. **Still active** in `docs/backlog/*.md` with `status: done` — items finished since the last release but not yet archived.
 
-If there are zero `done` items, skip the "Closed items" section entirely.
+Read both, then **union** them (dedupe by slug — pre-archived wins). The combined set is what goes into the "Closed items" section.
+
+For each item, capture: `title`, `type`, slug (filename minus `.md`), and `branch` (for the compare link). Also remember whether it was pre-archived or still active — Step 7 only needs to move the still-active ones.
+
+If both sources are empty, skip the "Closed items" section entirely.
+
+> **Why check the version folder first:** the user frequently pre-archives items via the `backlog` skill (commits like `docs(backlog): reorganize done items into vX.Y.Z archive`). If you only scan top-level, you'll publish notes with an empty "Closed items" section even though the work is sitting right there in `_done/vX.Y.Z/`.
 
 ## Step 4 — Draft release notes
 
@@ -187,11 +194,11 @@ Why `gh release create` instead of `git tag && git push --tags`:
 
 ## Step 7 — Archive closed backlog items
 
-Now that `vX.Y.Z` exists as a tag, move every `docs/backlog/*.md` with `status: done` into `docs/backlog/_done/vX.Y.Z/`. Use `git mv` so the move is tracked cleanly.
+Now that `vX.Y.Z` exists as a tag, move any **still-active** `docs/backlog/*.md` with `status: done` (the items from Step 3 that were *not* pre-archived) into `docs/backlog/_done/vX.Y.Z/`. Use `git mv` so the move is tracked cleanly.
 
 ```bash
 mkdir -p docs/backlog/_done/vX.Y.Z
-# for each <slug>.md with status: done:
+# for each still-active <slug>.md with status: done:
 git mv docs/backlog/<slug>.md docs/backlog/_done/vX.Y.Z/<slug>.md
 ```
 
@@ -205,7 +212,9 @@ git push origin main
 
 This commit goes on main *after* the tag, which is fine — the tag stays on the version-bump commit, and the archive is housekeeping that lives on the post-tag history.
 
-If there were zero `done` items, skip this step entirely (no empty `_done/vX.Y.Z/` directory, no empty commit).
+**Skip this step entirely if:**
+- There were zero `done` items (no commit needed), OR
+- All closed items were already pre-archived in Step 3 (nothing left to move — don't make an empty commit).
 
 ## Step 8 — Report and monitor
 
