@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
+import { useUIStore } from '@/stores/ui-store'
 import {
   useOverviewAggregates,
   useTopModels,
@@ -43,7 +44,8 @@ const OVERVIEW_SCROLL_CLASS = 'h-full min-h-0 min-w-0 overflow-y-auto p-[18px_22
 
 export function OverviewPage() {
   const { toolId } = useAgentTool()
-  const [timeWindow, setTimeWindow] = useState<TimeWindow>('30d')
+  const timeWindow = useUIStore((s) => s.overviewTimeWindow)
+  const setTimeWindow = useUIStore((s) => s.setOverviewTimeWindow)
   const [modelSortBy, setModelSortBy] = useState<string>('tokens')
   const [projectSortBy, setProjectSortBy] = useState<string>('tokens')
 
