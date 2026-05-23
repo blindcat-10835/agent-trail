@@ -1,6 +1,8 @@
 # Agent Trail
 
-**A local dashboard for tracking and replaying AI coding agent sessions — token usage, cost, tool calls, and subagent trees, all in one place.**
+**Agent Trail is a local AI coding agent observability dashboard for Claude Code, Codex, OpenCode, OpenClaw, and Qoder.**
+
+Track token usage, estimated cost, tool calls, subagent trees, and replay full coding-agent sessions from local JSONL / SQLite files — no cloud, no telemetry.
 
 ![Overview dashboard](image/README/1779286882349.png)
 
@@ -140,7 +142,7 @@ docker image rm ghcr.io/camtrik/agent-trail:latest
 
 ---
 
-## Supported agents
+## Supported AI coding agents
 
 | Agent                 | Source files                              | Notes                                     |
 | --------------------- | ----------------------------------------- | ----------------------------------------- |
@@ -149,6 +151,19 @@ docker image rm ghcr.io/camtrik/agent-trail:latest
 | **Codex**       | `~/.codex/sessions/**/*.jsonl`          | Parent-child session tree                 |
 | **OpenCode**    | `~/.local/share/opencode/opencode.db`   | SQLite source                             |
 | **Qoder**       | local cache DB                            | Token counts (cost excluded from rollups) |
+
+---
+
+## Use cases
+
+Agent Trail is useful if you are:
+
+- Inspecting **Claude Code** tool calls, subagent trees, and injected context
+- Replaying **Codex**, **OpenCode**, **OpenClaw**, or **Qoder** coding sessions turn by turn
+- Tracking LLM **token usage and estimated cost** across multiple agents locally
+- Analyzing which sessions or projects consumed the most tokens
+- Debugging expensive or failed AI coding agent runs
+- Looking for a **local-first, no-telemetry** alternative to cloud observability tools
 
 ---
 

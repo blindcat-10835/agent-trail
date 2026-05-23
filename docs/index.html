@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Trail — Local Dashboard for Claude Code, Codex, OpenCode and AI Coding Agents</title>
+  <meta name="description" content="Agent Trail is a local AI coding agent observability dashboard for Claude Code, Codex, OpenCode, OpenClaw, and Qoder. Track token usage, estimated cost, tool calls, subagent trees, and replay full sessions — no cloud, no telemetry." />
+  <meta name="keywords" content="Claude Code dashboard, Codex session viewer, AI coding agent dashboard, token usage tracker, subagent replay, agent observability, LLMOps, local developer tools" />
+  <meta property="og:title" content="Agent Trail — Local Dashboard for AI Coding Agents" />
+  <meta property="og:description" content="Track Claude Code, Codex, OpenCode, OpenClaw, and Qoder sessions locally. Token usage, cost tracking, tool calls, subagent trees, and session replay." />
+  <meta property="og:type" content="website" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* === TOKENS (from colors_and_type.css) === */
+    :root {
+      --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-mono: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+      --accent-h: 75;
+      --accent:       oklch(0.8  0.17 var(--accent-h));
+      --accent-dim:   oklch(0.5  0.12 var(--accent-h));
+      --accent-ghost: oklch(0.32 0.08 var(--accent-h));
+      --background:       oklch(0.14  0.008 160);
+      --foreground:       oklch(0.96  0     0);
+      --foreground-ghost: oklch(0.38  0.008 160);
+      --card:             oklch(0.185 0.008 160);
+      --card-foreground:  oklch(0.72  0.008 160);
+      --muted:            oklch(0.235 0.008 160);
+      --muted-foreground: oklch(0.52  0.008 160);
+      --border:           oklch(0.3   0.008 160);
+      --border-strong:    oklch(0.4   0.01  160);
+      --destructive:      oklch(0.704 0.191 22.216);
+      --status-success:   oklch(0.76  0.17  145);
+      --status-warning:   oklch(0.76  0.17  75);
+      --radius: 0.625rem;
+      --clip-sm: polygon(0 8px,  8px 0,  calc(100% - 8px) 0,  100% 8px,  100% calc(100% - 8px),  calc(100% - 8px) 100%,  8px 100%,  0 calc(100% - 8px));
+      --clip-md: polygon(0 14px, 14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
+    }
+
+    /* === RESET + BASE === */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      font-family: var(--font-sans);
+      background: var(--background);
+      color: var(--foreground);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* === HUD BACKDROP === */
+    body { position: relative; }
+    body::before, body::after {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    }
+    body::before {
+      background-image:
+        linear-gradient(rgba(95,212,255,0.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(95,212,255,0.028) 1px, transparent 1px);
+      background-size: 48px 48px;
+    }
+    body::after {
+      background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 4px);
+    }
+    .page { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 12px 80px; }
+
+    /* === HEADER === */
+    .site-header {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 48px; padding: 0 12px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--card), var(--background));
+      position: sticky; top: 0; z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-tile {
+      width: 28px; height: 28px;
+      background: var(--accent); clip-path: var(--clip-sm);
+      display: grid; place-items: center;
+      color: var(--background);
+      font: 700 14px/1 var(--font-sans);
+    }
+    .brand-wordmark {
+      font: 700 14px/1 var(--font-sans);
+      letter-spacing: .3em; text-transform: uppercase; color: var(--accent);
+    }
+    .header-links { display: flex; gap: 8px; align-items: center; }
+    .hud-chip {
+      font: 600 11px/1 var(--font-sans); letter-spacing: .14em; text-transform: uppercase;
+      padding: 5px 10px; border: 1px solid var(--border);
+      clip-path: var(--clip-sm); background: transparent; color: var(--muted-foreground);
+      cursor: pointer; transition: all .15s; display: inline-block;
+    }
+    .hud-chip:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
+    .hud-chip.primary {
+      color: var(--background); background: var(--accent); border-color: var(--accent);
+    }
+    .hud-chip.primary:hover { opacity: .85; text-decoration: none; }
+    .header-hairline {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: .6;
+    }
+
+    /* === HERO === */
+    .hero {
+      padding: 64px 0 48px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 20px;
+    }
+    .eyebrow {
+      font: 600 11px/1 var(--font-sans); letter-spacing: .22em; text-transform: uppercase; color: var(--muted-foreground);
+    }
+    .hero-title {
+      font: 700 clamp(1.8rem, 5vw, 2.6rem)/1.15 var(--font-sans);
+      letter-spacing: -.02em; color: var(--foreground);
+    }
+    .hero-title span { color: var(--accent); text-shadow: 0 0 18px color-mix(in oklch, var(--accent) 35%, transparent); }
+    .hero-sub {
+      font-size: 13px; color: var(--muted-foreground); max-width: 560px; line-height: 1.65;
+    }
+    .badge-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .badge {
+      font: 600 9.5px/1 var(--font-sans); letter-spacing: .2em; text-transform: uppercase;
+      padding: 5px 10px; border: 1px solid var(--border); color: var(--muted-foreground); background: var(--card);
+    }
+    .cta-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .hud-divider {
+      width: 100%; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: .4;
+      margin: 8px 0;
+    }
+
+    /* === SECTION === */
+    section { padding: 40px 0 0; }
+    .section-head {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 20px;
+    }
+    .section-label {
+      font: 600 11px/1 var(--font-sans); letter-spacing: .18em; text-transform: uppercase; color: var(--muted-foreground); white-space: nowrap;
+    }
+    .section-rule {
+      flex: 1; height: 1px;
+      background: repeating-linear-gradient(90deg, color-mix(in oklch, var(--border) 80%, transparent) 0 4px, transparent 4px 8px);
+    }
+
+    /* === SCREENSHOTS === */
+    .screenshot-wrap {
+      border: 1px solid var(--border); background: var(--card); overflow: hidden;
+      clip-path: var(--clip-md); margin-bottom: 8px;
+    }
+    .screenshot-wrap img { width: 100%; display: block; }
+    .screenshot-cap { font: 600 10px/1 var(--font-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted-foreground); text-align: center; padding: 6px 0 20px; }
+
+    /* === FEATURES GRID === */
+    .features-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px;
+    }
+    .feat-card {
+      position: relative; background: var(--card); border: 1px solid var(--border); padding: 14px 16px 14px 20px; overflow: hidden;
+    }
+    .feat-card::before {
+      content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+      background: var(--accent); box-shadow: 0 0 8px var(--accent);
+    }
+    .feat-title { font: 600 12px/1.3 var(--font-sans); color: var(--foreground); margin-bottom: 4px; }
+    .feat-desc { font-size: 11px; color: var(--muted-foreground); line-height: 1.5; }
+
+    /* === AGENTS GRID === */
+    .agents-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;
+    }
+    .agent-card {
+      background: var(--card); border: 1px solid var(--border); padding: 16px 16px 16px 20px;
+      position: relative; overflow: hidden; clip-path: var(--clip-sm);
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .agent-card:hover {
+      border-color: color-mix(in oklch, var(--ac) 50%, var(--border));
+      box-shadow: 0 0 18px color-mix(in oklch, var(--ac) 12%, transparent);
+    }
+    .agent-card::before {
+      content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+      background: var(--ac); box-shadow: 0 0 8px var(--ac);
+    }
+    .agent-name {
+      font: 700 13px/1 var(--font-sans); letter-spacing: .04em;
+      color: var(--ac); text-shadow: 0 0 10px color-mix(in oklch, var(--ac) 30%, transparent);
+      margin-bottom: 10px;
+    }
+    .agent-tags { display: flex; flex-direction: column; gap: 4px; }
+    .agent-tag {
+      font: 500 10px/1 var(--font-sans); letter-spacing: .08em;
+      color: var(--card-foreground);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .agent-tag::before { content: "▸"; color: var(--ac); opacity: .7; font-size: 9px; flex-shrink: 0; }
+
+    /* === INSTALL === */
+    .install-stack { display: flex; flex-direction: column; gap: 8px; }
+    .install-card {
+      background: var(--card); border: 1px solid var(--border); padding: 16px 20px; clip-path: var(--clip-sm);
+    }
+    .install-label {
+      font: 700 9.5px/1 var(--font-sans); letter-spacing: .22em; text-transform: uppercase; color: var(--muted-foreground); margin-bottom: 10px;
+    }
+    .install-card pre {
+      font: 500 12px/1.7 var(--font-mono); color: oklch(0.76 0.17 195); white-space: pre-wrap;
+    }
+    .install-card pre .cmd { color: var(--accent); font-weight: 600; }
+    .install-card pre .comment { color: var(--muted-foreground); font-size: 11px; }
+
+    /* === PRIVACY === */
+    .privacy-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-left: 2px solid var(--accent);
+      padding: 18px 20px;
+      box-shadow: inset 0 0 24px color-mix(in oklch, var(--accent) 5%, transparent);
+    }
+    .privacy-title {
+      font: 700 11px/1 var(--font-sans); letter-spacing: .2em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px;
+    }
+    .privacy-body { font-size: 12px; color: var(--card-foreground); line-height: 1.65; }
+    .privacy-body strong { color: var(--foreground); font-weight: 600; }
+
+    /* === STATUS BAR === */
+    .site-footer {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+      height: 26px; display: flex; justify-content: space-between; align-items: center;
+      padding: 0 14px; border-top: 1px solid var(--border);
+      font: 500 10px/1 var(--font-sans); letter-spacing: .12em; color: var(--muted-foreground);
+      background: var(--background);
+    }
+    .footer-hairline {
+      position: absolute; left: 0; right: 0; top: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: .4;
+    }
+    .sb-group { display: flex; gap: 18px; }
+    .sb-group b { color: var(--foreground); font-weight: 600; margin-left: 4px; font-family: var(--font-mono); }
+    .trace { color: var(--accent); font-weight: 700; letter-spacing: .2em; text-shadow: 0 0 8px var(--accent); }
+    .live-dot {
+      display: inline-block; width: 5px; height: 5px; background: var(--status-success);
+      border-radius: 50%; box-shadow: 0 0 6px var(--status-success); margin-right: 5px;
+      animation: pulse 1.4s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="brand">
+    <div class="brand-tile">◆</div>
+    <span class="brand-wordmark">Agent Trail</span>
+  </div>
+  <div class="header-links">
+    <a class="hud-chip" href="https://github.com/camtrik/agent-trail">GitHub</a>
+    <a class="hud-chip" href="https://www.npmjs.com/package/@camtrik/agent-trail">npm</a>
+    <a class="hud-chip primary" href="https://github.com/camtrik/agent-trail#install">Install</a>
+  </div>
+  <div class="header-hairline"></div>
+</header>
+
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero">
+    <p class="eyebrow">Local · No Cloud · No Telemetry</p>
+    <h1 class="hero-title">
+      AI coding agent<br /><span>observability dashboard</span>
+    </h1>
+    <p class="hero-sub">
+      Track token usage, estimated cost, tool calls, subagent trees, and replay full sessions
+      from local JSONL / SQLite files — Claude Code, Codex, OpenCode, OpenClaw, and Qoder.
+    </p>
+    <div class="badge-row">
+      <span class="badge">No cloud</span>
+      <span class="badge">No telemetry</span>
+      <span class="badge">Local-first</span>
+      <span class="badge">npm · Docker · source</span>
+    </div>
+    <div class="cta-row">
+      <a class="hud-chip primary" href="https://github.com/camtrik/agent-trail">◆ View on GitHub</a>
+      <a class="hud-chip" href="https://www.npmjs.com/package/@camtrik/agent-trail">npm package</a>
+    </div>
+  </div>
+
+  <div class="hud-divider"></div>
+
+  <!-- SCREENSHOTS -->
+  <section>
+    <div class="section-head">
+      <span class="section-label">Screenshots</span>
+      <div class="section-rule"></div>
+    </div>
+    <div class="screenshot-wrap">
+      <img src="../image/README/1779286882349.png" alt="Agent Trail overview dashboard — token usage and cost across agents" />
+    </div>
+    <p class="screenshot-cap">Overview — token usage, cost, and live activity across all agents</p>
+    <div class="screenshot-wrap">
+      <img src="../image/README/1779290188740.png" alt="Agent Trail session replay — tool calls and subagent trees" />
+    </div>
+    <p class="screenshot-cap">Session replay — step through turns, expand tool calls, trace subagent trees</p>
+  </section>
+
+  <!-- FEATURES -->
+  <section>
+    <div class="section-head">
+      <span class="section-label">Use cases</span>
+      <div class="section-rule"></div>
+    </div>
+    <div class="features-grid">
+      <div class="feat-card">
+        <div class="feat-title">Turn-by-turn replay</div>
+        <div class="feat-desc">Step through every conversation turn exactly as it happened — user messages, assistant responses, and hidden system context all in one view.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-title">Tool calls & subagent trees</div>
+        <div class="feat-desc">Expand any tool invocation to see its exact inputs and outputs. When an agent spawns subagents, the full nested tree is rendered so you can trace what each one did.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-title">Multi-agent support</div>
+        <div class="feat-desc">One dashboard for Claude Code, Codex, OpenCode, OpenClaw, and Qoder. Switch between agents without leaving the UI.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-title">Token usage & cost tracking</div>
+        <div class="feat-desc">Input, output, cache, and reasoning tokens per turn. Estimated USD cost rolled up by session, project, and model — all computed locally.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AGENTS -->
+  <section>
+    <div class="section-head">
+      <span class="section-label">Supported AI coding agents</span>
+      <div class="section-rule"></div>
+    </div>
+    <div class="agents-grid">
+      <div class="agent-card" style="--ac: oklch(0.80 0.17 75)">
+        <div class="agent-name">Claude Code</div>
+        <div class="agent-tags">
+          <span class="agent-tag">Subagent tree replay</span>
+          <span class="agent-tag">Tool call detail</span>
+          <span class="agent-tag">Per-turn token accounting</span>
+          <span class="agent-tag">Injected context blocks</span>
+        </div>
+      </div>
+      <div class="agent-card" style="--ac: oklch(0.78 0.15 35)">
+        <div class="agent-name">OpenClaw</div>
+        <div class="agent-tags">
+          <span class="agent-tag">Live gateway ingest</span>
+          <span class="agent-tag">Real-time activity feed</span>
+          <span class="agent-tag">Tool call & skill replay</span>
+          <span class="agent-tag">Agent cost overview</span>
+        </div>
+      </div>
+      <div class="agent-card" style="--ac: oklch(0.78 0.10 250)">
+        <div class="agent-name">Codex</div>
+        <div class="agent-tags">
+          <span class="agent-tag">Parent-child session trees</span>
+          <span class="agent-tag">Full turn-by-turn replay</span>
+          <span class="agent-tag">Token usage tracking</span>
+          <span class="agent-tag">Model breakdown</span>
+        </div>
+      </div>
+      <div class="agent-card" style="--ac: oklch(0.78 0.15 200)">
+        <div class="agent-name">OpenCode</div>
+        <div class="agent-tags">
+          <span class="agent-tag">Full session history</span>
+          <span class="agent-tag">Multi-model sessions</span>
+          <span class="agent-tag">Turn-level detail</span>
+          <span class="agent-tag">Cost estimation</span>
+        </div>
+      </div>
+      <div class="agent-card" style="--ac: oklch(0.75 0.20 142)">
+        <div class="agent-name">Qoder</div>
+        <div class="agent-tags">
+          <span class="agent-tag">Session browsing</span>
+          <span class="agent-tag">Token count tracking</span>
+          <span class="agent-tag">Usage trends</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSTALL -->
+  <section>
+    <div class="section-head">
+      <span class="section-label">Install</span>
+      <div class="section-rule"></div>
+    </div>
+    <div class="install-stack">
+      <div class="install-card">
+        <div class="install-label">Option 1 — npm (Node.js 22+)</div>
+        <pre><span class="cmd">npm install -g @camtrik/agent-trail</span>
+<span class="cmd">agent-trail</span></pre>
+      </div>
+      <div class="install-card">
+        <div class="install-label">Option 2 — Docker (no Node.js required)</div>
+        <pre><span class="cmd">docker compose -f docker-compose.image.yml up -d</span>
+<span class="comment"># open http://localhost:3030</span></pre>
+      </div>
+      <div class="install-card">
+        <div class="install-label">Option 3 — From source</div>
+        <pre><span class="cmd">git clone https://github.com/camtrik/agent-trail.git</span>
+<span class="cmd">cd agent-trail && pnpm install && pnpm dev</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRIVACY -->
+  <section>
+    <div class="section-head">
+      <span class="section-label">Privacy</span>
+      <div class="section-rule"></div>
+    </div>
+    <div class="privacy-card">
+      <div class="privacy-title">◆ Local only</div>
+      <p class="privacy-body">
+        <strong>No data leaves your machine.</strong> Agent Trail parses your JSONL files into a local SQLite database
+        at <code>~/.agent-trail/</code>. The dashboard is read-only — it replays recorded tool calls, never re-executes them.
+        No telemetry, no analytics, no cloud sync.
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<!-- STATUS BAR -->
+<footer class="site-footer">
+  <div class="footer-hairline"></div>
+  <div class="sb-group">
+    <span>SRC<b>AGENT TRAIL</b></span>
+    <span>LICENSE<b>MIT</b></span>
+    <span><span class="live-dot"></span>OPEN SOURCE</span>
+  </div>
+  <div class="sb-group">
+    <a href="https://github.com/camtrik/agent-trail" style="color:var(--muted-foreground);letter-spacing:.12em;">GITHUB</a>
+    <a href="https://www.npmjs.com/package/@camtrik/agent-trail" style="color:var(--muted-foreground);letter-spacing:.12em;">NPM</a>
+    <span class="trace">◆ TRACE</span>
+  </div>
+</footer>
+
+</body>
+</html>
