@@ -18,9 +18,12 @@ import {
   ToolCategory,
   MessageRole,
   SourceMetadata,
+  TokenUsage,
 } from '@/types/trace';
 import {
   OpenClawJsonlLine,
+  OpenClawMessage,
+  ContentBlock,
   ParseResult,
   ParseError,
   SessionContext,
@@ -33,6 +36,15 @@ const OPENCLAW_ROLE_ALIASES: Record<string, MessageRole> = {
   tool_result: 'tool_result',
   toolResult: 'tool_result',
 };
+
+interface TokenAccumulator {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
 
 /**
  * Parse an OpenClaw session file and return structured trace data
@@ -81,8 +93,8 @@ export async function parseOpenClawSession(
   let lineNum = 0;
   let startedAt: string | null = null;
   let endedAt: string | null = null;
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
+  const tokenTotals = createTokenAccumulator();
+  let sourceCostUsd: number | null = null;
   let hasToolCalls = false;
 
   for await (const line of rl) {
@@ -131,11 +143,8 @@ export async function parseOpenClawSession(
         if (toolCalls.length > 0) hasToolCalls = true;
       }
 
-      // Accumulate token usage
-      if (parsed.message.usage) {
-        totalInputTokens += parsed.message.usage.input_tokens || 0;
-        totalOutputTokens += parsed.message.usage.output_tokens || 0;
-      }
+      addTokenUsage(tokenTotals, message.tokenUsage);
+      sourceCostUsd = addSourceCost(sourceCostUsd, parsed.message.usage);
 
       ordinal++;
     } catch (err) {
@@ -161,14 +170,20 @@ export async function parseOpenClawSession(
     metrics: {
       messageCount: messages.length,
       userMessageCount: messages.filter((m) => m.role === 'user').length,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-      totalTokens: totalInputTokens + totalOutputTokens,
+      inputTokens: tokenTotals.inputTokens,
+      outputTokens: tokenTotals.outputTokens,
+      cacheReadTokens: tokenTotals.cacheReadTokens,
+      cacheWriteTokens: tokenTotals.cacheWriteTokens,
+      reasoningTokens: tokenTotals.reasoningTokens,
+      totalTokens: tokenTotals.totalTokens,
       hasToolCalls,
       terminationStatus: undefined,
       parserMalformedLines: errors.length,
       isTruncated: false,
     },
+    sourceCostUsd,
+    costSource: sourceCostUsd == null ? null : 'source-reported',
+    costPricingStatus: sourceCostUsd == null ? null : 'priced',
     turns: [], // Will be populated by turn assembler in Plan 02-03
   };
 
@@ -245,6 +260,131 @@ function createEmptySession(context: SessionContext): TraceSession {
   };
 }
 
+function createTokenAccumulator(): TokenAccumulator {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+  };
+}
+
+function addTokenUsage(accumulator: TokenAccumulator, usage?: TokenUsage): void {
+  if (!usage) return;
+
+  accumulator.inputTokens += usage.inputTokens;
+  accumulator.outputTokens += usage.outputTokens;
+  accumulator.cacheReadTokens += usage.cacheReadTokens ?? 0;
+  accumulator.cacheWriteTokens += usage.cacheWriteTokens ?? 0;
+  accumulator.reasoningTokens += usage.reasoningTokens ?? 0;
+  accumulator.totalTokens += usage.totalTokens
+    ?? usage.inputTokens
+      + usage.outputTokens
+      + (usage.cacheReadTokens ?? 0)
+      + (usage.cacheWriteTokens ?? 0)
+      + (usage.reasoningTokens ?? 0);
+}
+
+function coerceNonNegativeNumber(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return value;
+}
+
+function readNumberField(record: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = coerceNonNegativeNumber(record[key]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function normalizeOpenClawTokenUsage(usage: unknown): TokenUsage | undefined {
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return undefined;
+
+  const record = usage as Record<string, unknown>;
+  const inputTokens = readNumberField(record, 'input', 'input_tokens');
+  const outputTokens = readNumberField(record, 'output', 'output_tokens');
+  const cacheReadTokens = readNumberField(
+    record,
+    'cacheRead',
+    'cache_read',
+    'cache_read_tokens',
+    'cache_read_input_tokens'
+  );
+  const cacheWriteTokens = readNumberField(
+    record,
+    'cacheWrite',
+    'cache_write',
+    'cache_write_tokens',
+    'cache_creation_input_tokens'
+  );
+  const reasoningTokens = readNumberField(record, 'reasoning', 'reasoningTokens', 'reasoning_tokens');
+  const totalTokens = readNumberField(record, 'totalTokens', 'total_tokens', 'total');
+
+  const hasTokenFields = [
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    reasoningTokens,
+    totalTokens,
+  ].some((value) => value !== undefined);
+
+  if (!hasTokenFields) return undefined;
+
+  const normalizedInput = inputTokens ?? 0;
+  const normalizedOutput = outputTokens ?? 0;
+  const normalizedCacheRead = cacheReadTokens ?? 0;
+  const normalizedCacheWrite = cacheWriteTokens ?? 0;
+  const normalizedReasoning = reasoningTokens ?? 0;
+
+  return {
+    inputTokens: normalizedInput,
+    outputTokens: normalizedOutput,
+    cacheReadTokens: normalizedCacheRead,
+    cacheWriteTokens: normalizedCacheWrite,
+    reasoningTokens: normalizedReasoning,
+    totalTokens: totalTokens
+      ?? normalizedInput + normalizedOutput + normalizedCacheRead + normalizedCacheWrite + normalizedReasoning,
+    usageSemantics: 'additive',
+  };
+}
+
+function readOpenClawCostUsd(usage: unknown): number | null {
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return null;
+  const cost = (usage as Record<string, unknown>).cost;
+  if (typeof cost === 'number') {
+    return coerceNonNegativeNumber(cost) ?? null;
+  }
+  if (!cost || typeof cost !== 'object' || Array.isArray(cost)) return null;
+  return readNumberField(cost as Record<string, unknown>, 'total', 'usd', 'costUsd', 'cost_usd') ?? null;
+}
+
+function addSourceCost(current: number | null, usage: unknown): number | null {
+  const costUsd = readOpenClawCostUsd(usage);
+  if (costUsd == null) return current;
+  return (current ?? 0) + costUsd;
+}
+
+function normalizeOpenClawTimestamp(timestamp: unknown, fallback?: string): string | undefined {
+  if (typeof timestamp === 'string') {
+    const trimmed = timestamp.trim();
+    return trimmed || fallback;
+  }
+
+  if (typeof timestamp === 'number' && Number.isFinite(timestamp)) {
+    const epochMs = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+    const date = new Date(epochMs);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+  }
+
+  return fallback;
+}
+
 /**
  * Parse a single OpenClaw message
  *
@@ -255,7 +395,7 @@ function createEmptySession(context: SessionContext): TraceSession {
  * @returns TraceMessage in canonical format
  */
 function parseMessage(
-  msg: any,
+  msg: OpenClawMessage,
   ordinal: number,
   context: SessionContext,
   lineNum: number,
@@ -267,7 +407,7 @@ function parseMessage(
   if (typeof msg.content === 'string') {
     content = msg.content;
   } else if (Array.isArray(msg.content)) {
-    const textBlock = msg.content.find((b: any) => b.type === 'text');
+    const textBlock = msg.content.find((block: ContentBlock) => block.type === 'text');
     content = textBlock?.text || '';
   }
 
@@ -283,14 +423,9 @@ function parseMessage(
     ordinal,
     role,
     content,
-    timestamp: msg.timestamp || fallbackTimestamp,
+    timestamp: normalizeOpenClawTimestamp(msg.timestamp, fallbackTimestamp),
     model: msg.model,
-    tokenUsage: msg.usage
-      ? {
-          inputTokens: msg.usage.input_tokens || 0,
-          outputTokens: msg.usage.output_tokens || 0,
-        }
-      : undefined,
+    tokenUsage: normalizeOpenClawTokenUsage(msg.usage),
     sourceMetadata,
   };
 }
@@ -308,7 +443,7 @@ function normalizeOpenClawRole(role: unknown): MessageRole | null {
  * @param lineNum - Line number for ID generation
  * @returns Array of TraceToolCall activities
  */
-function extractToolCalls(msg: any, context: SessionContext, lineNum: number): TraceToolCall[] {
+function extractToolCalls(msg: OpenClawMessage, context: SessionContext, lineNum: number): TraceToolCall[] {
   const toolCalls: TraceToolCall[] = [];
 
   if (Array.isArray(msg.content)) {
