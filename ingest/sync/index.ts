@@ -19,7 +19,7 @@ import { sseManager } from '../src/sse';
 import { logger } from '../logger';
 import type { TokenUsage } from '@/types/trace';
 
-export const PARSER_CACHE_VERSION = 'parser-v11-qoder-token-calibrated-cost';
+export const PARSER_CACHE_VERSION = 'parser-v12-message-token-usage';
 
 const claudeProjectPathCache = new Map<string, string | null>();
 
