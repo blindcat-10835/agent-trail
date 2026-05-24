@@ -70,26 +70,30 @@ interface DailyTokenRow {
 // ============================================================================
 
 function getDateCondition(column: string, window: string): string | null {
+  // started_at is stored as a UTC ISO string; convert both it and the
+  // threshold to local wall-clock so day boundaries follow the user's timezone.
   switch (window) {
     case 'today':
-      return `${column} >= datetime('now', 'start of day')`;
+      return `datetime(${column}, 'localtime') >= datetime('now', 'localtime', 'start of day')`;
     case '7d':
-      return `${column} >= datetime('now', '-7 days')`;
+      return `datetime(${column}, 'localtime') >= datetime('now', 'localtime', '-7 days')`;
     case '30d':
-      return `${column} >= datetime('now', '-30 days')`;
+      return `datetime(${column}, 'localtime') >= datetime('now', 'localtime', '-30 days')`;
     default:
       return null;
   }
 }
 
 function getRollupDateCondition(column: string, window: string): string | null {
+  // usage_date is a local-day key (see dateKeyFromTimestamp); compare against
+  // local 'now' so the window aligns with the user's timezone.
   switch (window) {
     case 'today':
-      return `${column} = date('now')`;
+      return `${column} = date('now', 'localtime')`;
     case '7d':
-      return `${column} >= date('now', '-6 days')`;
+      return `${column} >= date('now', 'localtime', '-6 days')`;
     case '30d':
-      return `${column} >= date('now', '-29 days')`;
+      return `${column} >= date('now', 'localtime', '-29 days')`;
     default:
       return null;
   }
@@ -445,7 +449,7 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
       ];
       return db.prepare(`
         WITH RECURSIVE day_series(day, n) AS (
-          SELECT date('now', ?), 1
+          SELECT date('now', 'localtime', ?), 1
           UNION ALL
           SELECT date(day, '+1 day'), n + 1
           FROM day_series
@@ -462,8 +466,8 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
             COALESCE(SUM(std.reasoning_tokens), 0) AS reasoning_tokens,
             COALESCE(SUM(std.total_tokens), 0) AS total_tokens
           FROM session_token_daily std
-          WHERE std.usage_date >= date('now', ?)
-            AND std.usage_date <= date('now')
+          WHERE std.usage_date >= date('now', 'localtime', ?)
+            AND std.usage_date <= date('now', 'localtime')
             ${sourceFilter}
           GROUP BY std.usage_date
         )
@@ -492,8 +496,8 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
   const costWindowFilter = allTime
     ? ''
     : `
-        AND std.usage_date >= date('now', ?)
-        AND std.usage_date <= date('now')
+        AND std.usage_date >= date('now', 'localtime', ?)
+        AND std.usage_date <= date('now', 'localtime')
       `;
 
   const costRows = getDailyTokenCostRows(
