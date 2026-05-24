@@ -672,7 +672,7 @@ export function runMigrations(): void {
     {
       desc: 'Backfill daily token rollups from session totals',
       sql: `
-        INSERT OR REPLACE INTO session_token_daily (
+        INSERT OR IGNORE INTO session_token_daily (
           session_id,
           source,
           project,
@@ -720,6 +720,11 @@ export function runMigrations(): void {
             OR COALESCE(total_cache_read_tokens, 0) > 0
             OR COALESCE(total_cache_write_tokens, 0) > 0
             OR COALESCE(total_reasoning_tokens, 0) > 0
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM session_token_daily existing
+            WHERE existing.session_id = sessions.id
           )
       `,
     },

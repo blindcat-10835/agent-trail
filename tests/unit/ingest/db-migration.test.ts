@@ -109,7 +109,7 @@ describe('ingest database migrations', () => {
     );
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(21);
+    expect(version).toBe(22);
   });
 
   it('initializes ingest file cursor schema idempotently', () => {
@@ -159,10 +159,10 @@ describe('ingest database migrations', () => {
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
     expect(dailyTokenIndexes.map((index) => index.name)).toContain('idx_session_token_daily_source_date');
     expect(dailyTokenIndexes.map((index) => index.name)).toContain('idx_session_token_daily_project_date');
-    expect(version).toBe(21);
+    expect(version).toBe(22);
   });
 
-  it('preserves existing OpenCode source cost fields when migrating from v20 to v21', () => {
+  it('preserves existing OpenCode source cost fields when migrating from v20 to current', () => {
     dbPath = join(tmpdir(), `ingest-v20-cost-preserve-${randomUUID()}.db`);
     openDatabase({ path: dbPath });
     openedByTest = true;
@@ -220,10 +220,106 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(21);
+    expect(version).toBe(22);
     expect(row.source_cost_usd).toBeCloseTo(1.23);
     expect(row.cost_source).toBe('source-reported');
     expect(row.cost_pricing_status).toBe('priced');
+  });
+
+  it('preserves existing daily token rollups when migrating from v21 to current', () => {
+    dbPath = join(tmpdir(), `ingest-v21-daily-rollup-preserve-${randomUUID()}.db`);
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    initSchema();
+
+    const dbWrite = getDatabase();
+    dbWrite.prepare(`
+      INSERT INTO sessions (
+        id, source, project, started_at, ended_at, status,
+        message_count, user_message_count,
+        total_output_tokens, total_input_tokens, total_cache_read_tokens,
+        total_cache_write_tokens, total_reasoning_tokens, total_tokens,
+        has_tool_calls, file_path
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'codex:daily-rollup-preserve',
+      'codex',
+      'demo',
+      '2026-05-14 00:00:00',
+      '2026-05-15 00:00:00',
+      'idle',
+      0,
+      0,
+      500,
+      5000,
+      1000,
+      0,
+      200,
+      5500,
+      0,
+      '/tmp/codex-daily-rollup.jsonl',
+    );
+    dbWrite.prepare(`
+      INSERT INTO session_token_daily (
+        session_id,
+        source,
+        project,
+        usage_date,
+        attribution,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        reasoning_tokens,
+        total_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'codex:daily-rollup-preserve',
+      'codex',
+      'demo',
+      '2026-05-15',
+      'event',
+      1000,
+      100,
+      200,
+      0,
+      50,
+      1100,
+    );
+    dbWrite.pragma('user_version = 21');
+
+    closeDatabase();
+    openedByTest = false;
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    expect(() => initSchema()).not.toThrow();
+
+    const dbRead = new Database(dbPath, { readonly: true });
+    const rows = dbRead.prepare(`
+      SELECT usage_date, attribution, input_tokens, output_tokens, total_tokens
+      FROM session_token_daily
+      WHERE session_id = ?
+      ORDER BY usage_date
+    `).all('codex:daily-rollup-preserve') as Array<{
+      usage_date: string;
+      attribution: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+    }>;
+    const version = dbRead.pragma('user_version', { simple: true });
+    dbRead.close();
+
+    expect(version).toBe(22);
+    expect(rows).toEqual([
+      {
+        usage_date: '2026-05-15',
+        attribution: 'event',
+        input_tokens: 1000,
+        output_tokens: 100,
+        total_tokens: 1100,
+      },
+    ]);
   });
 
   it('repairs stale Claude/Codex project labels during v20 migration', () => {
@@ -307,7 +403,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(21);
+    expect(version).toBe(22);
     expect(rows).toEqual([
       {
         id: 'claude:split-project',
@@ -441,7 +537,7 @@ describe('ingest database migrations', () => {
       `SELECT COUNT(*) as c FROM subagent_links WHERE session_id = 'codex:legacy-parent'`
     ).get() as { c: number };
 
-    expect(version).toBe(21);
+    expect(version).toBe(22);
     expect(sessionSql.sql).toContain("'qoder'");
     expect(linkSql.sql).toContain("'qoder'");
     expect(cursorSql.sql).toContain("'qoder'");
@@ -684,7 +780,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(21);
+    expect(version).toBe(22);
     // All three pre-existing rows survive the rebuild.
     const ids = sessionRows.map((r) => r.id);
     expect(ids).toEqual(
