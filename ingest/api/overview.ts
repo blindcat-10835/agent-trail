@@ -176,6 +176,7 @@ function getDailyTokenCostRows(
   whereClause: string,
   params: SqlParam[],
 ): SessionCostRow[] {
+  const sessionTotalExpr = sessionTotalTokensExpr('s');
   const rows = db.prepare(`
     SELECT
       std.session_id AS id,
@@ -198,8 +199,14 @@ function getDailyTokenCostRows(
       COALESCE(std.cache_write_tokens, 0) AS cache_write_tokens,
       COALESCE(std.reasoning_tokens, 0) AS reasoning_tokens,
       COALESCE(std.total_tokens, 0) AS total_tokens,
-      CASE WHEN std.attribution = 'session' THEN s.source_cost_usd ELSE NULL END AS source_cost_usd,
-      CASE WHEN std.attribution = 'session' THEN s.cost_pricing_status ELSE NULL END AS cost_pricing_status
+      CASE
+        WHEN s.source_cost_usd IS NOT NULL AND ${sessionTotalExpr} > 0
+          THEN s.source_cost_usd * COALESCE(std.total_tokens, 0) / ${sessionTotalExpr}
+        WHEN s.source_cost_usd IS NOT NULL
+          THEN s.source_cost_usd
+        ELSE NULL
+      END AS source_cost_usd,
+      CASE WHEN s.source_cost_usd IS NOT NULL THEN s.cost_pricing_status ELSE NULL END AS cost_pricing_status
     FROM session_token_daily std
     JOIN sessions s ON s.id = std.session_id
     ${whereClause}
