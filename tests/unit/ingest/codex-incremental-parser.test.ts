@@ -209,6 +209,52 @@ describe('Codex incremental parser', () => {
     expect(delta.metricsDelta.totalOutputTokens).toBe(34);
     expect(delta.metricsDelta.totalReasoningTokens).toBe(21);
     expect(delta.metricsDelta.totalTokens).toBe(1234);
+    expect(delta.tokenEvents).toEqual([
+      {
+        timestamp: '2026-05-15T00:00:01.000Z',
+        attribution: 'event',
+        usage: {
+          inputTokens: 1200,
+          outputTokens: 34,
+          cacheReadTokens: 0,
+          reasoningTokens: 21,
+          totalTokens: 1234,
+          usageSemantics: 'overlap',
+        },
+      },
+    ]);
+  });
+
+  it('falls back to full reparse for total-only appended token_count snapshots', async () => {
+    const jsonl = [
+      JSON.stringify({
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: {
+              input_tokens: 2400,
+              cached_input_tokens: 0,
+              output_tokens: 68,
+              reasoning_output_tokens: 42,
+              total_tokens: 2468,
+            },
+          },
+        },
+        timestamp: '2026-05-15T00:00:01.000Z',
+      }),
+      '',
+    ].join('\n');
+    const filePath = writeJsonl('token-count-total-only.jsonl', jsonl);
+
+    const delta = await parseCodexSessionAppend(filePath, 'project', {
+      ...baseOptions(),
+      endOffset: statSync(filePath).size,
+    });
+
+    expect(delta.requiresFullReparse).toBe(true);
+    expect(delta.fallbackReason).toBe('token_count_total_without_last_usage');
+    expect(delta.metricsDelta.totalTokens).toBe(0);
   });
 
   function writeJsonl(name: string, content: string): string {

@@ -45,7 +45,7 @@ afterAll(() => {
 describe('OpenCode migration v13 → current', () => {
   it('should apply current migrations cleanly on a fresh DB', () => {
     const version = db!.pragma('user_version', { simple: true }) as number;
-    expect(version).toBe(20);
+    expect(version).toBe(21);
 
     const tables = (db!.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
@@ -54,6 +54,7 @@ describe('OpenCode migration v13 → current', () => {
     expect(tables).toContain('sessions');
     expect(tables).toContain('subagent_links');
     expect(tables).toContain('ingest_file_cursors');
+    expect(tables).toContain('session_token_daily');
   });
 
   it('should allow INSERT with source = opencode', () => {

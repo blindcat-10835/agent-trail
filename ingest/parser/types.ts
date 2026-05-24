@@ -14,7 +14,7 @@ import {
   TraceToolResultEvent,
   TraceSubagentLink,
   TraceActivity,
-  SourceMetadata,
+  TokenUsage,
 } from '@/types/trace';
 
 // ============================================================================
@@ -43,6 +43,7 @@ export interface OpenClawJsonlLine {
 export interface OpenClawMessage {
   role?: string;
   content: string | Array<ContentBlock>;
+  timestamp?: string;
   model?: string;
   usage?: {
     input_tokens?: number;
@@ -82,8 +83,17 @@ export interface ParseResult {
   session: TraceSession;
   messages: TraceMessage[];
   activities: TraceActivity[];
+  tokenEvents?: TokenUsageEvent[];
   errors: ParseError[];
   warnings: string[];
+}
+
+export type TokenUsageAttribution = 'event' | 'message' | 'session';
+
+export interface TokenUsageEvent {
+  timestamp?: string;
+  usage: TokenUsage;
+  attribution: TokenUsageAttribution;
 }
 
 /**
@@ -123,6 +133,7 @@ export interface IncrementalParseDelta {
   toolCalls: TraceToolCall[];
   toolResultEvents: IncrementalToolResultEvent[];
   subagentLinks: TraceSubagentLink[];
+  tokenEvents?: TokenUsageEvent[];
   sessionPatch: Partial<TraceSession>;
   metricsDelta: {
     messageCount: number;

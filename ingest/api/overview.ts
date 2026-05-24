@@ -84,6 +84,19 @@ function getDateCondition(column: string, window: string): string | null {
   }
 }
 
+function getRollupDateCondition(column: string, window: string): string | null {
+  switch (window) {
+    case 'today':
+      return `${column} = date('now')`;
+    case '7d':
+      return `${column} >= date('now', '-6 days')`;
+    case '30d':
+      return `${column} >= date('now', '-29 days')`;
+    default:
+      return null;
+  }
+}
+
 function parseDaysParam(rawDays: string | undefined): number | null {
   const days = Number.parseInt(rawDays || '30', 10);
   if (!Number.isFinite(days) || days < 1 || days > 90) return null;
@@ -137,6 +150,75 @@ function getSessionCostRows(
       s.source_cost_usd,
       s.cost_pricing_status
     FROM sessions s
+    ${costWhere}
+  `).all(...costParams) as Array<{
+    id: string;
+    source: string;
+    project: string;
+    day: string | null;
+    model: string | null;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    reasoning_tokens: number;
+    total_tokens: number;
+    source_cost_usd: number | null;
+    cost_pricing_status: string | null;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    source: row.source,
+    project: row.project,
+    day: row.day,
+    model: row.model,
+    inputTokens: row.input_tokens,
+    outputTokens: row.output_tokens,
+    cacheReadTokens: row.cache_read_tokens,
+    cacheWriteTokens: row.cache_write_tokens,
+    reasoningTokens: row.reasoning_tokens,
+    totalTokens: row.total_tokens,
+    sourceCostUsd: row.source_cost_usd,
+    costPricingStatus: row.cost_pricing_status,
+  }));
+}
+
+function getDailyTokenCostRows(
+  db: IngestDatabase,
+  whereClause: string,
+  params: SqlParam[],
+): SessionCostRow[] {
+  const costWhere = whereClause
+    ? `${whereClause} ${costSourceExclusion()}`
+    : `WHERE 1=1 ${costSourceExclusion()}`;
+  const costParams = [...params, ...COST_EXCLUSION_PARAMS];
+
+  const rows = db.prepare(`
+    SELECT
+      std.session_id AS id,
+      s.source,
+      std.project,
+      std.usage_date AS day,
+      (
+        SELECT m.model
+        FROM messages m
+        WHERE m.session_id = std.session_id
+          AND TRIM(COALESCE(m.model, '')) <> ''
+          AND m.model <> '<synthetic>'
+        ORDER BY m.ordinal DESC
+        LIMIT 1
+      ) AS model,
+      COALESCE(std.input_tokens, 0) AS input_tokens,
+      COALESCE(std.output_tokens, 0) AS output_tokens,
+      COALESCE(std.cache_read_tokens, 0) AS cache_read_tokens,
+      COALESCE(std.cache_write_tokens, 0) AS cache_write_tokens,
+      COALESCE(std.reasoning_tokens, 0) AS reasoning_tokens,
+      COALESCE(std.total_tokens, 0) AS total_tokens,
+      CASE WHEN std.attribution = 'session' THEN s.source_cost_usd ELSE NULL END AS source_cost_usd,
+      CASE WHEN std.attribution = 'session' THEN s.cost_pricing_status ELSE NULL END AS cost_pricing_status
+    FROM session_token_daily std
+    JOIN sessions s ON s.id = std.session_id
     ${costWhere}
   `).all(...costParams) as Array<{
     id: string;
@@ -239,7 +321,7 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
 
   // Validate window
   const dateCondition = getDateCondition('started_at', window);
-  const costDateCondition = getDateCondition('s.started_at', window);
+  const rollupDateCondition = getRollupDateCondition('std.usage_date', window);
   if (!['today', '7d', '30d', 'all'].includes(window)) {
     return c.json({ error: 'Invalid window parameter. Must be "today", "7d", "30d", or "all"' }, 400);
   }
@@ -248,44 +330,51 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
 
   const conditions: string[] = [];
   const params: string[] = [];
-  const costConditions: string[] = [];
-  const costParams: SqlParam[] = [];
+  const rollupConditions: string[] = [];
+  const rollupParams: SqlParam[] = [];
 
   if (source) {
     conditions.push('source = ?');
     params.push(source);
-    costConditions.push('s.source = ?');
-    costParams.push(source);
+    rollupConditions.push('std.source = ?');
+    rollupParams.push(source);
   }
 
   if (dateCondition) {
     conditions.push(dateCondition);
   }
 
-  if (costDateCondition) {
-    costConditions.push(costDateCondition);
+  if (rollupDateCondition) {
+    rollupConditions.push(rollupDateCondition);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const costWhereClause = costConditions.length > 0 ? `WHERE ${costConditions.join(' AND ')}` : '';
+  const rollupWhereClause = rollupConditions.length > 0 ? `WHERE ${rollupConditions.join(' AND ')}` : '';
 
   const result = db.prepare(`
     SELECT
       COUNT(*) as session_count,
       COUNT(DISTINCT project) as project_count,
-      COALESCE(SUM(user_message_count), 0) as turn_count,
-      COALESCE(SUM(total_input_tokens), 0) as input_tokens,
-      COALESCE(SUM(total_output_tokens), 0) as output_tokens,
-      COALESCE(SUM(total_cache_read_tokens), 0) as cache_read_tokens,
-      COALESCE(SUM(total_cache_write_tokens), 0) as cache_write_tokens,
-      COALESCE(SUM(total_reasoning_tokens), 0) as reasoning_tokens,
-      COALESCE(SUM(${sessionTotalTokensExpr()}), 0) as total_tokens
+      COALESCE(SUM(user_message_count), 0) as turn_count
     FROM sessions
     ${whereClause}
   `).get(...params) as {
     session_count: number;
     project_count: number;
     turn_count: number;
+  };
+
+  const tokenResult = db.prepare(`
+    SELECT
+      COALESCE(SUM(std.input_tokens), 0) as input_tokens,
+      COALESCE(SUM(std.output_tokens), 0) as output_tokens,
+      COALESCE(SUM(std.cache_read_tokens), 0) as cache_read_tokens,
+      COALESCE(SUM(std.cache_write_tokens), 0) as cache_write_tokens,
+      COALESCE(SUM(std.reasoning_tokens), 0) as reasoning_tokens,
+      COALESCE(SUM(std.total_tokens), 0) as total_tokens
+    FROM session_token_daily std
+    ${rollupWhereClause}
+  `).get(...rollupParams) as {
     input_tokens: number;
     output_tokens: number;
     cache_read_tokens: number;
@@ -294,18 +383,18 @@ overviewRoutes.get('/api/v1/overview/aggregates', (c) => {
     total_tokens: number;
   };
 
-  const costSummary = rollUpSessionCosts(getSessionCostRows(db, costWhereClause, costParams));
+  const costSummary = rollUpSessionCosts(getDailyTokenCostRows(db, rollupWhereClause, rollupParams));
 
   return c.json({
     sessionCount: result.session_count,
     turnCount: result.turn_count,
     projectCount: result.project_count,
-    inputTokens: result.input_tokens,
-    outputTokens: result.output_tokens,
-    cacheReadTokens: result.cache_read_tokens,
-    cacheWriteTokens: result.cache_write_tokens,
-    reasoningTokens: result.reasoning_tokens,
-    totalTokens: result.total_tokens,
+    inputTokens: tokenResult.input_tokens,
+    outputTokens: tokenResult.output_tokens,
+    cacheReadTokens: tokenResult.cache_read_tokens,
+    cacheWriteTokens: tokenResult.cache_write_tokens,
+    reasoningTokens: tokenResult.reasoning_tokens,
+    totalTokens: tokenResult.total_tokens,
     totalCost: costSummary.cost,
     pricingStatus: costSummary.pricingStatus,
   });
@@ -335,24 +424,23 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
 
   const db = getDatabase();
   const boundedDays = days ?? 30;
-  const sourceFilter = source ? 'AND source = ?' : '';
-  const sourceCostFilter = source ? 'AND s.source = ?' : '';
+  const sourceFilter = source ? 'AND std.source = ?' : '';
   const rows = allTime
     ? db.prepare(`
       SELECT
-        date(started_at) AS date,
-        COUNT(*) AS session_count,
-        COALESCE(SUM(total_input_tokens), 0) AS input_tokens,
-        COALESCE(SUM(total_output_tokens), 0) AS output_tokens,
-        COALESCE(SUM(total_cache_read_tokens), 0) AS cache_read_tokens,
-        COALESCE(SUM(total_cache_write_tokens), 0) AS cache_write_tokens,
-        COALESCE(SUM(total_reasoning_tokens), 0) AS reasoning_tokens,
-        COALESCE(SUM(${sessionTotalTokensExpr()}), 0) AS total_tokens
-      FROM sessions
-      WHERE started_at IS NOT NULL
+        std.usage_date AS date,
+        COUNT(DISTINCT std.session_id) AS session_count,
+        COALESCE(SUM(std.input_tokens), 0) AS input_tokens,
+        COALESCE(SUM(std.output_tokens), 0) AS output_tokens,
+        COALESCE(SUM(std.cache_read_tokens), 0) AS cache_read_tokens,
+        COALESCE(SUM(std.cache_write_tokens), 0) AS cache_write_tokens,
+        COALESCE(SUM(std.reasoning_tokens), 0) AS reasoning_tokens,
+        COALESCE(SUM(std.total_tokens), 0) AS total_tokens
+      FROM session_token_daily std
+      WHERE std.usage_date IS NOT NULL
         ${sourceFilter}
-      GROUP BY date(started_at)
-      ORDER BY date(started_at) ASC
+      GROUP BY std.usage_date
+      ORDER BY std.usage_date ASC
     `).all(...(source ? [source] : [])) as DailyTokenRow[]
     : (() => {
       const sinceModifier = `-${boundedDays - 1} days`;
@@ -372,20 +460,19 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
         ),
         session_daily AS (
           SELECT
-            date(started_at) AS day,
-            COUNT(*) AS session_count,
-            COALESCE(SUM(total_input_tokens), 0) AS input_tokens,
-            COALESCE(SUM(total_output_tokens), 0) AS output_tokens,
-            COALESCE(SUM(total_cache_read_tokens), 0) AS cache_read_tokens,
-            COALESCE(SUM(total_cache_write_tokens), 0) AS cache_write_tokens,
-            COALESCE(SUM(total_reasoning_tokens), 0) AS reasoning_tokens,
-            COALESCE(SUM(${sessionTotalTokensExpr()}), 0) AS total_tokens
-          FROM sessions
-          WHERE started_at IS NOT NULL
-            AND date(started_at) >= date('now', ?)
-            AND date(started_at) <= date('now')
+            std.usage_date AS day,
+            COUNT(DISTINCT std.session_id) AS session_count,
+            COALESCE(SUM(std.input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(std.output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(std.cache_read_tokens), 0) AS cache_read_tokens,
+            COALESCE(SUM(std.cache_write_tokens), 0) AS cache_write_tokens,
+            COALESCE(SUM(std.reasoning_tokens), 0) AS reasoning_tokens,
+            COALESCE(SUM(std.total_tokens), 0) AS total_tokens
+          FROM session_token_daily std
+          WHERE std.usage_date >= date('now', ?)
+            AND std.usage_date <= date('now')
             ${sourceFilter}
-          GROUP BY date(started_at)
+          GROUP BY std.usage_date
         )
         SELECT
           ds.day AS date,
@@ -412,16 +499,16 @@ overviewRoutes.get('/api/v1/overview/daily-tokens', (c) => {
   const costWindowFilter = allTime
     ? ''
     : `
-        AND date(s.started_at) >= date('now', ?)
-        AND date(s.started_at) <= date('now')
+        AND std.usage_date >= date('now', ?)
+        AND std.usage_date <= date('now')
       `;
 
-  const costRows = getSessionCostRows(
+  const costRows = getDailyTokenCostRows(
     db,
     `
-      WHERE s.started_at IS NOT NULL
+      WHERE std.usage_date IS NOT NULL
         ${costWindowFilter}
-        ${sourceCostFilter}
+        ${sourceFilter}
     `,
     costParams,
   );

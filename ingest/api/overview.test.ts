@@ -189,6 +189,36 @@ function insertFixtures(db: Database.Database): void {
     1, '/tmp/oc-3.jsonl', fiveDaysAgo,
   );
 
+  db.exec(`
+    INSERT INTO session_token_daily (
+      session_id,
+      source,
+      project,
+      usage_date,
+      attribution,
+      input_tokens,
+      output_tokens,
+      cache_read_tokens,
+      cache_write_tokens,
+      reasoning_tokens,
+      total_tokens
+    )
+    SELECT
+      id,
+      source,
+      project,
+      date(started_at),
+      'session',
+      COALESCE(total_input_tokens, 0),
+      COALESCE(total_output_tokens, 0),
+      COALESCE(total_cache_read_tokens, 0),
+      COALESCE(total_cache_write_tokens, 0),
+      COALESCE(total_reasoning_tokens, 0),
+      COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0)
+    FROM sessions
+    WHERE started_at IS NOT NULL
+  `);
+
   // Insert messages with model info for top-models
   const insertMessage = db.prepare(`
     INSERT INTO messages (id, session_id, ordinal, role, content, model)
@@ -369,6 +399,25 @@ describe('overview endpoints', () => {
         'source-reported',
         'priced',
       );
+      db.prepare(`
+        INSERT INTO session_token_daily (
+          session_id, source, project, usage_date, attribution,
+          input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+          reasoning_tokens, total_tokens
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'opencode-cost-token-test',
+        'opencode',
+        'opencode-project',
+        '2026-01-01',
+        'session',
+        1000,
+        100,
+        7000,
+        0,
+        300,
+        8400,
+      );
 
       try {
         const res = await app.request('/api/v1/overview/aggregates?source=opencode&window=all');
@@ -384,6 +433,7 @@ describe('overview endpoints', () => {
         expect(body.totalCost).toBe(1.23);
         expect(body.pricingStatus).toBe('priced');
       } finally {
+        db.prepare('DELETE FROM session_token_daily WHERE session_id = ?').run('opencode-cost-token-test');
         db.prepare('DELETE FROM sessions WHERE id = ?').run('opencode-cost-token-test');
       }
     });
@@ -530,6 +580,66 @@ describe('overview endpoints', () => {
         sessionCount: 1,
         totalTokens: 6000,
       });
+    });
+
+    it('counts today tokens for sessions that started on a previous day', async () => {
+      const db = getDatabase();
+      const today = new Date().toISOString().slice(0, 10);
+      const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().replace('T', ' ').split('.')[0];
+
+      db.prepare(`
+        INSERT INTO sessions (
+          id, source, project, name, started_at, ended_at, status,
+          message_count, user_message_count, total_output_tokens, total_input_tokens,
+          has_tool_calls, file_path, file_mtime
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'cx-cross-day',
+        'codex',
+        'project-alpha',
+        'Cross day Codex',
+        fiveDaysAgo,
+        `${today} 12:00:00`,
+        'idle',
+        1,
+        0,
+        777,
+        222,
+        0,
+        '/tmp/cx-cross-day.jsonl',
+        `${today} 12:00:00`,
+      );
+      db.prepare(`
+        INSERT INTO session_token_daily (
+          session_id, source, project, usage_date, attribution,
+          input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+          reasoning_tokens, total_tokens
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('cx-cross-day', 'codex', 'project-alpha', today, 'event', 222, 777, 0, 0, 0, 999);
+
+      try {
+        const dailyRes = await app.request('/api/v1/overview/daily-tokens?source=codex&days=1');
+        expect(dailyRes.status).toBe(200);
+        const dailyBody = await dailyRes.json();
+        expect(dailyBody.days[dailyBody.days.length - 1]).toMatchObject({
+          date: today,
+          sessionCount: 1,
+          inputTokens: 222,
+          outputTokens: 777,
+          totalTokens: 999,
+        });
+
+        const aggregateRes = await app.request('/api/v1/overview/aggregates?source=codex&window=today');
+        expect(aggregateRes.status).toBe(200);
+        const aggregateBody = await aggregateRes.json();
+        expect(aggregateBody.sessionCount).toBe(0);
+        expect(aggregateBody.inputTokens).toBe(222);
+        expect(aggregateBody.outputTokens).toBe(777);
+        expect(aggregateBody.totalTokens).toBe(999);
+      } finally {
+        db.prepare('DELETE FROM session_token_daily WHERE session_id = ?').run('cx-cross-day');
+        db.prepare('DELETE FROM sessions WHERE id = ?').run('cx-cross-day');
+      }
     });
 
     it('supports a bounded custom day count', async () => {

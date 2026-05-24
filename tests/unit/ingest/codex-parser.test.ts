@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { writeFileSync, mkdtempSync, unlinkSync, rmSync, existsSync } from 'fs';
+import { writeFileSync, mkdtempSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -10,7 +10,6 @@ import {
 import type { TraceToolCall } from '@/types/trace';
 
 let tempDir: string;
-let tempFile: string;
 
 beforeAll(() => {
   tempDir = mkdtempSync(join(tmpdir(), 'codex-parser-test-'));
@@ -135,6 +134,20 @@ describe('Codex parser — parseCodexSession()', () => {
       expect(result.session.metrics.cacheReadTokens).toBe(0);
       expect(result.session.metrics.reasoningTokens).toBe(21);
       expect(result.session.metrics.totalTokens).toBe(1234);
+      expect(result.tokenEvents).toEqual([
+        {
+          timestamp: '2026-05-08T14:52:19.100Z',
+          attribution: 'event',
+          usage: {
+            inputTokens: 1200,
+            outputTokens: 34,
+            cacheReadTokens: 0,
+            reasoningTokens: 21,
+            totalTokens: 1234,
+            usageSemantics: 'overlap',
+          },
+        },
+      ]);
     });
 
     it('treats Codex cached input and reasoning as overlap breakdowns', async () => {
@@ -152,6 +165,36 @@ describe('Codex parser — parseCodexSession()', () => {
       expect(result.session.metrics.cacheReadTokens).toBe(300);
       expect(result.session.metrics.reasoningTokens).toBe(125);
       expect(result.session.metrics.totalTokens).toBe(1600);
+    });
+
+    it('keeps session totals authoritative when final total exceeds last usage', async () => {
+      const jsonl = [
+        '{"timestamp":"2026-05-08T14:52:18.211Z","type":"session_meta","payload":{"id":"codex-total-greater-001","cwd":"/repo","model_provider":"openai"}}',
+        '{"timestamp":"2026-05-08T14:52:19.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":5000,"cached_input_tokens":1000,"output_tokens":500,"reasoning_output_tokens":200,"total_tokens":5500},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":200,"output_tokens":100,"reasoning_output_tokens":50,"total_tokens":1100}}}}',
+      ].join('\n');
+
+      const filePath = writeFixture('payload-token-total-greater.jsonl', jsonl);
+      const result = await parseCodexSession(filePath, 'fallback');
+
+      expect(result.session.metrics.inputTokens).toBe(5000);
+      expect(result.session.metrics.outputTokens).toBe(500);
+      expect(result.session.metrics.cacheReadTokens).toBe(1000);
+      expect(result.session.metrics.reasoningTokens).toBe(200);
+      expect(result.session.metrics.totalTokens).toBe(5500);
+      expect(result.tokenEvents).toEqual([
+        {
+          timestamp: '2026-05-08T14:52:19.100Z',
+          attribution: 'event',
+          usage: {
+            inputTokens: 1000,
+            outputTokens: 100,
+            cacheReadTokens: 200,
+            reasoningTokens: 50,
+            totalTokens: 1100,
+            usageSemantics: 'overlap',
+          },
+        },
+      ]);
     });
 
     it('should deduplicate image-wrapper response_item users against canonical event user messages', async () => {

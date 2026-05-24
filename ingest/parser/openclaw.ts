@@ -14,12 +14,10 @@ import {
   TraceSession,
   TraceMessage,
   TraceToolCall,
-  TraceToolResultEvent,
   TraceActivity,
   ToolCategory,
   MessageRole,
   SourceMetadata,
-  TokenUsage,
 } from '@/types/trace';
 import {
   OpenClawJsonlLine,
@@ -123,7 +121,7 @@ export async function parseOpenClawSession(
       }
 
       // Parse message
-      const message = parseMessage(parsed.message, ordinal, context, lineNum, role);
+      const message = parseMessage(parsed.message, ordinal, context, lineNum, role, parsed.timestamp);
       messages.push(message);
 
       // Extract tool calls from assistant messages
@@ -261,7 +259,8 @@ function parseMessage(
   ordinal: number,
   context: SessionContext,
   lineNum: number,
-  role: MessageRole
+  role: MessageRole,
+  fallbackTimestamp?: string
 ): TraceMessage {
   // Extract content from message
   let content = '';
@@ -284,7 +283,7 @@ function parseMessage(
     ordinal,
     role,
     content,
-    timestamp: msg.timestamp,
+    timestamp: msg.timestamp || fallbackTimestamp,
     model: msg.model,
     tokenUsage: msg.usage
       ? {
@@ -369,7 +368,7 @@ export function parseOpenClawMessage(
     if (parsed.type !== 'message' || !parsed.message) return null;
     const role = normalizeOpenClawRole(parsed.message.role);
     if (!role) return null;
-    return parseMessage(parsed.message, 0, context, 0, role);
+    return parseMessage(parsed.message, 0, context, 0, role, parsed.timestamp);
   } catch {
     return null;
   }

@@ -117,6 +117,7 @@ export function initSchema(): void {
     'tool_result_events',
     'subagent_links',
     'turns',
+    'session_token_daily',
     'sync_status',
     'session_stars',
     'ingest_file_cursors',
@@ -145,7 +146,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 20;
+  const targetVersion = 21;
 
   if (currentVersion >= targetVersion) {
     logger.debug(`Schema at version ${currentVersion}, no migrations needed`);
@@ -390,6 +391,18 @@ export function runMigrations(): void {
       sql: 'DROP TABLE IF EXISTS sessions_new; DROP TABLE IF EXISTS subagent_links_new; DROP TABLE IF EXISTS ingest_file_cursors_new',
     },
     {
+      desc: 'Add source-reported cost column before sessions rebuild',
+      sql: 'ALTER TABLE sessions ADD COLUMN source_cost_usd REAL',
+    },
+    {
+      desc: 'Add cost source column before sessions rebuild',
+      sql: 'ALTER TABLE sessions ADD COLUMN cost_source TEXT',
+    },
+    {
+      desc: 'Add cost pricing status column before sessions rebuild',
+      sql: 'ALTER TABLE sessions ADD COLUMN cost_pricing_status TEXT',
+    },
+    {
       desc: 'Disable foreign keys before source CHECK table rebuilds',
       sql: 'PRAGMA foreign_keys = OFF',
     },
@@ -452,7 +465,7 @@ export function runMigrations(): void {
           file_path, file_size, file_mtime, file_hash, last_sync_at,
           cwd, git_branch, source_session_id, source_version,
           parser_malformed_lines, is_truncated, termination_status,
-          NULL, NULL, NULL
+          source_cost_usd, cost_source, cost_pricing_status
         FROM sessions
       `,
     },
@@ -626,6 +639,88 @@ export function runMigrations(): void {
              AND project GLOB '[0-9][0-9]'
              AND file_path LIKE '%/.codex/sessions/%'
            )
+      `,
+    },
+    {
+      desc: 'Create daily token rollup table',
+      sql: `
+        CREATE TABLE IF NOT EXISTS session_token_daily (
+          session_id TEXT NOT NULL,
+          source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex', 'opencode', 'qoder')),
+          project TEXT NOT NULL,
+          usage_date TEXT NOT NULL,
+          attribution TEXT NOT NULL CHECK(attribution IN ('event', 'message', 'session')),
+          input_tokens INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+          reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+          total_tokens INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (session_id, usage_date),
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+      `,
+    },
+    {
+      desc: 'Add daily token rollup source/date index',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_session_token_daily_source_date ON session_token_daily(source, usage_date)',
+    },
+    {
+      desc: 'Add daily token rollup project/date index',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_session_token_daily_project_date ON session_token_daily(project, usage_date)',
+    },
+    {
+      desc: 'Backfill daily token rollups from session totals',
+      sql: `
+        INSERT OR REPLACE INTO session_token_daily (
+          session_id,
+          source,
+          project,
+          usage_date,
+          attribution,
+          input_tokens,
+          output_tokens,
+          cache_read_tokens,
+          cache_write_tokens,
+          reasoning_tokens,
+          total_tokens
+        )
+        SELECT
+          id,
+          source,
+          project,
+          date(COALESCE(ended_at, started_at, file_mtime, last_sync_at)),
+          'session',
+          COALESCE(total_input_tokens, 0),
+          COALESCE(total_output_tokens, 0),
+          COALESCE(total_cache_read_tokens, 0),
+          COALESCE(total_cache_write_tokens, 0),
+          COALESCE(total_reasoning_tokens, 0),
+          CASE
+            WHEN source = 'opencode' THEN
+              COALESCE(total_input_tokens, 0)
+              + COALESCE(total_output_tokens, 0)
+              + COALESCE(total_cache_read_tokens, 0)
+              + COALESCE(total_cache_write_tokens, 0)
+              + COALESCE(total_reasoning_tokens, 0)
+            WHEN COALESCE(total_tokens, 0) > 0 THEN COALESCE(total_tokens, 0)
+            ELSE
+              COALESCE(total_input_tokens, 0)
+              + COALESCE(total_output_tokens, 0)
+              + COALESCE(total_cache_read_tokens, 0)
+              + COALESCE(total_cache_write_tokens, 0)
+              + COALESCE(total_reasoning_tokens, 0)
+          END
+        FROM sessions
+        WHERE date(COALESCE(ended_at, started_at, file_mtime, last_sync_at)) IS NOT NULL
+          AND (
+            COALESCE(total_tokens, 0) > 0
+            OR COALESCE(total_input_tokens, 0) > 0
+            OR COALESCE(total_output_tokens, 0) > 0
+            OR COALESCE(total_cache_read_tokens, 0) > 0
+            OR COALESCE(total_cache_write_tokens, 0) > 0
+            OR COALESCE(total_reasoning_tokens, 0) > 0
+          )
       `,
     },
   ];

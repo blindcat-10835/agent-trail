@@ -256,6 +256,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_subagent_links_unique
 CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);
 CREATE INDEX IF NOT EXISTS idx_turns_session_index ON turns(session_id, turn_index);
 
+-- Daily token rollups.  Rows are derived from event-level token usage when
+-- available, message-level usage when not, and session-level totals as a final
+-- fallback for sources that only expose aggregate usage.
+CREATE TABLE IF NOT EXISTS session_token_daily (
+  session_id TEXT NOT NULL,
+  source TEXT NOT NULL CHECK(source IN ('openclaw', 'claude-code', 'codex', 'opencode', 'qoder')),
+  project TEXT NOT NULL,
+  usage_date TEXT NOT NULL,
+  attribution TEXT NOT NULL CHECK(attribution IN ('event', 'message', 'session')),
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (session_id, usage_date),
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_token_daily_source_date
+  ON session_token_daily(source, usage_date);
+CREATE INDEX IF NOT EXISTS idx_session_token_daily_project_date
+  ON session_token_daily(project, usage_date);
+
 -- ============================================================================
 -- Ingest File Cursors (Phase 16 - append-only incremental sync)
 -- ============================================================================

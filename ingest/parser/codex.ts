@@ -24,9 +24,7 @@ import {
   ToolCategory,
   MessageRole,
   SourceMetadata,
-  SessionStatus,
   TokenUsage,
-  SessionMetrics,
 } from '@/types/trace';
 import {
   CodexJsonlLine,
@@ -36,6 +34,7 @@ import {
   ParseResult,
   ParseError,
   SessionContext,
+  TokenUsageEvent,
 } from './types';
 
 type CodexPayload = Record<string, any>;
@@ -172,6 +171,29 @@ function codexUsageSnapshotKey(usage: TokenUsage): string {
     usage.reasoningTokens ?? 0,
     getCodexUsageTotal(usage),
   ].join(':');
+}
+
+function codexTokenEventSnapshotKey(
+  tokenUsage: { total?: TokenUsage; last?: TokenUsage },
+  timestamp?: string
+): string | undefined {
+  if (tokenUsage.total) return `total:${codexUsageSnapshotKey(tokenUsage.total)}`;
+  if (tokenUsage.last) return `last:${timestamp ?? ''}:${codexUsageSnapshotKey(tokenUsage.last)}`;
+  return undefined;
+}
+
+function subtractCodexUsage(current: TokenUsage, previous?: TokenUsage): TokenUsage {
+  if (!previous) return current;
+
+  return {
+    inputTokens: Math.max(0, current.inputTokens - previous.inputTokens),
+    outputTokens: Math.max(0, current.outputTokens - previous.outputTokens),
+    cacheReadTokens: Math.max(0, (current.cacheReadTokens ?? 0) - (previous.cacheReadTokens ?? 0)),
+    cacheWriteTokens: Math.max(0, (current.cacheWriteTokens ?? 0) - (previous.cacheWriteTokens ?? 0)),
+    reasoningTokens: Math.max(0, (current.reasoningTokens ?? 0) - (previous.reasoningTokens ?? 0)),
+    totalTokens: Math.max(0, getCodexUsageTotal(current) - getCodexUsageTotal(previous)),
+    usageSemantics: current.usageSemantics,
+  };
 }
 
 function parseCodexUsageRecord(value: unknown): TokenUsage | undefined {
@@ -343,11 +365,12 @@ export async function parseCodexSession(
   let startedAt: string | null = null;
   let endedAt: string | null = null;
   const tokenTotals = createTokenAccumulator();
+  const tokenEvents: TokenUsageEvent[] = [];
   let hasToolCalls = false;
 
   // Turn context tracking (D-06)
   let currentModel: string | undefined;
-  let turnContexts: CodexTurnContext[] = [];
+  const turnContexts: CodexTurnContext[] = [];
 
   // Session metadata from session_meta line
   let sessionCwd: string | undefined;
@@ -357,6 +380,8 @@ export async function parseCodexSession(
   let currentTurnId: string | undefined;
   let currentTurnIndex = -1;
   let pendingUserResponseMessage: PendingCodexUserMessage | undefined;
+  let lastTokenSnapshotKey: string | undefined;
+  let previousTotalTokenUsage: TokenUsage | undefined;
 
   // Token-count dedup tracking (D-09)
   // Key: call_id for function_calls, content for text messages
@@ -756,15 +781,35 @@ export async function parseCodexSession(
         const ev = eventMsg;
 
         const tokenUsage = extractCodexTokenUsage(ev);
-        if (tokenUsage?.total) {
-          tokenTotals.inputTokens = tokenUsage.total.inputTokens;
-          tokenTotals.outputTokens = tokenUsage.total.outputTokens;
-          tokenTotals.cacheReadTokens = tokenUsage.total.cacheReadTokens ?? 0;
-          tokenTotals.cacheWriteTokens = tokenUsage.total.cacheWriteTokens ?? 0;
-          tokenTotals.reasoningTokens = tokenUsage.total.reasoningTokens ?? 0;
-          tokenTotals.totalTokens = getCodexUsageTotal(tokenUsage.total);
-        } else if (tokenUsage?.last) {
-          addUsageToAccumulator(tokenTotals, tokenUsage.last);
+        if (tokenUsage) {
+          const snapshotKey = codexTokenEventSnapshotKey(tokenUsage, parsed.timestamp);
+          if (snapshotKey) {
+            if (snapshotKey !== lastTokenSnapshotKey) {
+              lastTokenSnapshotKey = snapshotKey;
+              const dailyUsage = tokenUsage.last
+                ?? (tokenUsage.total ? subtractCodexUsage(tokenUsage.total, previousTotalTokenUsage) : undefined);
+
+              if (tokenUsage.total) {
+                tokenTotals.inputTokens = tokenUsage.total.inputTokens;
+                tokenTotals.outputTokens = tokenUsage.total.outputTokens;
+                tokenTotals.cacheReadTokens = tokenUsage.total.cacheReadTokens ?? 0;
+                tokenTotals.cacheWriteTokens = tokenUsage.total.cacheWriteTokens ?? 0;
+                tokenTotals.reasoningTokens = tokenUsage.total.reasoningTokens ?? 0;
+                tokenTotals.totalTokens = getCodexUsageTotal(tokenUsage.total);
+                previousTotalTokenUsage = tokenUsage.total;
+              } else if (tokenUsage.last) {
+                addUsageToAccumulator(tokenTotals, tokenUsage.last);
+              }
+
+              if (dailyUsage && getCodexUsageTotal(dailyUsage) > 0) {
+                tokenEvents.push({
+                  timestamp: parsed.timestamp,
+                  usage: dailyUsage,
+                  attribution: 'event',
+                });
+              }
+            }
+          }
         }
 
         if (ev.type === 'user_message') {
@@ -945,6 +990,7 @@ export async function parseCodexSession(
     session,
     messages,
     activities,
+    tokenEvents,
     errors,
     warnings,
   };
@@ -1309,13 +1355,23 @@ export async function parseCodexSessionAppend(
 
         const tokenUsage = extractCodexTokenUsage(ev);
         if (tokenUsage) {
-          const snapshot = tokenUsage.total ?? tokenUsage.last;
-          if (snapshot) {
-            const snapshotKey = codexUsageSnapshotKey(snapshot);
+          if (tokenUsage.total && !tokenUsage.last) {
+            return markFallback('token_count_total_without_last_usage', record.lineNumber, line);
+          }
+
+          const snapshotKey = codexTokenEventSnapshotKey(tokenUsage, parsed.timestamp);
+          if (snapshotKey) {
             if (snapshotKey !== lastTokenSnapshotKey) {
               lastTokenSnapshotKey = snapshotKey;
-              const deltaUsage = tokenUsage.last ?? tokenUsage.total;
+              const deltaUsage = tokenUsage.last;
               addUsageToDelta(delta, deltaUsage);
+              if (deltaUsage && getCodexUsageTotal(deltaUsage) > 0) {
+                delta.tokenEvents?.push({
+                  timestamp: parsed.timestamp,
+                  usage: deltaUsage,
+                  attribution: 'event',
+                });
+              }
             }
           }
         }
@@ -1432,6 +1488,7 @@ function createCodexIncrementalDelta(
     toolCalls: [],
     toolResultEvents: [],
     subagentLinks: [],
+    tokenEvents: [],
     sessionPatch: {
       id: options.sessionId || context.uuid,
       source: 'codex',

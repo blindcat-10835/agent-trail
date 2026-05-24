@@ -14,11 +14,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { getDatabase } from '../db';
-import { IncrementalParseDelta, ParseResult } from '../parser/types';
+import { IncrementalParseDelta, ParseResult, TokenUsageAttribution } from '../parser/types';
 import { sseManager } from '../src/sse';
 import { logger } from '../logger';
+import type { TokenUsage } from '@/types/trace';
 
-export const PARSER_CACHE_VERSION = 'parser-v9-token-channel-accounting';
+export const PARSER_CACHE_VERSION = 'parser-v10-daily-token-rollups';
 
 const claudeProjectPathCache = new Map<string, string | null>();
 
@@ -244,6 +245,386 @@ function getSessionTokenTotals(parseResult: ParseResult): {
     reasoningTokens,
     totalTokens,
   };
+}
+
+interface DailyTokenRollupRow {
+  sessionId: string;
+  source: SyncSourceType;
+  project: string;
+  usageDate: string;
+  attribution: TokenUsageAttribution;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
+
+type TokenTotals = Omit<DailyTokenRollupRow, 'sessionId' | 'source' | 'project' | 'usageDate' | 'attribution'>;
+
+function getTokenUsageTotal(usage: TokenUsage): number {
+  return usage.totalTokens
+    ?? usage.inputTokens
+      + usage.outputTokens
+      + (usage.cacheReadTokens ?? 0)
+      + (usage.cacheWriteTokens ?? 0)
+      + (usage.reasoningTokens ?? 0);
+}
+
+function normalizeTokenUsage(usage: TokenUsage): TokenTotals {
+  return {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    cacheReadTokens: usage.cacheReadTokens ?? 0,
+    cacheWriteTokens: usage.cacheWriteTokens ?? 0,
+    reasoningTokens: usage.reasoningTokens ?? 0,
+    totalTokens: getTokenUsageTotal(usage),
+  };
+}
+
+function hasTokenTotals(totals: TokenTotals): boolean {
+  return totals.inputTokens > 0
+    || totals.outputTokens > 0
+    || totals.cacheReadTokens > 0
+    || totals.cacheWriteTokens > 0
+    || totals.reasoningTokens > 0
+    || totals.totalTokens > 0;
+}
+
+function sumDailyTokenRows(rows: DailyTokenRollupRow[]): TokenTotals {
+  return rows.reduce<TokenTotals>(
+    (sum, row) => ({
+      inputTokens: sum.inputTokens + row.inputTokens,
+      outputTokens: sum.outputTokens + row.outputTokens,
+      cacheReadTokens: sum.cacheReadTokens + row.cacheReadTokens,
+      cacheWriteTokens: sum.cacheWriteTokens + row.cacheWriteTokens,
+      reasoningTokens: sum.reasoningTokens + row.reasoningTokens,
+      totalTokens: sum.totalTokens + row.totalTokens,
+    }),
+    {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+    }
+  );
+}
+
+function subtractTokenTotals(current: TokenTotals, previous: TokenTotals): TokenTotals {
+  return {
+    inputTokens: Math.max(0, current.inputTokens - previous.inputTokens),
+    outputTokens: Math.max(0, current.outputTokens - previous.outputTokens),
+    cacheReadTokens: Math.max(0, current.cacheReadTokens - previous.cacheReadTokens),
+    cacheWriteTokens: Math.max(0, current.cacheWriteTokens - previous.cacheWriteTokens),
+    reasoningTokens: Math.max(0, current.reasoningTokens - previous.reasoningTokens),
+    totalTokens: Math.max(0, current.totalTokens - previous.totalTokens),
+  };
+}
+
+function dateKeyFromTimestamp(timestamp?: string | null): string | null {
+  if (!timestamp) return null;
+  const trimmed = timestamp.trim();
+  if (!trimmed) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(trimmed)) {
+    return trimmed.slice(0, 10);
+  }
+
+  const parsed = new Date(trimmed);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function getSessionTokenFallbackTimestamp(
+  session: ParseResult['session'],
+  fallbackTimestamp?: string | null
+): string | null {
+  return session.updatedAt
+    || session.endedAt
+    || session.startedAt
+    || fallbackTimestamp
+    || null;
+}
+
+function getSessionTokenResidualTimestamp(
+  session: ParseResult['session'],
+  fallbackTimestamp?: string | null
+): string | null {
+  return session.startedAt
+    || fallbackTimestamp
+    || session.updatedAt
+    || session.endedAt
+    || null;
+}
+
+function addDailyTokenRollup(
+  map: Map<string, DailyTokenRollupRow>,
+  input: {
+    sessionId: string;
+    source: SyncSourceType;
+    project: string;
+    timestamp?: string | null;
+    fallbackTimestamp?: string | null;
+    attribution: TokenUsageAttribution;
+    totals: TokenTotals;
+  }
+): void {
+  if (!hasTokenTotals(input.totals)) return;
+
+  const usageDate = dateKeyFromTimestamp(input.timestamp) ?? dateKeyFromTimestamp(input.fallbackTimestamp);
+  if (!usageDate) return;
+
+  const project = input.project || 'default';
+  const key = `${input.sessionId}:${usageDate}`;
+  const existing = map.get(key);
+  if (existing) {
+    existing.inputTokens += input.totals.inputTokens;
+    existing.outputTokens += input.totals.outputTokens;
+    existing.cacheReadTokens += input.totals.cacheReadTokens;
+    existing.cacheWriteTokens += input.totals.cacheWriteTokens;
+    existing.reasoningTokens += input.totals.reasoningTokens;
+    existing.totalTokens += input.totals.totalTokens;
+    existing.attribution = input.attribution;
+    return;
+  }
+
+  map.set(key, {
+    sessionId: input.sessionId,
+    source: input.source,
+    project,
+    usageDate,
+    attribution: input.attribution,
+    inputTokens: input.totals.inputTokens,
+    outputTokens: input.totals.outputTokens,
+    cacheReadTokens: input.totals.cacheReadTokens,
+    cacheWriteTokens: input.totals.cacheWriteTokens,
+    reasoningTokens: input.totals.reasoningTokens,
+    totalTokens: input.totals.totalTokens,
+  });
+}
+
+function buildDailyTokenRowsForParseResult(
+  parseResult: ParseResult,
+  fallbackTimestamp?: string | null,
+  sessionTotals = getSessionTokenTotals(parseResult)
+): DailyTokenRollupRow[] {
+  const map = new Map<string, DailyTokenRollupRow>();
+  const source = parseResult.session.source as SyncSourceType;
+  const sessionFallbackTimestamp = getSessionTokenFallbackTimestamp(parseResult.session, fallbackTimestamp);
+
+  if (parseResult.tokenEvents && parseResult.tokenEvents.length > 0) {
+    for (const event of parseResult.tokenEvents) {
+      addDailyTokenRollup(map, {
+        sessionId: parseResult.session.id,
+        source,
+        project: parseResult.session.project,
+        timestamp: event.timestamp,
+        fallbackTimestamp: sessionFallbackTimestamp,
+        attribution: event.attribution,
+        totals: normalizeTokenUsage(event.usage),
+      });
+    }
+
+    const residualTotals = subtractTokenTotals(sessionTotals, sumDailyTokenRows([...map.values()]));
+    addDailyTokenRollup(map, {
+      sessionId: parseResult.session.id,
+      source,
+      project: parseResult.session.project,
+      timestamp: getSessionTokenResidualTimestamp(parseResult.session, fallbackTimestamp),
+      fallbackTimestamp: sessionFallbackTimestamp,
+      attribution: 'session',
+      totals: residualTotals,
+    });
+
+    return [...map.values()];
+  }
+
+  for (const message of parseResult.messages) {
+    if (!message.tokenUsage) continue;
+    addDailyTokenRollup(map, {
+      sessionId: parseResult.session.id,
+      source,
+      project: parseResult.session.project,
+      timestamp: message.timestamp,
+      fallbackTimestamp: sessionFallbackTimestamp,
+      attribution: 'message',
+      totals: normalizeTokenUsage(message.tokenUsage),
+    });
+  }
+
+  if (map.size > 0) return [...map.values()];
+
+  addDailyTokenRollup(map, {
+    sessionId: parseResult.session.id,
+    source,
+    project: parseResult.session.project,
+    timestamp: sessionFallbackTimestamp,
+    attribution: 'session',
+    totals: sessionTotals,
+  });
+
+  return [...map.values()];
+}
+
+function buildDailyTokenRowsForDelta(
+  delta: IncrementalParseDelta,
+  project: string,
+  fallbackTimestamp?: string | null
+): DailyTokenRollupRow[] {
+  const map = new Map<string, DailyTokenRollupRow>();
+
+  if (delta.tokenEvents && delta.tokenEvents.length > 0) {
+    for (const event of delta.tokenEvents) {
+      addDailyTokenRollup(map, {
+        sessionId: delta.sessionId,
+        source: delta.sourceType,
+        project,
+        timestamp: event.timestamp,
+        fallbackTimestamp,
+        attribution: event.attribution,
+        totals: normalizeTokenUsage(event.usage),
+      });
+    }
+    return [...map.values()];
+  }
+
+  for (const message of delta.messages) {
+    if (!message.tokenUsage) continue;
+    addDailyTokenRollup(map, {
+      sessionId: delta.sessionId,
+      source: delta.sourceType,
+      project,
+      timestamp: message.timestamp,
+      fallbackTimestamp,
+      attribution: 'message',
+      totals: normalizeTokenUsage(message.tokenUsage),
+    });
+  }
+
+  if (map.size > 0) return [...map.values()];
+
+  const totals: TokenTotals = {
+    inputTokens: delta.metricsDelta.totalInputTokens,
+    outputTokens: delta.metricsDelta.totalOutputTokens,
+    cacheReadTokens: delta.metricsDelta.totalCacheReadTokens ?? 0,
+    cacheWriteTokens: delta.metricsDelta.totalCacheWriteTokens ?? 0,
+    reasoningTokens: delta.metricsDelta.totalReasoningTokens ?? 0,
+    totalTokens: delta.metricsDelta.totalTokens
+      ?? delta.metricsDelta.totalInputTokens
+        + delta.metricsDelta.totalOutputTokens
+        + (delta.metricsDelta.totalCacheReadTokens ?? 0)
+        + (delta.metricsDelta.totalCacheWriteTokens ?? 0)
+        + (delta.metricsDelta.totalReasoningTokens ?? 0),
+  };
+  addDailyTokenRollup(map, {
+    sessionId: delta.sessionId,
+    source: delta.sourceType,
+    project,
+    timestamp: delta.sessionPatch.updatedAt
+      || delta.sessionPatch.endedAt
+      || delta.sessionPatch.startedAt
+      || fallbackTimestamp,
+    attribution: 'session',
+    totals,
+  });
+
+  return [...map.values()];
+}
+
+function insertDailyTokenRows(database: Database.Database, rows: DailyTokenRollupRow[]): void {
+  if (rows.length === 0) return;
+
+  const insert = database.prepare(`
+    INSERT INTO session_token_daily (
+      session_id,
+      source,
+      project,
+      usage_date,
+      attribution,
+      input_tokens,
+      output_tokens,
+      cache_read_tokens,
+      cache_write_tokens,
+      reasoning_tokens,
+      total_tokens
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(session_id, usage_date) DO UPDATE SET
+      source = excluded.source,
+      project = excluded.project,
+      attribution = excluded.attribution,
+      input_tokens = excluded.input_tokens,
+      output_tokens = excluded.output_tokens,
+      cache_read_tokens = excluded.cache_read_tokens,
+      cache_write_tokens = excluded.cache_write_tokens,
+      reasoning_tokens = excluded.reasoning_tokens,
+      total_tokens = excluded.total_tokens
+  `);
+
+  for (const row of rows) {
+    insert.run(
+      row.sessionId,
+      row.source,
+      row.project,
+      row.usageDate,
+      row.attribution,
+      row.inputTokens,
+      row.outputTokens,
+      row.cacheReadTokens,
+      row.cacheWriteTokens,
+      row.reasoningTokens,
+      row.totalTokens
+    );
+  }
+}
+
+function addDailyTokenRows(database: Database.Database, rows: DailyTokenRollupRow[]): void {
+  if (rows.length === 0) return;
+
+  const upsert = database.prepare(`
+    INSERT INTO session_token_daily (
+      session_id,
+      source,
+      project,
+      usage_date,
+      attribution,
+      input_tokens,
+      output_tokens,
+      cache_read_tokens,
+      cache_write_tokens,
+      reasoning_tokens,
+      total_tokens
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(session_id, usage_date) DO UPDATE SET
+      source = excluded.source,
+      project = excluded.project,
+      attribution = excluded.attribution,
+      input_tokens = session_token_daily.input_tokens + excluded.input_tokens,
+      output_tokens = session_token_daily.output_tokens + excluded.output_tokens,
+      cache_read_tokens = session_token_daily.cache_read_tokens + excluded.cache_read_tokens,
+      cache_write_tokens = session_token_daily.cache_write_tokens + excluded.cache_write_tokens,
+      reasoning_tokens = session_token_daily.reasoning_tokens + excluded.reasoning_tokens,
+      total_tokens = session_token_daily.total_tokens + excluded.total_tokens
+  `);
+
+  for (const row of rows) {
+    upsert.run(
+      row.sessionId,
+      row.source,
+      row.project,
+      row.usageDate,
+      row.attribution,
+      row.inputTokens,
+      row.outputTokens,
+      row.cacheReadTokens,
+      row.cacheWriteTokens,
+      row.reasoningTokens,
+      row.totalTokens
+    );
+  }
 }
 
 // ============================================================================
@@ -669,20 +1050,71 @@ function getSessionDerivedRowsReparseReason(
       SELECT message_count
       FROM sessions
       WHERE id = ?
-    `).get(sessionId) as { message_count: number | null } | undefined;
+    `).get(sessionId) as {
+      message_count: number | null;
+    } | undefined;
 
     if (!session) return 'missing_cursor_session_row';
 
     const expectedMessages = Number(session.message_count ?? 0);
-    if (expectedMessages <= 0) return null;
+    if (expectedMessages > 0) {
+      const actual = database.prepare(`
+        SELECT COUNT(*) AS count
+        FROM messages
+        WHERE session_id = ?
+      `).get(sessionId) as { count: number };
 
-    const actual = database.prepare(`
+      if (Number(actual.count ?? 0) < expectedMessages) {
+        return 'derived_rows_missing';
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  try {
+    const session = database.prepare(`
+      SELECT
+        source,
+        total_input_tokens,
+        total_output_tokens,
+        total_cache_read_tokens,
+        total_cache_write_tokens,
+        total_reasoning_tokens,
+        total_tokens
+      FROM sessions
+      WHERE id = ?
+    `).get(sessionId) as {
+      source: SyncSourceType;
+      total_input_tokens: number | null;
+      total_output_tokens: number | null;
+      total_cache_read_tokens: number | null;
+      total_cache_write_tokens: number | null;
+      total_reasoning_tokens: number | null;
+      total_tokens: number | null;
+    } | undefined;
+
+    if (!session) return null;
+
+    const channelTotal =
+      Number(session.total_input_tokens ?? 0)
+      + Number(session.total_output_tokens ?? 0)
+      + Number(session.total_cache_read_tokens ?? 0)
+      + Number(session.total_cache_write_tokens ?? 0)
+      + Number(session.total_reasoning_tokens ?? 0);
+    const tokenTotal = session.source === 'opencode'
+      ? channelTotal
+      : Math.max(Number(session.total_tokens ?? 0), channelTotal);
+
+    if (tokenTotal <= 0) return null;
+
+    const daily = database.prepare(`
       SELECT COUNT(*) AS count
-      FROM messages
+      FROM session_token_daily
       WHERE session_id = ?
     `).get(sessionId) as { count: number };
 
-    return Number(actual.count ?? 0) < expectedMessages
+    return Number(daily.count ?? 0) === 0
       ? 'derived_rows_missing'
       : null;
   } catch {
@@ -1071,7 +1503,10 @@ export function writeSessionToDatabase(
 
     // Skip cache: if hash matches AND force is not set, skip derived-row writes
     // but still refresh metadata that can be repaired cheaply from the parser.
-    if (existing && cacheFileHash && existing.file_hash === cacheFileHash && !options?.force) {
+    const derivedRowsReason = existing
+      ? getSessionDerivedRowsReparseReason(database, existing.id)
+      : null;
+    if (existing && cacheFileHash && existing.file_hash === cacheFileHash && !options?.force && !derivedRowsReason) {
       database.prepare(`
         UPDATE sessions SET
           file_size = ?,
@@ -1126,6 +1561,14 @@ export function writeSessionToDatabase(
       reasoningTokens,
       totalTokens,
     } = getSessionTokenTotals(parseResult);
+    const dailyTokenRows = buildDailyTokenRowsForParseResult(parseResult, fileMtime, {
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      reasoningTokens,
+      totalTokens,
+    });
 
     // -------------------------------------------------------------------------
     // Transactional write: all inserts/deletes in a single SQLite transaction
@@ -1144,6 +1587,7 @@ export function writeSessionToDatabase(
         database.prepare('DELETE FROM subagent_links WHERE session_id = ?').run(parseResult.session.id);
         database.prepare('DELETE FROM turns WHERE session_id = ?').run(parseResult.session.id);
         database.prepare('DELETE FROM messages WHERE session_id = ?').run(parseResult.session.id);
+        database.prepare('DELETE FROM session_token_daily WHERE session_id = ?').run(parseResult.session.id);
 
         // Update session metadata
         database.prepare(`
@@ -1272,6 +1716,8 @@ export function writeSessionToDatabase(
         );
         sessionsInserted++;
       }
+
+      insertDailyTokenRows(database, dailyTokenRows);
 
       // Insert messages with stable IDs
       // ID priority: message.id (from parser) → deterministic fallback "${sessionId}:${ordinal}"
@@ -1423,12 +1869,13 @@ export function appendSessionDeltaToDatabase(
     const lastSyncAt = new Date().toISOString();
     const sessionId = delta.sessionId;
     const existingSession = db
-      .prepare('SELECT id FROM sessions WHERE id = ?')
-      .get(sessionId) as { id: string } | undefined;
+      .prepare('SELECT id, project FROM sessions WHERE id = ?')
+      .get(sessionId) as { id: string; project: string | null } | undefined;
     const projectPatch =
       delta.sessionPatch.project && delta.sessionPatch.project !== 'default'
         ? delta.sessionPatch.project
         : '';
+    const effectiveProject = projectPatch || existingSession?.project || 'default';
     const toolCallsByOrdinal = new Map<number, IncrementalParseDelta['toolCalls']>();
     for (const toolCall of delta.toolCalls) {
       if (typeof toolCall.messageOrdinal !== 'number') continue;
@@ -1443,6 +1890,7 @@ export function appendSessionDeltaToDatabase(
     let insertedCacheWriteTokens = 0;
     let insertedReasoningTokens = 0;
     let insertedTotalTokens = 0;
+    const insertedDailyRows = new Map<string, DailyTokenRollupRow>();
 
     const writeTransaction = db.transaction(() => {
       if (existingSession) {
@@ -1554,6 +2002,15 @@ export function appendSessionDeltaToDatabase(
                 + (usage.cacheReadTokens ?? 0)
                 + (usage.cacheWriteTokens ?? 0)
                 + (usage.reasoningTokens ?? 0);
+            addDailyTokenRollup(insertedDailyRows, {
+              sessionId,
+              source: delta.sourceType,
+              project: effectiveProject,
+              timestamp: message.timestamp,
+              fallbackTimestamp: decision.snapshot.mtimeIso,
+              attribution: 'message',
+              totals: normalizeTokenUsage(usage),
+            });
           }
         }
       }
@@ -1662,6 +2119,9 @@ export function appendSessionDeltaToDatabase(
       const tokenCacheWriteDelta = cursorAdvanced ? (delta.metricsDelta.totalCacheWriteTokens ?? 0) : insertedCacheWriteTokens;
       const tokenReasoningDelta = cursorAdvanced ? (delta.metricsDelta.totalReasoningTokens ?? 0) : insertedReasoningTokens;
       const tokenTotalDelta = cursorAdvanced ? parserTotalDelta : insertedTotalTokens;
+      const dailyRows = cursorAdvanced
+        ? buildDailyTokenRowsForDelta(delta, effectiveProject, decision.snapshot.mtimeIso)
+        : [...insertedDailyRows.values()];
 
       db.prepare(`
         UPDATE sessions SET
@@ -1689,6 +2149,8 @@ export function appendSessionDeltaToDatabase(
         cursorAdvanced ? delta.metricsDelta.parserMalformedLines : 0,
         sessionId
       );
+
+      addDailyTokenRows(db, dailyRows);
 
       upsertIngestFileCursor(db, {
         sourceType: delta.sourceType,
@@ -2551,9 +3013,9 @@ async function syncQoderSource(opts: SyncSourceOptions): Promise<SyncResult> {
     // Skip non-configured sources (absent/invalid DB)
     if (source.error) continue;
 
-    let db: InstanceType<typeof import('better-sqlite3')> | null = null;
+    let db: Database.Database | null = null;
     try {
-      db = new (require('better-sqlite3'))(source.path, { readonly: true, fileMustExist: true });
+      db = new Database(source.path, { readonly: true, fileMustExist: true });
 
       // Enumerate sessions with fingerprint metadata
       const sessionRows = withSyncRetry(() =>

@@ -5,7 +5,7 @@ import { rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { closeDatabase, initSchema, openDatabase } from '@/ingest/db';
+import { closeDatabase, getDatabase, initSchema, openDatabase } from '@/ingest/db';
 
 describe('ingest database migrations', () => {
   let dbPath: string | undefined;
@@ -98,6 +98,7 @@ describe('ingest database migrations', () => {
     expect(indexes.map((index) => index.name)).toContain('idx_messages_session_turn_index');
     expect(tables.map((table) => table.name)).toContain('subagent_links');
     expect(tables.map((table) => table.name)).toContain('ingest_file_cursors');
+    expect(tables.map((table) => table.name)).toContain('session_token_daily');
     expect(sessionColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         'total_cache_read_tokens',
@@ -108,7 +109,7 @@ describe('ingest database migrations', () => {
     );
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(20);
+    expect(version).toBe(21);
   });
 
   it('initializes ingest file cursor schema idempotently', () => {
@@ -128,6 +129,9 @@ describe('ingest database migrations', () => {
       .all() as { name: string }[];
     const sessionIndexes = db
       .prepare('PRAGMA index_list(sessions)')
+      .all() as { name: string }[];
+    const dailyTokenIndexes = db
+      .prepare('PRAGMA index_list(session_token_daily)')
       .all() as { name: string }[];
     const version = db.pragma('user_version', { simple: true });
     db.close();
@@ -153,7 +157,73 @@ describe('ingest database migrations', () => {
     expect(indexes.map((index) => index.name)).toContain('idx_ingest_file_cursors_session_id');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(20);
+    expect(dailyTokenIndexes.map((index) => index.name)).toContain('idx_session_token_daily_source_date');
+    expect(dailyTokenIndexes.map((index) => index.name)).toContain('idx_session_token_daily_project_date');
+    expect(version).toBe(21);
+  });
+
+  it('preserves existing OpenCode source cost fields when migrating from v20 to v21', () => {
+    dbPath = join(tmpdir(), `ingest-v20-cost-preserve-${randomUUID()}.db`);
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    initSchema();
+
+    const dbWrite = getDatabase();
+    dbWrite.prepare(`
+      INSERT INTO sessions (
+        id, source, project, started_at, ended_at, status,
+        message_count, user_message_count,
+        total_output_tokens, total_input_tokens, total_cache_read_tokens,
+        total_cache_write_tokens, total_reasoning_tokens, total_tokens,
+        has_tool_calls, file_path,
+        source_cost_usd, cost_source, cost_pricing_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'opencode:cost-preserve',
+      'opencode',
+      'demo',
+      '2026-01-01 00:00:00',
+      '2026-01-01 00:01:00',
+      'idle',
+      2,
+      1,
+      100,
+      1000,
+      7000,
+      0,
+      300,
+      8400,
+      0,
+      '/tmp/opencode.db#cost-preserve',
+      1.23,
+      'source-reported',
+      'priced',
+    );
+    dbWrite.pragma('user_version = 20');
+
+    closeDatabase();
+    openedByTest = false;
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    expect(() => initSchema()).not.toThrow();
+
+    const dbRead = new Database(dbPath, { readonly: true });
+    const row = dbRead.prepare(`
+      SELECT source_cost_usd, cost_source, cost_pricing_status
+      FROM sessions
+      WHERE id = ?
+    `).get('opencode:cost-preserve') as {
+      source_cost_usd: number | null;
+      cost_source: string | null;
+      cost_pricing_status: string | null;
+    };
+    const version = dbRead.pragma('user_version', { simple: true });
+    dbRead.close();
+
+    expect(version).toBe(21);
+    expect(row.source_cost_usd).toBeCloseTo(1.23);
+    expect(row.cost_source).toBe('source-reported');
+    expect(row.cost_pricing_status).toBe('priced');
   });
 
   it('repairs stale Claude/Codex project labels during v20 migration', () => {
@@ -237,7 +307,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(20);
+    expect(version).toBe(21);
     expect(rows).toEqual([
       {
         id: 'claude:split-project',
@@ -371,7 +441,7 @@ describe('ingest database migrations', () => {
       `SELECT COUNT(*) as c FROM subagent_links WHERE session_id = 'codex:legacy-parent'`
     ).get() as { c: number };
 
-    expect(version).toBe(20);
+    expect(version).toBe(21);
     expect(sessionSql.sql).toContain("'qoder'");
     expect(linkSql.sql).toContain("'qoder'");
     expect(cursorSql.sql).toContain("'qoder'");
@@ -614,7 +684,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(20);
+    expect(version).toBe(21);
     // All three pre-existing rows survive the rebuild.
     const ids = sessionRows.map((r) => r.id);
     expect(ids).toEqual(

@@ -8,10 +8,11 @@ import {
   appendSessionDeltaToDatabase,
   PARSER_CACHE_VERSION,
   readFileSnapshotWithIdentity,
+  writeSessionToDatabase,
   type CursorDecision,
   type IngestFileCursor,
 } from '@/ingest/sync';
-import type { IncrementalParseDelta } from '@/ingest/parser/types';
+import type { IncrementalParseDelta, ParseResult } from '@/ingest/parser/types';
 
 describe('incremental sync append writer', () => {
   let db: Database.Database;
@@ -49,6 +50,17 @@ describe('incremental sync append writer', () => {
     expect(sessionRow().total_input_tokens).toBe(2);
     expect(sessionRow().total_output_tokens).toBe(4);
     expect(sessionRow().total_tokens).toBe(6);
+    expect(dailyTokenRows()).toEqual([
+      {
+        usage_date: '2026-05-15',
+        attribution: 'message',
+        input_tokens: 2,
+        output_tokens: 4,
+        cache_read_tokens: 0,
+        reasoning_tokens: 0,
+        total_tokens: 6,
+      },
+    ]);
   });
 
   it('applies parser token deltas that are not attached to inserted messages idempotently', () => {
@@ -90,6 +102,160 @@ describe('incremental sync append writer', () => {
       total_cache_read_tokens: 300,
       total_reasoning_tokens: 21,
       total_tokens: 1234,
+    });
+    expect(dailyTokenRows()).toEqual([
+      {
+        usage_date: '2026-05-15',
+        attribution: 'session',
+        input_tokens: 1200,
+        output_tokens: 34,
+        cache_read_tokens: 300,
+        reasoning_tokens: 21,
+        total_tokens: 1234,
+      },
+    ]);
+  });
+
+  it('reconciles full-parse event rollups with larger session totals', () => {
+    const parseResult: ParseResult = {
+      session: {
+        id: 'codex-total-residual',
+        source: 'codex',
+        project: 'test',
+        startedAt: '2026-05-14T00:00:00.000Z',
+        endedAt: '2026-05-15T00:00:00.000Z',
+        status: 'idle',
+        sourceSessionId: 'codex-total-residual',
+        metrics: {
+          messageCount: 0,
+          userMessageCount: 0,
+          inputTokens: 5000,
+          outputTokens: 500,
+          cacheReadTokens: 1000,
+          cacheWriteTokens: 0,
+          reasoningTokens: 200,
+          totalTokens: 5500,
+          hasToolCalls: false,
+          parserMalformedLines: 0,
+          isTruncated: false,
+        },
+        turns: [],
+      },
+      messages: [],
+      activities: [],
+      tokenEvents: [
+        {
+          timestamp: '2026-05-15T00:00:00.000Z',
+          attribution: 'event',
+          usage: {
+            inputTokens: 1000,
+            outputTokens: 100,
+            cacheReadTokens: 200,
+            reasoningTokens: 50,
+            totalTokens: 1100,
+            usageSemantics: 'overlap',
+          },
+        },
+      ],
+      errors: [],
+      warnings: [],
+    };
+
+    const result = writeSessionToDatabase(parseResult, db);
+
+    expect(result.errors).toEqual([]);
+    const rows = db.prepare(`
+      SELECT usage_date, attribution, input_tokens, output_tokens, cache_read_tokens, reasoning_tokens, total_tokens
+      FROM session_token_daily
+      WHERE session_id = ?
+      ORDER BY usage_date ASC
+    `).all('codex-total-residual') as Array<{
+      usage_date: string;
+      attribution: string;
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      reasoning_tokens: number;
+      total_tokens: number;
+    }>;
+
+    expect(rows).toEqual([
+      {
+        usage_date: '2026-05-14',
+        attribution: 'session',
+        input_tokens: 4000,
+        output_tokens: 400,
+        cache_read_tokens: 800,
+        reasoning_tokens: 150,
+        total_tokens: 4400,
+      },
+      {
+        usage_date: '2026-05-15',
+        attribution: 'event',
+        input_tokens: 1000,
+        output_tokens: 100,
+        cache_read_tokens: 200,
+        reasoning_tokens: 50,
+        total_tokens: 1100,
+      },
+    ]);
+  });
+
+  it('normalizes timezone-bearing message timestamps before daily attribution', () => {
+    const parseResult: ParseResult = {
+      session: {
+        id: 'timezone-token-session',
+        source: 'claude-code',
+        project: 'test',
+        startedAt: '2026-05-15T23:30:00-05:00',
+        endedAt: '2026-05-15T23:30:00-05:00',
+        status: 'idle',
+        sourceSessionId: 'timezone-token-session',
+        metrics: {
+          messageCount: 1,
+          userMessageCount: 0,
+          hasToolCalls: false,
+          parserMalformedLines: 0,
+          isTruncated: false,
+        },
+        turns: [],
+      },
+      messages: [
+        {
+          id: 'timezone-token-session:0',
+          ordinal: 0,
+          role: 'assistant',
+          content: 'timezone response',
+          timestamp: '2026-05-15T23:30:00-05:00',
+          tokenUsage: {
+            inputTokens: 1,
+            outputTokens: 2,
+            totalTokens: 3,
+          },
+          sourceMetadata: {
+            sourceType: 'claude-code',
+            sourceFile: 'timezone.jsonl',
+            sourceLine: 1,
+          },
+        },
+      ],
+      activities: [],
+      errors: [],
+      warnings: [],
+    };
+
+    const result = writeSessionToDatabase(parseResult, db);
+
+    expect(result.errors).toEqual([]);
+    const row = db.prepare(`
+      SELECT usage_date, total_tokens
+      FROM session_token_daily
+      WHERE session_id = ?
+    `).get('timezone-token-session') as { usage_date: string; total_tokens: number };
+
+    expect(row).toEqual({
+      usage_date: '2026-05-16',
+      total_tokens: 3,
     });
   });
 
@@ -396,5 +562,29 @@ describe('incremental sync append writer', () => {
       total_reasoning_tokens: number;
       total_tokens: number;
     };
+  }
+
+  function dailyTokenRows() {
+    return db.prepare(`
+      SELECT
+        usage_date,
+        attribution,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        reasoning_tokens,
+        total_tokens
+      FROM session_token_daily
+      WHERE session_id = ?
+      ORDER BY usage_date
+    `).all('append-session') as Array<{
+      usage_date: string;
+      attribution: string;
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      reasoning_tokens: number;
+      total_tokens: number;
+    }>;
   }
 });

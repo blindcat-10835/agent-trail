@@ -94,7 +94,7 @@ describe('sync performance behavior', () => {
     const filePath = await createCodexFile(codexRoot, 'unchanged.jsonl', '{"stable":true}\n');
     const stats = fs.statSync(filePath);
     const { openDatabase, initSchema, getDatabase } = await import('@/ingest/db');
-    const { syncPaths } = await import('@/ingest/sync/index');
+    const { syncPaths, PARSER_CACHE_VERSION } = await import('@/ingest/sync/index');
     openDatabase({ path: dbPath });
     initSchema();
 
@@ -114,7 +114,7 @@ describe('sync performance behavior', () => {
       filePath,
       stats.size,
       new Date(stats.mtimeMs).toISOString(),
-      'parser-v8-model-token-accounting:codex:anyhash',
+      `${PARSER_CACHE_VERSION}:codex:anyhash`,
       '2026-05-14T00:00:01.000Z'
     );
 
@@ -130,7 +130,7 @@ describe('sync performance behavior', () => {
     const filePath = await createCodexFile(codexRoot, 'force.jsonl', '{"stable":true}\n');
     const stats = fs.statSync(filePath);
     const { openDatabase, initSchema, getDatabase } = await import('@/ingest/db');
-    const { syncPaths } = await import('@/ingest/sync/index');
+    const { syncPaths, PARSER_CACHE_VERSION } = await import('@/ingest/sync/index');
     openDatabase({ path: dbPath });
     initSchema();
 
@@ -150,7 +150,7 @@ describe('sync performance behavior', () => {
       filePath,
       stats.size,
       new Date(stats.mtimeMs).toISOString(),
-      'parser-v8-model-token-accounting:codex:anyhash',
+      `${PARSER_CACHE_VERSION}:codex:anyhash`,
       '2026-05-14T00:00:01.000Z'
     );
 
@@ -242,7 +242,7 @@ describe('sync performance behavior', () => {
     const childId = 'stored-child-session';
 
     const { openDatabase, initSchema, getDatabase } = await import('@/ingest/db');
-    const { syncSource } = await import('@/ingest/sync/index');
+    const { syncSource, PARSER_CACHE_VERSION } = await import('@/ingest/sync/index');
     openDatabase({ path: dbPath });
     initSchema();
 
@@ -264,7 +264,7 @@ describe('sync performance behavior', () => {
       path.join(codexRoot, '2026', '05', '14', 'parent.jsonl'),
       0,
       '2026-05-14T00:00:00.000Z',
-      'parser-v8-model-token-accounting:codex:parent',
+      `${PARSER_CACHE_VERSION}:codex:parent`,
       0,
       0,
       'root'
@@ -280,7 +280,7 @@ describe('sync performance behavior', () => {
       childFilePath,
       childStats.size,
       new Date(childStats.mtimeMs).toISOString(),
-      'parser-v8-model-token-accounting:codex:child',
+      `${PARSER_CACHE_VERSION}:codex:child`,
       0,
       0,
       'root'
