@@ -109,7 +109,7 @@ describe('ingest database migrations', () => {
     );
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_started_at');
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
-    expect(version).toBe(22);
+    expect(version).toBe(23);
   });
 
   it('initializes ingest file cursor schema idempotently', () => {
@@ -159,7 +159,7 @@ describe('ingest database migrations', () => {
     expect(sessionIndexes.map((index) => index.name)).toContain('idx_sessions_source_agent_name');
     expect(dailyTokenIndexes.map((index) => index.name)).toContain('idx_session_token_daily_source_date');
     expect(dailyTokenIndexes.map((index) => index.name)).toContain('idx_session_token_daily_project_date');
-    expect(version).toBe(22);
+    expect(version).toBe(23);
   });
 
   it('preserves existing OpenCode source cost fields when migrating from v20 to current', () => {
@@ -220,10 +220,68 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(22);
+    expect(version).toBe(23);
     expect(row.source_cost_usd).toBeCloseTo(1.23);
     expect(row.cost_source).toBe('source-reported');
     expect(row.cost_pricing_status).toBe('priced');
+  });
+
+  it('invalidates OpenClaw parser cache when migrating from v22 to current', () => {
+    dbPath = join(tmpdir(), `ingest-v22-openclaw-cache-${randomUUID()}.db`);
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    initSchema();
+
+    const dbWrite = getDatabase();
+    dbWrite.prepare(`
+      INSERT INTO sessions (
+        id, source, project, name, agent_name,
+        started_at, ended_at, status,
+        message_count, user_message_count,
+        total_output_tokens, total_input_tokens,
+        total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, total_tokens,
+        has_tool_calls, file_path, file_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'openclaw:camelcase-cache',
+      'openclaw',
+      'demo',
+      'cached OpenClaw session',
+      'skye',
+      '2026-05-25 00:00:00',
+      '2026-05-25 00:01:00',
+      'idle',
+      2,
+      1,
+      20,
+      100,
+      300,
+      40,
+      0,
+      460,
+      0,
+      '/tmp/openclaw.jsonl',
+      'old-parser-cache-key',
+    );
+    dbWrite.pragma('user_version = 22');
+
+    closeDatabase();
+    openedByTest = false;
+    openDatabase({ path: dbPath });
+    openedByTest = true;
+    expect(() => initSchema()).not.toThrow();
+
+    const dbRead = new Database(dbPath, { readonly: true });
+    const row = dbRead.prepare(`
+      SELECT file_hash
+      FROM sessions
+      WHERE id = ?
+    `).get('openclaw:camelcase-cache') as { file_hash: string | null };
+    const version = dbRead.pragma('user_version', { simple: true });
+    dbRead.close();
+
+    expect(version).toBe(23);
+    expect(row.file_hash).toBeNull();
   });
 
   it('preserves existing daily token rollups when migrating from v21 to current', () => {
@@ -310,7 +368,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(22);
+    expect(version).toBe(23);
     expect(rows).toEqual([
       {
         usage_date: '2026-05-15',
@@ -403,7 +461,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(22);
+    expect(version).toBe(23);
     expect(rows).toEqual([
       {
         id: 'claude:split-project',
@@ -537,7 +595,7 @@ describe('ingest database migrations', () => {
       `SELECT COUNT(*) as c FROM subagent_links WHERE session_id = 'codex:legacy-parent'`
     ).get() as { c: number };
 
-    expect(version).toBe(22);
+    expect(version).toBe(23);
     expect(sessionSql.sql).toContain("'qoder'");
     expect(linkSql.sql).toContain("'qoder'");
     expect(cursorSql.sql).toContain("'qoder'");
@@ -780,7 +838,7 @@ describe('ingest database migrations', () => {
     const version = dbRead.pragma('user_version', { simple: true });
     dbRead.close();
 
-    expect(version).toBe(22);
+    expect(version).toBe(23);
     // All three pre-existing rows survive the rebuild.
     const ids = sessionRows.map((r) => r.id);
     expect(ids).toEqual(
@@ -792,11 +850,9 @@ describe('ingest database migrations', () => {
     expect(codexRow?.source).toBe('codex');
     expect(ccRow?.source).toBe('claude-code');
     expect(owRow?.source).toBe('openclaw');
-    // openclaw row with agent_name preset survives untouched (no flush
-    // applies to it). This is the canonical "file_hash preserved across
-    // v15 rebuild" assertion that is robust against unrelated earlier
-    // pre-v15 NULL-flush steps.
-    expect(owRow?.file_hash).toBe('ow-hash-3');
+    // openclaw row with agent_name preset survives the rebuild; v23
+    // intentionally invalidates its parser cache to backfill real token usage.
+    expect(owRow?.file_hash).toBeNull();
     // Subagent_links rows preserved through the rebuild.
     expect(linkRows.map((r) => r.session_id)).toContain('codex:keep-1');
     expect(linkRows.map((r) => r.subagent_source)).toContain('codex');
@@ -804,7 +860,7 @@ describe('ingest database migrations', () => {
     expect(cursorRows.map((r) => r.source_type)).toContain('codex');
   });
 
-  it('NULL-flushes file_hash for qoder rows only — other sources untouched (D-04)', () => {
+  it('NULL-flushes file_hash for qoder and OpenClaw parser-cache migrations', () => {
     dbPath = join(tmpdir(), `ingest-qoder-flush-${randomUUID()}.db`);
     openDatabase({ path: dbPath });
     openedByTest = true;
@@ -812,10 +868,7 @@ describe('ingest database migrations', () => {
 
     const dbWrite = new Database(dbPath);
     // Insert one row per source with a non-NULL file_hash (allowed because
-    // initSchema already brought us to v15 with the widened CHECK). Use
-    // openclaw with agent_name preset as the witness for "other sources
-    // untouched" — it is the only source whose file_hash is not flushed by
-    // any pre-v15 cumulative NULL-flush step in runMigrations().
+    // initSchema already brought us to current schema with widened CHECKs).
     dbWrite.prepare(`
       INSERT INTO sessions (
         id, source, project, status, message_count, user_message_count,
@@ -850,7 +903,7 @@ describe('ingest database migrations', () => {
 
     // qoder row: file_hash NULL'd by the v15 own-source flush step.
     expect(qoderRow?.file_hash).toBeNull();
-    // openclaw row: untouched by the v15 step (D-04: own-source-only flush).
-    expect(owRow?.file_hash).toBe('ow-fp-PRE');
+    // openclaw row: file_hash NULL'd by the v23 token-usage backfill step.
+    expect(owRow?.file_hash).toBeNull();
   });
 });
