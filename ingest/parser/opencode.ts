@@ -22,6 +22,7 @@ import {
   TraceToolResultEvent,
   ToolCategory,
   SourceMetadata,
+  TokenUsage,
 } from '@/types/trace';
 import { ParseResult, ParseError } from './types';
 import { normalizeModelName } from '../pricing/normalize-model.js';
@@ -29,8 +30,17 @@ import { normalizeModelName } from '../pricing/normalize-model.js';
 const BUSY_RETRIES = 3;
 const BUSY_DELAY_MS = 100;
 const REQUIRED_TABLES = ['session', 'message', 'part', 'project'] as const;
-const OPENCODE_SKIP_KEY_VERSION = 'opencode-parser-v3-model-normalization';
+const OPENCODE_SKIP_KEY_VERSION = 'opencode-parser-v4-message-token-usage';
 type OpencodeTimestamp = string | number | null;
+
+interface TokenAccumulator {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
 
 export interface OpencodeSessionRow {
   id: string;
@@ -243,6 +253,85 @@ function safeNullableNumber(val: unknown): number | null {
   return null;
 }
 
+function createTokenAccumulator(): TokenAccumulator {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+  };
+}
+
+function tokenUsageTotal(usage: TokenUsage): number {
+  return usage.totalTokens
+    ?? usage.inputTokens
+      + usage.outputTokens
+      + (usage.cacheReadTokens ?? 0)
+      + (usage.cacheWriteTokens ?? 0)
+      + (usage.reasoningTokens ?? 0);
+}
+
+function mergeTokenUsage(existing: TokenUsage | undefined, usage: TokenUsage): TokenUsage {
+  if (!existing) return { ...usage };
+
+  return {
+    inputTokens: existing.inputTokens + usage.inputTokens,
+    outputTokens: existing.outputTokens + usage.outputTokens,
+    cacheReadTokens: (existing.cacheReadTokens ?? 0) + (usage.cacheReadTokens ?? 0),
+    cacheWriteTokens: (existing.cacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0),
+    reasoningTokens: (existing.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0),
+    totalTokens: tokenUsageTotal(existing) + tokenUsageTotal(usage),
+    usageSemantics: existing.usageSemantics === usage.usageSemantics ? existing.usageSemantics : undefined,
+  };
+}
+
+function addUsageToAccumulator(accumulator: TokenAccumulator, usage?: TokenUsage): void {
+  if (!usage) return;
+
+  accumulator.inputTokens += usage.inputTokens;
+  accumulator.outputTokens += usage.outputTokens;
+  accumulator.cacheReadTokens += usage.cacheReadTokens ?? 0;
+  accumulator.cacheWriteTokens += usage.cacheWriteTokens ?? 0;
+  accumulator.reasoningTokens += usage.reasoningTokens ?? 0;
+  accumulator.totalTokens += tokenUsageTotal(usage);
+}
+
+function parseOpencodeTokenUsage(source: Record<string, unknown> | null | undefined): TokenUsage | undefined {
+  const tokens = asRecord(source?.tokens);
+  if (!tokens) return undefined;
+
+  const cache = asRecord(tokens.cache);
+  const inputTokens = safeNumber(tokens.input ?? tokens.input_tokens);
+  const outputTokens = safeNumber(tokens.output ?? tokens.output_tokens);
+  const cacheReadTokens = safeNumber(cache?.read ?? tokens.cache_read ?? tokens.cacheRead);
+  const cacheWriteTokens = safeNumber(cache?.write ?? tokens.cache_write ?? tokens.cacheWrite);
+  const reasoningTokens = safeNumber(tokens.reasoning ?? tokens.reasoning_tokens);
+  const totalTokens = safeNumber(tokens.total ?? tokens.total_tokens);
+
+  if (
+    inputTokens === 0 &&
+    outputTokens === 0 &&
+    cacheReadTokens === 0 &&
+    cacheWriteTokens === 0 &&
+    reasoningTokens === 0 &&
+    totalTokens === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    reasoningTokens,
+    totalTokens: totalTokens || inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens,
+    usageSemantics: 'additive',
+  };
+}
+
 function asRecord(val: unknown): Record<string, unknown> | undefined {
   if (val && typeof val === 'object' && !Array.isArray(val)) {
     return val as Record<string, unknown>;
@@ -376,6 +465,7 @@ export async function parseOpencodeSession(
     let startedAt: string | null = safeTimestamp(sessionRow.time_created);
     let endedAt: string | null = null;
     let hasToolCalls = false;
+    const messageTokenTotals = createTokenAccumulator();
 
     const sourceMetadata: SourceMetadata = {
       sourceType: 'opencode',
@@ -404,10 +494,19 @@ export async function parseOpencodeSession(
       const msgParts = partsByMessage.get(msgRow.id) ?? [];
       const textParts: string[] = [];
       const fileAttachments: string[] = [];
+      const messageLevelTokenUsage = parseOpencodeTokenUsage(msgData);
+      let partLevelTokenUsage: TokenUsage | undefined;
 
       for (const partRow of msgParts) {
         const partData = parseJsonData(partRow.data);
         if (!partData) continue;
+
+        if (!messageLevelTokenUsage) {
+          const partTokenUsage = parseOpencodeTokenUsage(partData);
+          if (partTokenUsage) {
+            partLevelTokenUsage = mergeTokenUsage(partLevelTokenUsage, partTokenUsage);
+          }
+        }
 
         const partType = partData.type as string | undefined;
         if (!partType) continue;
@@ -595,18 +694,20 @@ export async function parseOpencodeSession(
         turnId,
         turnIndex,
         isRealUserInput: role === 'user',
+        tokenUsage: messageLevelTokenUsage ?? partLevelTokenUsage,
         sourceMetadata,
       };
 
+      addUsageToAccumulator(messageTokenTotals, message.tokenUsage);
       messages.push(message);
       ordinal++;
     }
 
-    const inputTokens = safeNumber(sessionRow.tokens_input);
-    const outputTokens = safeNumber(sessionRow.tokens_output);
-    const cacheReadTokens = safeNumber(sessionRow.tokens_cache_read);
-    const cacheWriteTokens = safeNumber(sessionRow.tokens_cache_write);
-    const reasoningTokens = safeNumber(sessionRow.tokens_reasoning);
+    const inputTokens = safeNumber(sessionRow.tokens_input) || messageTokenTotals.inputTokens;
+    const outputTokens = safeNumber(sessionRow.tokens_output) || messageTokenTotals.outputTokens;
+    const cacheReadTokens = safeNumber(sessionRow.tokens_cache_read) || messageTokenTotals.cacheReadTokens;
+    const cacheWriteTokens = safeNumber(sessionRow.tokens_cache_write) || messageTokenTotals.cacheWriteTokens;
+    const reasoningTokens = safeNumber(sessionRow.tokens_reasoning) || messageTokenTotals.reasoningTokens;
     const totalTokens =
       inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
     const sourceCostUsd = safeNullableNumber(sessionRow.cost);

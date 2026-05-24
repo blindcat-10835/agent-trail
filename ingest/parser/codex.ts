@@ -37,6 +37,8 @@ import {
   TokenUsageEvent,
 } from './types';
 
+// Codex JSONL payload shape varies by source version; narrow at each use site.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CodexPayload = Record<string, any>;
 
 interface PendingCodexUserMessage {
@@ -161,6 +163,47 @@ function addUsageToDelta(delta: IncrementalParseDelta, usage?: TokenUsage): void
   delta.metricsDelta.totalCacheWriteTokens = (delta.metricsDelta.totalCacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
   delta.metricsDelta.totalReasoningTokens = (delta.metricsDelta.totalReasoningTokens ?? 0) + (usage.reasoningTokens ?? 0);
   delta.metricsDelta.totalTokens = (delta.metricsDelta.totalTokens ?? 0) + getCodexUsageTotal(usage);
+}
+
+function mergeCodexTokenUsage(existing: TokenUsage | undefined, usage: TokenUsage): TokenUsage {
+  if (!existing) return { ...usage };
+
+  const existingSemantics = existing.usageSemantics;
+  const usageSemantics = usage.usageSemantics;
+
+  return {
+    inputTokens: existing.inputTokens + usage.inputTokens,
+    outputTokens: existing.outputTokens + usage.outputTokens,
+    cacheReadTokens: (existing.cacheReadTokens ?? 0) + (usage.cacheReadTokens ?? 0),
+    cacheWriteTokens: (existing.cacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0),
+    reasoningTokens: (existing.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0),
+    totalTokens: getCodexUsageTotal(existing) + getCodexUsageTotal(usage),
+    usageSemantics: existingSemantics === usageSemantics ? existingSemantics : undefined,
+  };
+}
+
+function attachCodexTokenUsageToLatestMessage(
+  messageVersions: Map<string, { tokenCount: number; message: TraceMessage }>,
+  usage: TokenUsage | undefined,
+  currentTurnId: string | undefined,
+  currentTurnIndex: number
+): void {
+  if (!usage) return;
+
+  let target: TraceMessage | undefined;
+
+  for (const entry of messageVersions.values()) {
+    const message = entry.message;
+    if (message.role !== 'assistant' && message.role !== 'tool_result') continue;
+    if (currentTurnId && message.turnId !== currentTurnId) continue;
+    if (!currentTurnId && currentTurnIndex >= 0 && message.turnIndex !== currentTurnIndex) continue;
+    if (!target || message.ordinal > target.ordinal) {
+      target = message;
+    }
+  }
+
+  if (!target) return;
+  target.tokenUsage = mergeCodexTokenUsage(target.tokenUsage, usage);
 }
 
 function codexUsageSnapshotKey(usage: TokenUsage): string {
@@ -802,6 +845,12 @@ export async function parseCodexSession(
               }
 
               if (dailyUsage && getCodexUsageTotal(dailyUsage) > 0) {
+                attachCodexTokenUsageToLatestMessage(
+                  messageVersions,
+                  dailyUsage,
+                  currentTurnId,
+                  currentTurnIndex
+                );
                 tokenEvents.push({
                   timestamp: parsed.timestamp,
                   usage: dailyUsage,
@@ -1366,6 +1415,12 @@ export async function parseCodexSessionAppend(
               const deltaUsage = tokenUsage.last;
               addUsageToDelta(delta, deltaUsage);
               if (deltaUsage && getCodexUsageTotal(deltaUsage) > 0) {
+                attachCodexTokenUsageToLatestMessage(
+                  messageVersions,
+                  deltaUsage,
+                  currentTurnId,
+                  currentTurnIndex
+                );
                 delta.tokenEvents?.push({
                   timestamp: parsed.timestamp,
                   usage: deltaUsage,
@@ -1470,7 +1525,6 @@ export async function parseCodexSessionAppend(
     .sort((a, b) => a.ordinal - b.ordinal)
     .forEach((message) => {
       delta.messages.push(message);
-      addUsageToDelta(delta, message.tokenUsage);
     });
 
   finalizeCodexDelta(delta, range, ordinal, currentTurnIndex);
