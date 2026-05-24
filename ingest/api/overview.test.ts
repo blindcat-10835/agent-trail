@@ -18,6 +18,16 @@ import { Hono } from 'hono';
 import { openDatabase, closeDatabase, initSchema, getDatabase } from '../db/index.js';
 import { overviewRoutes } from './overview.js';
 
+// Day-bucket keys are derived in the user's local timezone (see
+// dateKeyFromTimestamp / getRollupDateCondition), so tests must expect local
+// dates rather than UTC. Keeps the suite timezone-independent.
+function localDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // ============================================================================
 // Test infrastructure
 // ============================================================================
@@ -207,7 +217,7 @@ function insertFixtures(db: Database.Database): void {
       id,
       source,
       project,
-      date(started_at),
+      date(started_at, 'localtime'),
       'session',
       COALESCE(total_input_tokens, 0),
       COALESCE(total_output_tokens, 0),
@@ -608,9 +618,9 @@ describe('overview endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      const today = new Date().toISOString().slice(0, 10);
-      const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
-      const fifteenDaysAgo = new Date(Date.now() - 15 * 86400000).toISOString().slice(0, 10);
+      const today = localDateKey(new Date());
+      const fiveDaysAgo = localDateKey(new Date(Date.now() - 5 * 86400000));
+      const fifteenDaysAgo = localDateKey(new Date(Date.now() - 15 * 86400000));
 
       const byDate = new Map(
         body.days.map((day: {
@@ -647,7 +657,7 @@ describe('overview endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+      const fiveDaysAgo = localDateKey(new Date(Date.now() - 5 * 86400000));
       const day = body.days.find((row: { date: string }) => row.date === fiveDaysAgo);
       expect(day).toMatchObject({ sessionCount: 3, totalTokens: 12300 });
     });
@@ -657,11 +667,11 @@ describe('overview endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      const today = new Date().toISOString().slice(0, 10);
-      const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
-      const fifteenDaysAgo = new Date(Date.now() - 15 * 86400000).toISOString().slice(0, 10);
-      const thirtyNineDaysAgo = new Date(Date.now() - 39 * 86400000).toISOString().slice(0, 10);
-      const fortyDaysAgo = new Date(Date.now() - 40 * 86400000).toISOString().slice(0, 10);
+      const today = localDateKey(new Date());
+      const fiveDaysAgo = localDateKey(new Date(Date.now() - 5 * 86400000));
+      const fifteenDaysAgo = localDateKey(new Date(Date.now() - 15 * 86400000));
+      const thirtyNineDaysAgo = localDateKey(new Date(Date.now() - 39 * 86400000));
+      const fortyDaysAgo = localDateKey(new Date(Date.now() - 40 * 86400000));
 
       const byDate = new Map(
         body.days.map((day: {
@@ -693,7 +703,7 @@ describe('overview endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      const fortyDaysAgo = new Date(Date.now() - 40 * 86400000).toISOString().slice(0, 10);
+      const fortyDaysAgo = localDateKey(new Date(Date.now() - 40 * 86400000));
 
       expect(body.days).toHaveLength(1);
       expect(body.days[0]).toMatchObject({
@@ -705,7 +715,7 @@ describe('overview endpoints', () => {
 
     it('counts today tokens for sessions that started on a previous day', async () => {
       const db = getDatabase();
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateKey(new Date());
       const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().replace('T', ' ').split('.')[0];
 
       db.prepare(`

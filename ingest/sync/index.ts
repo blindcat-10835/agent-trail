@@ -19,7 +19,7 @@ import { sseManager } from '../src/sse';
 import { logger } from '../logger';
 import type { TokenUsage } from '@/types/trace';
 
-export const PARSER_CACHE_VERSION = 'parser-v11-qoder-token-calibrated-cost';
+export const PARSER_CACHE_VERSION = 'parser-v13-local-timezone-rollups';
 
 const claudeProjectPathCache = new Map<string, string | null>();
 
@@ -324,19 +324,26 @@ function subtractTokenTotals(current: TokenTotals, previous: TokenTotals): Token
   };
 }
 
+function localDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function dateKeyFromTimestamp(timestamp?: string | null): string | null {
   if (!timestamp) return null;
   const trimmed = timestamp.trim();
   if (!trimmed) return null;
 
+  // Date-only strings carry no time/zone — use verbatim. Passing them through
+  // new Date() would parse them as UTC midnight and shift the day backwards in
+  // negative-offset timezones.
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(trimmed)) {
-    return trimmed.slice(0, 10);
-  }
 
   const parsed = new Date(trimmed);
   if (!Number.isFinite(parsed.getTime())) return null;
-  return parsed.toISOString().slice(0, 10);
+  return localDateKey(parsed);
 }
 
 function getSessionTokenFallbackTimestamp(

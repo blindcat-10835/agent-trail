@@ -1,11 +1,12 @@
 ---
 type: fix
 title: Token date calculation uses UTC instead of user local timezone
-status: todo
+status: wip
 priority: p2
 created: 2026-05-25
-branch:
-worktree:
+updated: 2026-05-25
+branch: fix/token-date-local-timezone
+worktree: .worktree/fix-token-date-local-timezone
 ---
 
 ## Description
