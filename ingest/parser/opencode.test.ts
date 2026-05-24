@@ -93,6 +93,65 @@ describe('parseOpencodeSession', () => {
     expect(result.session.metrics.userMessageCount).toBe(1);
   });
 
+  it('attaches OpenCode message token usage to parsed assistant messages', async () => {
+    const sessionId = randomUUID();
+
+    const fixture = track(createOpencodeTestDB([
+      makeSession({
+        id: sessionId,
+        messages: [
+          {
+            sessionId,
+            role: 'user',
+            timeCreated: '2026-05-17T10:00:00Z',
+            parts: [],
+          },
+          {
+            sessionId,
+            role: 'assistant',
+            timeCreated: '2026-05-17T10:00:01Z',
+            data: {
+              tokens: {
+                input: 120,
+                output: 30,
+                reasoning: 5,
+                cache: { read: 10, write: 2 },
+                total: 167,
+              },
+            },
+            parts: [
+              {
+                messageId: 'auto',
+                sessionId,
+                type: 'text',
+                data: { type: 'text', text: 'Tokenized assistant reply' },
+                timeCreated: '2026-05-17T10:00:02Z',
+              },
+            ],
+          },
+        ],
+      }),
+    ]));
+
+    const result = await parseOpencodeSession(fixture.dbPath, sessionId);
+
+    expect(result.messages[1].tokenUsage).toEqual({
+      inputTokens: 120,
+      outputTokens: 30,
+      cacheReadTokens: 10,
+      cacheWriteTokens: 2,
+      reasoningTokens: 5,
+      totalTokens: 167,
+      usageSemantics: 'additive',
+    });
+    expect(result.session.metrics.inputTokens).toBe(120);
+    expect(result.session.metrics.outputTokens).toBe(30);
+    expect(result.session.metrics.cacheReadTokens).toBe(10);
+    expect(result.session.metrics.cacheWriteTokens).toBe(2);
+    expect(result.session.metrics.reasoningTokens).toBe(5);
+    expect(result.session.metrics.totalTokens).toBe(167);
+  });
+
   it('maps tool parts to TraceToolCall with correct categories', async () => {
     const sessionId = randomUUID();
 

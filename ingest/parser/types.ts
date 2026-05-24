@@ -31,7 +31,7 @@ export interface OpenClawJsonlLine {
   type: string;
   timestamp?: string;
   message?: OpenClawMessage;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -43,11 +43,35 @@ export interface OpenClawJsonlLine {
 export interface OpenClawMessage {
   role?: string;
   content: string | Array<ContentBlock>;
-  timestamp?: string;
+  timestamp?: string | number;
   model?: string;
   usage?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    reasoning?: number;
+    reasoningTokens?: number;
+    totalTokens?: number;
+    cost?: number | {
+      input?: number;
+      output?: number;
+      cacheRead?: number;
+      cacheWrite?: number;
+      total?: number;
+      usd?: number;
+      costUsd?: number;
+      cost_usd?: number;
+    };
     input_tokens?: number;
     output_tokens?: number;
+    cache_read_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_write_tokens?: number;
+    cache_creation_input_tokens?: number;
+    reasoning_tokens?: number;
+    total_tokens?: number;
+    total?: number;
   };
   tool_use_id?: string;
   id?: string;
@@ -67,7 +91,7 @@ export interface ContentBlock {
   name?: string;
   toolName?: string;
   id?: string;
-  input?: any;
+  input?: unknown;
 }
 
 // ============================================================================

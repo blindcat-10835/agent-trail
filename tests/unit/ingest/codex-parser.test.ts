@@ -148,6 +148,14 @@ describe('Codex parser — parseCodexSession()', () => {
           },
         },
       ]);
+      expect(result.messages[0].tokenUsage).toEqual({
+        inputTokens: 1200,
+        outputTokens: 34,
+        cacheReadTokens: 0,
+        reasoningTokens: 21,
+        totalTokens: 1234,
+        usageSemantics: 'overlap',
+      });
     });
 
     it('treats Codex cached input and reasoning as overlap breakdowns', async () => {
@@ -170,6 +178,7 @@ describe('Codex parser — parseCodexSession()', () => {
     it('keeps session totals authoritative when final total exceeds last usage', async () => {
       const jsonl = [
         '{"timestamp":"2026-05-08T14:52:18.211Z","type":"session_meta","payload":{"id":"codex-total-greater-001","cwd":"/repo","model_provider":"openai"}}',
+        '{"timestamp":"2026-05-08T14:52:19.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done."}]}}',
         '{"timestamp":"2026-05-08T14:52:19.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":5000,"cached_input_tokens":1000,"output_tokens":500,"reasoning_output_tokens":200,"total_tokens":5500},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":200,"output_tokens":100,"reasoning_output_tokens":50,"total_tokens":1100}}}}',
       ].join('\n');
 
@@ -195,6 +204,14 @@ describe('Codex parser — parseCodexSession()', () => {
           },
         },
       ]);
+      expect(result.messages[0].tokenUsage).toEqual({
+        inputTokens: 1000,
+        outputTokens: 100,
+        cacheReadTokens: 200,
+        reasoningTokens: 50,
+        totalTokens: 1100,
+        usageSemantics: 'overlap',
+      });
     });
 
     it('should deduplicate image-wrapper response_item users against canonical event user messages', async () => {
