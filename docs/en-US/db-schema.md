@@ -235,7 +235,7 @@ The `file_hash` column implements the skip cache to avoid re-parsing unchanged f
 4. If match: skip full parse, only patch `name`/`project` if empty
 5. If mismatch (or NULL): full upsert — delete derived rows, re-insert
 
-`PARSER_CACHE_VERSION` is `parser-v10-qoder-token-calibrated-cost`. When parser logic changes, incrementing this version invalidates all cached sessions.
+`PARSER_CACHE_VERSION` is `parser-v11-qoder-token-calibrated-cost`. When parser logic changes, incrementing this version invalidates all cached sessions.
 
 **Force reparse:** `writeSessionToDatabase()` accepts `{ force: true }` to bypass the skip cache entirely.
 

@@ -184,7 +184,7 @@ The watcher debounces file events (`INGEST_DEBOUNCE_MS`, default 500ms) and fall
 4. Emit SSE: `session_created` / `session_updated` per file, `sync_complete` per source.
 5. Upsert `sync_status`.
 
-The skip cache key is `parser-v10-qoder-token-calibrated-cost:<source>:<sha256>`, so bumping the parser cache version forces a global re-parse on next sync — used when parser output shape changes.
+The skip cache key is `parser-v11-qoder-token-calibrated-cost:<source>:<sha256>`, so bumping the parser cache version forces a global re-parse on next sync — used when parser output shape changes.
 
 The watcher and sync internals are detailed in [`services/ingest.md`](services/ingest.md). The full reactive update path (file change → SSE → UI refetch) is in [`DATA-FLOW.md`](DATA-FLOW.md).
 

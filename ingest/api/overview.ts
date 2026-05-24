@@ -30,9 +30,6 @@ export const overviewRoutes = new Hono();
 
 const VALID_SOURCES = ['openclaw', 'claude-code', 'codex', 'opencode', 'qoder'] as const;
 
-/** Sources excluded from cost-based rollups (product-tier model keys, no verifiable USD billing). */
-const COST_EXCLUDED_SOURCES = ['qoder'] as const;
-
 const UPDATED_AT_EXPR =
   "CASE WHEN source = 'qoder' THEN MAX(COALESCE(ended_at, ''), COALESCE(started_at, '')) ELSE MAX(COALESCE(ended_at, ''), COALESCE(started_at, ''), COALESCE(file_mtime, '')) END";
 
@@ -50,6 +47,7 @@ interface SessionCostRow extends TokenUsageForPricing {
   project: string;
   day: string | null;
   model: string | null;
+  relationshipType: string | null;
   totalTokens: number;
   source: string;
   sourceCostUsd: number | null;
@@ -107,31 +105,18 @@ function isValidSource(source: string): source is typeof VALID_SOURCES[number] {
   return (VALID_SOURCES as readonly string[]).includes(source);
 }
 
-/** Build a SQL fragment that excludes cost-excluded sources from the sessions table (aliased as `s`). */
-function costSourceExclusion(): string {
-  return `AND s.source NOT IN (${COST_EXCLUDED_SOURCES.map(() => '?').join(', ')})`;
-}
-
-const COST_EXCLUSION_PARAMS: string[] = [...COST_EXCLUDED_SOURCES];
-
 function getSessionCostRows(
   db: IngestDatabase,
   whereClause: string,
   params: SqlParam[],
 ): SessionCostRow[] {
-  // Cost-excluded sources (e.g. qoder with product-tier model keys) must never
-  // enter cost rollups.  Append the exclusion fragment and params unconditionally.
-  const costWhere = whereClause
-    ? `${whereClause} ${costSourceExclusion()}`
-    : `WHERE 1=1 ${costSourceExclusion()}`;
-  const costParams = [...params, ...COST_EXCLUSION_PARAMS];
-
   const rows = db.prepare(`
     SELECT
       s.id,
       s.source,
       s.project,
       date(s.started_at) AS day,
+      s.relationship_type,
       (
         SELECT m.model
         FROM messages m
@@ -150,12 +135,13 @@ function getSessionCostRows(
       s.source_cost_usd,
       s.cost_pricing_status
     FROM sessions s
-    ${costWhere}
-  `).all(...costParams) as Array<{
+    ${whereClause}
+  `).all(...params) as Array<{
     id: string;
     source: string;
     project: string;
     day: string | null;
+    relationship_type: string | null;
     model: string | null;
     input_tokens: number;
     output_tokens: number;
@@ -173,6 +159,7 @@ function getSessionCostRows(
     project: row.project,
     day: row.day,
     model: row.model,
+    relationshipType: row.relationship_type,
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
     cacheReadTokens: row.cache_read_tokens,
@@ -189,17 +176,13 @@ function getDailyTokenCostRows(
   whereClause: string,
   params: SqlParam[],
 ): SessionCostRow[] {
-  const costWhere = whereClause
-    ? `${whereClause} ${costSourceExclusion()}`
-    : `WHERE 1=1 ${costSourceExclusion()}`;
-  const costParams = [...params, ...COST_EXCLUSION_PARAMS];
-
   const rows = db.prepare(`
     SELECT
       std.session_id AS id,
       s.source,
       std.project,
       std.usage_date AS day,
+      s.relationship_type,
       (
         SELECT m.model
         FROM messages m
@@ -219,12 +202,13 @@ function getDailyTokenCostRows(
       CASE WHEN std.attribution = 'session' THEN s.cost_pricing_status ELSE NULL END AS cost_pricing_status
     FROM session_token_daily std
     JOIN sessions s ON s.id = std.session_id
-    ${costWhere}
-  `).all(...costParams) as Array<{
+    ${whereClause}
+  `).all(...params) as Array<{
     id: string;
     source: string;
     project: string;
     day: string | null;
+    relationship_type: string | null;
     model: string | null;
     input_tokens: number;
     output_tokens: number;
@@ -242,6 +226,7 @@ function getDailyTokenCostRows(
     project: row.project,
     day: row.day,
     model: row.model,
+    relationshipType: row.relationship_type,
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
     cacheReadTokens: row.cache_read_tokens,
@@ -255,6 +240,7 @@ function getDailyTokenCostRows(
 
 function rollUpSessionCosts(rows: SessionCostRow[]): CostRollup {
   const estimates = rows
+    .filter((row) => !(row.source === 'qoder' && row.relationshipType === 'subagent'))
     .filter((row) => row.sourceCostUsd != null || row.totalTokens > 0)
     .map((row) => {
       if (row.sourceCostUsd != null) {
@@ -585,21 +571,12 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // When sorting by cost, exclude sources that have no verifiable USD billing
-  // (e.g. qoder with product-tier model keys). Token-based rankings may include them.
-  const costExclusionConditions = [...conditions, ...COST_EXCLUDED_SOURCES.map(s => `s.source != '${s}'`)];
-  const costFilterWhereClause = costExclusionConditions.length > 0
-    ? `WHERE ${costExclusionConditions.join(' AND ')}`
-    : '';
-
   // Get total tokens across all models for share percentage
   const totalRow = db.prepare(`
     SELECT COALESCE(SUM(${sessionTotalTokensExpr('s')}), 0) as total_tokens
     FROM sessions s
     ${whereClause}
   `).get(...params) as { total_tokens: number };
-
-  const modelsWhere = sortBy === 'cost' ? costFilterWhereClause : whereClause;
 
   // Get per-model breakdown without duplicating session totals across messages.
   // A session can contain many message rows, empty-string model placeholders, and
@@ -616,7 +593,7 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
         s.total_reasoning_tokens,
         ${sessionTotalTokensExpr('s')} AS total_tokens
       FROM sessions s
-      ${modelsWhere}
+      ${whereClause}
     ),
     modeled_sessions AS (
       SELECT
@@ -696,14 +673,23 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
     });
   }
 
+  const costRows = getSessionCostRows(db, whereClause, params).filter((row) => row.model != null);
+  const costByCanonicalModel = new Map<string, CostRollup>();
+  const canonicalCostModels = new Set(
+    costRows
+      .map((row) => getCanonicalModelKey(row.model))
+      .filter((model): model is string => model != null),
+  );
+
+  for (const canonicalName of canonicalCostModels) {
+    costByCanonicalModel.set(
+      canonicalName,
+      rollUpSessionCosts(costRows.filter((row) => getCanonicalModelKey(row.model) === canonicalName)),
+    );
+  }
+
   const mapped = [...mergedByCanonicalModel.values()].map((model) => {
-    const costEstimate = estimateModelCost(model.canonicalName, {
-      inputTokens: model.inputTokens,
-      outputTokens: model.outputTokens,
-      cacheReadTokens: model.cacheReadTokens,
-      cacheWriteTokens: model.cacheWriteTokens,
-      reasoningTokens: model.reasoningTokens,
-    });
+    const costSummary = costByCanonicalModel.get(model.canonicalName);
 
     return {
       name: getDisplayModelName(model.canonicalName) ?? model.canonicalName,
@@ -718,8 +704,8 @@ overviewRoutes.get('/api/v1/overview/top-models', (c) => {
         totalRow.total_tokens > 0
           ? Math.round((model.totalTokens / totalRow.total_tokens) * 10000) / 100
           : 0,
-      cost: costEstimate.cost,
-      pricingStatus: costEstimate.pricingStatus,
+      cost: costSummary?.cost ?? null,
+      pricingStatus: costSummary?.pricingStatus ?? 'unknown',
     };
   });
 

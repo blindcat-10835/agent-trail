@@ -235,7 +235,7 @@ sessions (1) ──< (N) messages
 4. 若匹配：跳过完整解析，仅在 `name`/`project` 为空时补丁
 5. 若不匹配（或 NULL）：完整 upsert —— 删除派生行，重新插入
 
-`PARSER_CACHE_VERSION` 为 `parser-v10-qoder-token-calibrated-cost`。当解析器逻辑变更时，递增此版本号将使所有缓存的 session 失效。
+`PARSER_CACHE_VERSION` 为 `parser-v11-qoder-token-calibrated-cost`。当解析器逻辑变更时，递增此版本号将使所有缓存的 session 失效。
 
 **强制重新解析：** `writeSessionToDatabase()` 接受 `{ force: true }` 参数以完全绕过跳过缓存。
 

@@ -185,7 +185,7 @@ JSONL 文件适合 AI 工具写入，但不适合 UI 读取：
 4. 发送 SSE：每个文件 `session_created` / `session_updated`，每个数据源 `sync_complete`。
 5. upsert `sync_status`。
 
-跳过缓存的键是 `parser-v10-qoder-token-calibrated-cost:<source>:<sha256>`，因此升级解析器缓存版本会强制在下次同步时全局重新解析 — 这在解析器输出结构发生变化时使用。
+跳过缓存的键是 `parser-v11-qoder-token-calibrated-cost:<source>:<sha256>`，因此升级解析器缓存版本会强制在下次同步时全局重新解析 — 这在解析器输出结构发生变化时使用。
 
 监视器和同步的内部细节详见 [`services/ingest.md`](services/ingest.md)。完整的响应式更新路径（文件变更 → SSE → UI 重新获取）见 [`DATA-FLOW.md`](DATA-FLOW.md)。
 

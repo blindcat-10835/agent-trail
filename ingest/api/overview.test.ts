@@ -502,6 +502,39 @@ describe('overview endpoints', () => {
         0,
         '/tmp/qoder.db#qoder-child-cost-test',
       );
+      const insertDailyTokens = db.prepare(`
+        INSERT INTO session_token_daily (
+          session_id, source, project, usage_date, attribution,
+          input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+          reasoning_tokens, total_tokens
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      insertDailyTokens.run(
+        'qoder-root-cost-test',
+        'qoder',
+        'qoder-project',
+        '2026-05-18',
+        'session',
+        1000,
+        2000,
+        0,
+        0,
+        0,
+        3000,
+      );
+      insertDailyTokens.run(
+        'qoder-child-cost-test',
+        'qoder',
+        'qoder-project',
+        '2026-05-18',
+        'session',
+        300,
+        700,
+        0,
+        0,
+        0,
+        1000,
+      );
 
       try {
         const res = await app.request('/api/v1/overview/aggregates?source=qoder&window=all');
@@ -515,6 +548,10 @@ describe('overview endpoints', () => {
         expect(body.totalCost).toBe(0.96);
         expect(body.pricingStatus).toBe('priced');
       } finally {
+        db.prepare('DELETE FROM session_token_daily WHERE session_id IN (?, ?)').run(
+          'qoder-root-cost-test',
+          'qoder-child-cost-test',
+        );
         db.prepare('DELETE FROM sessions WHERE id IN (?, ?)').run(
           'qoder-root-cost-test',
           'qoder-child-cost-test',

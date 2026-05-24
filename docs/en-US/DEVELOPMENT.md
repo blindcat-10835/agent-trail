@@ -169,7 +169,7 @@ curl -X POST http://localhost:3000/api/agent-tools/claude-code/sync \
   -d '{"force":true}'
 ```
 
-The skip cache key is versioned: `parser-v10-qoder-token-calibrated-cost:<source>:<sha256>`. If you change parser output shape, bump `PARSER_CACHE_VERSION` at the top of `ingest/sync/index.ts` — the next sync will re-parse everything because every `file_hash` will mismatch the new prefix.
+The skip cache key is versioned: `parser-v11-qoder-token-calibrated-cost:<source>:<sha256>`. If you change parser output shape, bump `PARSER_CACHE_VERSION` at the top of `ingest/sync/index.ts` — the next sync will re-parse everything because every `file_hash` will mismatch the new prefix.
 
 For schema details and migration history, see [`db-schema.md`](db-schema.md).
 
