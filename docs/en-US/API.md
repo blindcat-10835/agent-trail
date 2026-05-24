@@ -237,6 +237,16 @@ Single-turn fetch. Same validation as above.
 - **400** non-numeric / negative `:index`.
 - **404** turn or session not found.
 
+#### `GET /api/v1/qoder/usage`
+
+Returns Qoder-specific request-level estimated usage rows. The endpoint opens the configured Qoder SQLite DB read-only, treats each root `chat_record` as one row, recursively includes subagent assistant `token_info` within that request window, then converts tokens to credits / USD with `qoder-token-calibrated-estimate`.
+
+| Query param | Default | Notes |
+| --- | --- | --- |
+| `limit` | `20` | Newest estimated usage rows; capped at 100. |
+
+The response includes `entries[]`, `totalCredits`, `totalCostUsd`, `costSource`, and `calibration`. This is an estimate, not raw output from Qoder's official per-row billing API.
+
 ---
 
 ### 1.4 SSE event streams
@@ -309,6 +319,10 @@ Pass-through to ingest `/health`. Returns whatever ingest returns (no shape tran
 #### `GET /api/agent-tools/[tool]/sessions`
 
 Same query params as ingest `GET /api/v1/sessions`, **except** `source` is ignored (the BFF injects it from `[tool]`) and `limit` is capped at **100** before being forwarded.
+
+#### `GET /api/agent-tools/qoder/qoder-usage`
+
+Qoder-only BFF proxy to ingest `GET /api/v1/qoder/usage`. Other `[tool]` values return **404**.
 
 #### `GET /api/agent-tools/[tool]/sessions/lookup`
 
@@ -455,6 +469,9 @@ curl http://localhost:8078/health | jq
 
 # 2. Confirm the source you care about is configured
 curl 'http://localhost:8078/api/v1/sources/claude-code' | jq
+
+# 2b. Qoder request-level estimated usage rows
+curl 'http://localhost:8078/api/v1/qoder/usage?limit=7' | jq
 
 # 3. Force-sync a source (skips cache, reparses)
 curl -X POST 'http://localhost:8078/api/v1/sources/claude-code/sync' \

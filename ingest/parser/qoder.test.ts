@@ -246,14 +246,14 @@ function createQoderFixture(): { dbPath: string } {
 }
 
 describe('parseQoderSession cost estimation', () => {
-  it('estimates root-session cost from Qoder Credits pricing rules', async () => {
+  it('estimates root-session cost from calibrated Qoder token usage including subagents', async () => {
     const fixture = createQoderFixture();
 
     const result = await parseQoderSession(fixture.dbPath, 'root-session');
 
     expect(result.errors).toHaveLength(0);
-    expect(result.session.sourceCostUsd).toBe(0.048);
-    expect(result.session.costSource).toBe('qoder-credit-estimate');
+    expect(result.session.sourceCostUsd).toBe(0.000736);
+    expect(result.session.costSource).toBe('qoder-token-calibrated-estimate');
     expect(result.session.costPricingStatus).toBe('priced');
   });
 

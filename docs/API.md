@@ -237,6 +237,16 @@ agent-trail 暴露两个 HTTP 接口：
 - **400** `:index` 非数字或为负数。
 - **404** 轮次或会话未找到。
 
+#### `GET /api/v1/qoder/usage`
+
+返回 Qoder 专用的 request-level 估算用量列表。该端点直接只读打开配置的 Qoder SQLite DB，以 root `chat_record` 为一行，递归纳入该请求时间窗内的 subagent assistant `token_info`，再用 `qoder-token-calibrated-estimate` 折算 credits / USD。
+
+| 查询参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `limit` | `20` | 返回最近的估算用量行；最大 100。 |
+
+响应字段包含 `entries[]`、`totalCredits`、`totalCostUsd`、`costSource` 和 `calibration`。这是估算值，不是 Qoder 官方逐条 billing API 的原始返回。
+
 ---
 
 ### 1.4 SSE 事件流
@@ -309,6 +319,10 @@ X-Accel-Buffering: no
 #### `GET /api/agent-tools/[tool]/sessions`
 
 与摄取服务 `GET /api/v1/sessions` 相同的查询参数，**区别**在于 `source` 被忽略（BFF 根据 `[tool]` 注入），并且 `limit` 在转发前上限为 **100**。
+
+#### `GET /api/agent-tools/qoder/qoder-usage`
+
+Qoder-only BFF 代理，透传到摄取服务 `GET /api/v1/qoder/usage`。其他 `[tool]` 返回 **404**。
 
 #### `GET /api/agent-tools/[tool]/sessions/lookup`
 
@@ -459,6 +473,9 @@ curl 'http://localhost:8078/api/v1/sources/claude-code' | jq
 
 # 2b. Qoder 数据源发现（返回 configured/empty/error）
 curl 'http://localhost:8078/api/v1/sources/qoder' | jq
+
+# 2c. Qoder request-level 估算用量列表
+curl 'http://localhost:8078/api/v1/qoder/usage?limit=7' | jq
 
 # 3. 强制同步某个数据源（跳过缓存，重新解析）
 curl -X POST 'http://localhost:8078/api/v1/sources/claude-code/sync' \

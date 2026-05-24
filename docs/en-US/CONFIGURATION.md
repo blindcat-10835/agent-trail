@@ -61,6 +61,15 @@ Source directories are managed centrally via `TOOL_DIR_REGISTRY` and `resolveToo
 - **Resolves to:** OpenCode's SQLite database file (not a JSONL file directory). The parser opens this DB read-only, extracting data from `session`, `message`, `part`, and `project` tables.
 - **Note:** OpenCode stores session data in SQLite, not JSONL files. This path points to a single `.db` file.
 
+### `QODER_DB_PATH`
+
+- **Default:** `~/Library/Application Support/Qoder/SharedClientCache/cache/db/local.db` (macOS).
+- **Config file key:** `qoder_db_paths` (array, supports multiple paths).
+- **Read at:** `ingest/config/tool-dirs.ts → TOOL_DIR_REGISTRY`, `ingest/sync/sources.ts → discoverQoderSources`.
+- **Resolves to:** Qoder's local SQLite database file. The parser opens this DB read-only and extracts `chat_session`, `chat_record`, and `chat_message`.
+- **Privacy boundary:** The ingest service opens Qoder DBs with `readonly: true` and `fileMustExist: true`, never writes to the DB, and does not read token/auth stores.
+- **Cost estimate:** Local Qoder data does not expose readable per-session credit consumption. The parser reads assistant `token_info` from the root session plus recursive subagents, estimates credits with `QODER_BASE_CREDITS_PER_M_TOKENS` and the model multiplier, then converts credits to USD with `QODER_USD_PER_CREDIT`. The default calibration is base 1.0 model `45.986482` credits / 1M gross tokens, current Ultimate promo `0.8x`, or normal Ultimate via `QODER_ULTIMATE_MULTIPLIER=1.6`.
+
 ### `WORKSPACE_PATH` (deprecated)
 
 - **Default:** `~/.openclaw` (after stripping a trailing `/workspace` if present).
@@ -75,7 +84,8 @@ Source directories are managed centrally via `TOOL_DIR_REGISTRY` and `resolveToo
   "openclaw_dirs": ["/Users/<you>/.openclaw/agents"],
   "claude_project_dirs": ["/Users/<you>/.claude/projects"],
   "codex_sessions_dirs": ["/Users/<you>/.codex/sessions"],
-  "opencode_db_path": "/Users/<you>/.local/share/opencode/opencode.db"
+  "opencode_db_path": "/Users/<you>/.local/share/opencode/opencode.db",
+  "qoder_db_paths": ["/Users/<you>/Library/Application Support/Qoder/SharedClientCache/cache/db/local.db"]
 }
 ```
 
@@ -92,6 +102,9 @@ Each key accepts an array of paths. Relative paths are resolved from the user's 
 | `INGEST_PORT` | `8078` | Integer in `[1024, 65535]` | TCP port for the Hono server. |
 | `INGEST_DB_PATH` | `./data/ingest.db` | Non-empty; cannot contain `..` (path traversal) | Resolved to absolute path. Parent directory is created on open. |
 | `AGENT_TRAIL_LOG_LEVEL` / `INGEST_LOG_LEVEL` | `info` in development, `warn` in production/package runs | One of `silent \| error \| warn \| info \| debug` | Controls runtime logs. The npm/Docker launcher buffers child logs by default and prints them on failure; set `debug` to stream verbose logs live. The legacy `AGENTS_TRACING_LOG_LEVEL` variable remains supported as a fallback. |
+| `QODER_BASE_CREDITS_PER_M_TOKENS` | `45.986482` | Parses as a non-negative number | Base 1.0 model credits per 1M gross tokens for Qoder token-calibrated estimates. |
+| `QODER_ULTIMATE_MULTIPLIER` | `0.8` | Parses as a non-negative number | Ultimate model multiplier. Current promo is `0.8`; set `1.6` to estimate normal Ultimate pricing. |
+| `QODER_USD_PER_CREDIT` | `0.01` | Parses as a non-negative number | USD value used when converting Qoder credit estimates to session cost. |
 | `INGEST_RESYNC_INTERVAL_MS` | `900000` (15 min) | Integer ≥ 5000 | Periodic directory-consistency resync interval for the file watcher. |
 | `INGEST_DEBOUNCE_MS` | `500` | Integer ≥ 100 | Debounce window between filesystem events and a sync trigger. |
 | `INGEST_STARTUP_SYNC_LIMIT` | `50` | Integer ≥ 0 | Newest files per source parsed during the warmup pass before `/health` reports `ready: true`. `0` skips warmup entirely. |
@@ -175,7 +188,7 @@ These don't appear in source but show up in operational practice:
 | OpenClaw source appears with `sessionCount: 0, error: "No agent sessions found"` | `~/.openclaw/agents/<agent>/sessions/` is empty | Run an OpenClaw session to create some, or point `OPENCLAW_DIR` at a directory that has them |
 | `[sources] Rejected path outside root: ...` warnings | Symlink leaving the configured root, or a weird absolute path discovered | Fix the symlink; `isWithinRoot` is intentional and not configurable |
 | BFF returns 502 `Ingest service unreachable` | Ingest crashed or wrong `INGEST_URL` | Check `pnpm dev` logs; `curl http://localhost:8078/health`; reset `INGEST_URL` |
-| BFF returns 400 `Invalid source tool ID` | URL `[tool]` segment is wrong | Use `openclaw`, `claude-code`, `codex`, or `opencode` (note the hyphens). `all` works only at the shell layer, not the BFF. |
+| BFF returns 400 `Invalid source tool ID` | URL `[tool]` segment is wrong | Use `openclaw`, `claude-code`, `codex`, `opencode`, or `qoder` (note the hyphens). `all` works only at the shell layer, not the BFF. |
 | Health overlay stays in "checking" forever | Ingest is up but `INGEST_STARTUP_SYNC_LIMIT` is huge and warmup hasn't finished | Lower the limit or set it to `0` to skip warmup; full sync still runs in the background |
 
 For "I made a parser change and the DB is showing stale data," see the skip-cache section of [`services/ingest.md`](services/ingest.md): bump `PARSER_CACHE_VERSION` or call `POST /api/v1/sources/:type/sync` with `{"force": true}`.

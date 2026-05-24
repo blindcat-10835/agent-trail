@@ -36,6 +36,7 @@ import type { TraceTurn, AgentInfo } from '@/types/trace'
 import type {
   OverviewAggregates,
   DailyTokensResponse,
+  QoderUsageResponse,
   TopModelsResponse,
   TopProjectsResponse,
   StarredResponse,
@@ -544,6 +545,17 @@ const EMPTY_PROJECTS_RESPONSE: TopProjectsResponse = { projects: EMPTY_PROJECTS 
 const EMPTY_STARRED_RESPONSE: StarredResponse = { starred: EMPTY_STARRED }
 const EMPTY_TIMELINE_RESPONSE: TimelineResponse = { timeline: EMPTY_TIMELINE }
 const EMPTY_AUTOMATIONS_RESPONSE: AutomationsResponse = { automations: EMPTY_AUTOMATIONS }
+const EMPTY_QODER_USAGE_RESPONSE: QoderUsageResponse = {
+  entries: [],
+  totalCredits: null,
+  totalCostUsd: null,
+  costSource: 'qoder-token-calibrated-estimate',
+  calibration: {
+    baseCreditsPerMillionTokensEnv: null,
+    ultimateMultiplierEnv: null,
+    usdPerCreditEnv: null,
+  },
+}
 
 type SessionsGroupCounts = {
   agent?: Array<{ label: string; count: number }>
@@ -1326,6 +1338,26 @@ export function useDailyTokens(toolId: AgentToolId, window: TimeWindow = '30d') 
   )
 
   return { dailyTokens: data.days, loading, error }
+}
+
+/**
+ * Hook: Fetch Qoder request-level estimated usage rows.
+ */
+export function useQoderUsage(toolId: AgentToolId, limit: number = 20) {
+  const enabledToolId = toolId === 'qoder' ? toolId : 'qoder'
+  const { data, loading, error } = useCachedToolApi<QoderUsageResponse>(
+    enabledToolId,
+    '/qoder-usage',
+    { limit: String(limit) },
+    EMPTY_QODER_USAGE_RESPONSE,
+    'Failed to load Qoder usage',
+  )
+
+  if (toolId !== 'qoder') {
+    return { usage: EMPTY_QODER_USAGE_RESPONSE, loading: false, error: null }
+  }
+
+  return { usage: data, loading, error }
 }
 
 /**

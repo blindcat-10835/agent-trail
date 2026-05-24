@@ -438,7 +438,7 @@ describe('overview endpoints', () => {
       }
     });
 
-    it('uses Qoder root-session credit estimates without double-counting subagents', async () => {
+    it('uses Qoder root-session calibrated cost estimates without double-counting subagents', async () => {
       const db = getDatabase();
       db.prepare(`
         INSERT INTO sessions (
@@ -470,7 +470,7 @@ describe('overview endpoints', () => {
         0,
         '/tmp/qoder.db#qoder-root-cost-test',
         0.96,
-        'qoder-credit-estimate',
+        'qoder-token-calibrated-estimate',
         'priced',
       );
       db.prepare(`
@@ -901,7 +901,7 @@ describe('overview endpoints', () => {
       });
     });
 
-    it('uses source-reported Qoder cost in cost-sorted model rankings', async () => {
+    it('uses source-estimated Qoder cost in cost-sorted model rankings', async () => {
       const db = getDatabase();
       db.prepare(`
         INSERT INTO sessions (
@@ -933,7 +933,7 @@ describe('overview endpoints', () => {
         0,
         '/tmp/qoder.db#qoder-top-model-root',
         0.96,
-        'qoder-credit-estimate',
+        'qoder-token-calibrated-estimate',
         'priced',
       );
       db.prepare(`
@@ -1296,7 +1296,7 @@ describe('overview endpoints', () => {
       expect(body.capabilities.codex.cost).toBe(false);
       expect(body.capabilities.codex.automations).toBe(true);
 
-      // Qoder now surfaces root-session credit estimates.
+      // Qoder surfaces root-session calibrated token cost estimates.
       expect(body.capabilities.qoder.cost).toBe(true);
       expect(body.capabilities.qoder.agents).toBe(false);
       expect(body.capabilities.qoder.automations).toBe(false);

@@ -42,6 +42,7 @@ import type {
 } from '@/types/trace';
 import type { ParseResult, ParseError } from './types';
 import { estimateQoderSessionCost } from '../pricing/qoder-pricing.js';
+import type { QoderCostUsageRow } from '../pricing/qoder-pricing.js';
 
 // ============================================================================
 // Types
@@ -116,6 +117,14 @@ interface QoderToolResult {
 interface QoderPlaintextMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+interface QoderCostTokenRow {
+  mode: string | null;
+  preferred_model_info: string | null;
+  token_info: string | null;
+  model_info: string | null;
+  record_extra: string | null;
 }
 
 const QODER_USER_QUERY_TAGS = ['user_query'];
@@ -243,6 +252,7 @@ export async function parseQoderSession(
   rawSessionId: string,
   _options: QoderParseOptions = {}
 ): Promise<ParseResult> {
+  void _options;
   const errors: ParseError[] = [];
   const warnings: string[] = [];
   const messages: TraceMessage[] = [];
@@ -261,7 +271,6 @@ export async function parseQoderSession(
   let startedAt: string | null = null;
   let endedAt: string | null = null;
   let resolvedModel: string | undefined;
-  let sessionMaxInputTokens: number | null = null;
 
   // Single readonly DB handle — SPEC §10 hardline
   const db = new Database(dbPath, { readonly: true, fileMustExist: true });
@@ -361,7 +370,7 @@ export async function parseQoderSession(
           role: 'user' as MessageRole,
           content: normalizedUserContent,
           timestamp: msgTimestamp ?? undefined,
-          sourceMetadata: buildSourceMetadata(dbPath, rawSessionId),
+          sourceMetadata: buildSourceMetadata(dbPath),
         });
         messageOrdinal++;
 
@@ -372,7 +381,7 @@ export async function parseQoderSession(
             role: 'system' as MessageRole,
             content: `${QODER_INJECTED_CONTEXT_MARKER}${resolvedUserContent.trim()}`,
             timestamp: msgTimestamp ?? undefined,
-            sourceMetadata: buildSourceMetadata(dbPath, rawSessionId),
+            sourceMetadata: buildSourceMetadata(dbPath),
           });
           messageOrdinal++;
         }
@@ -418,11 +427,6 @@ export async function parseQoderSession(
             totalInputTokens += inputTokens;
             totalOutputTokens += outputTokens;
             totalCacheReadTokens += cacheReadTokens;
-
-            // Store max_input_tokens as session metadata only
-            if (ti.max_input_tokens != null) {
-              sessionMaxInputTokens = ti.max_input_tokens;
-            }
           } catch {
             warnings.push(`Malformed token_info JSON in message ${msg.id}`);
           }
@@ -492,7 +496,7 @@ export async function parseQoderSession(
           timestamp: msgTimestamp ?? undefined,
           model: msgModel,
           tokenUsage,
-          sourceMetadata: buildSourceMetadata(dbPath, rawSessionId),
+          sourceMetadata: buildSourceMetadata(dbPath),
         });
         messageOrdinal++;
 
@@ -596,7 +600,7 @@ export async function parseQoderSession(
           role: 'tool_result' as MessageRole,
           content: isMalformed ? (msg.tool_result || '') : '',
           timestamp: msgTimestamp ?? undefined,
-          sourceMetadata: buildSourceMetadata(dbPath, rawSessionId),
+          sourceMetadata: buildSourceMetadata(dbPath),
         });
         messageOrdinal++;
       }
@@ -670,13 +674,11 @@ export async function parseQoderSession(
     // 6. Build TraceSession
     // ------------------------------------------------------------------
     const isSubagentSession = Boolean(sessionRow.parent_session_id);
+    const costUsageRows = isSubagentSession
+      ? []
+      : collectQoderCostUsageRows(db, rawSessionId, resolvedModel, warnings);
     const costEstimate = estimateQoderSessionCost({
-      dbPath,
-      startedAt,
-      mode: sessionRow.mode,
-      model: resolvedModel,
-      maxInputTokens: sessionMaxInputTokens,
-      userMessageCount,
+      usageRows: costUsageRows,
       isSubagent: isSubagentSession,
     });
 
@@ -790,11 +792,132 @@ function buildEmptyResult(
   };
 }
 
-function buildSourceMetadata(dbPath: string, sessionId: string): SourceMetadata {
+function buildSourceMetadata(dbPath: string): SourceMetadata {
   return {
     sourceType: 'qoder',
     sourceFile: dbPath,
   };
+}
+
+function collectQoderCostUsageRows(
+  db: Database.Database,
+  rawSessionId: string,
+  fallbackModel: string | undefined,
+  warnings: string[],
+): QoderCostUsageRow[] {
+  let rows: QoderCostTokenRow[] = [];
+
+  try {
+    rows = withRetry(() =>
+      db.prepare(
+        `WITH RECURSIVE session_tree(session_id) AS (
+           SELECT ?
+           UNION ALL
+           SELECT child.session_id
+           FROM chat_session child
+           JOIN session_tree parent ON child.parent_session_id = parent.session_id
+         )
+         SELECT
+           cs.mode,
+           cs.preferred_model_info,
+           cm.token_info,
+           cm.model_info,
+           cr.extra AS record_extra
+         FROM session_tree tree
+         JOIN chat_session cs ON cs.session_id = tree.session_id
+         JOIN chat_message cm ON cm.session_id = cs.session_id
+         LEFT JOIN chat_record cr ON cr.request_id = cm.request_id
+         WHERE cm.role = 'assistant'
+           AND cm.token_info IS NOT NULL
+         ORDER BY cm.gmt_create, cm.id`
+      ).all(rawSessionId)
+    ) as QoderCostTokenRow[];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    warnings.push(`Failed to collect Qoder cost token usage for session ${rawSessionId}: ${msg}`);
+    return [];
+  }
+
+  const usageRows: QoderCostUsageRow[] = [];
+  for (const row of rows) {
+    const tokenInfo = parseQoderTokenInfo(row.token_info);
+    if (!tokenInfo) {
+      warnings.push(`Malformed token_info JSON in Qoder cost row for session ${rawSessionId}`);
+      continue;
+    }
+
+    usageRows.push({
+      inputTokens: tokenInfo.inputTokens,
+      outputTokens: tokenInfo.outputTokens,
+      model:
+        parseQoderModelKey(row.model_info)
+        ?? parseQoderRecordModelKey(row.record_extra)
+        ?? parseQoderModelKey(row.preferred_model_info)
+        ?? fallbackModel
+        ?? null,
+    });
+  }
+
+  return usageRows;
+}
+
+function parseQoderTokenInfo(raw: string | null): { inputTokens: number; outputTokens: number } | null {
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isPlainObject(parsed)) return null;
+
+    const inputTokens = readNonNegativeNumber(parsed, 'prompt_tokens')
+      ?? readNonNegativeNumber(parsed, 'input_tokens')
+      ?? 0;
+    const outputTokens = readNonNegativeNumber(parsed, 'completion_tokens')
+      ?? readNonNegativeNumber(parsed, 'output_tokens')
+      ?? 0;
+
+    return { inputTokens, outputTokens };
+  } catch {
+    return null;
+  }
+}
+
+function parseQoderModelKey(raw: string | null): string | null {
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isPlainObject(parsed)) return null;
+
+    if (typeof parsed.model_key === 'string') return parsed.model_key;
+    if (typeof parsed.key === 'string') return parsed.key;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseQoderRecordModelKey(raw: string | null): string | null {
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isPlainObject(parsed)) return null;
+
+    if (isPlainObject(parsed.modelConfig) && typeof parsed.modelConfig.key === 'string') {
+      return parsed.modelConfig.key;
+    }
+    if (isPlainObject(parsed.model_config) && typeof parsed.model_config.key === 'string') {
+      return parsed.model_config.key;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function readNonNegativeNumber(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function loadQoderConversationHistory(

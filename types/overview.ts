@@ -43,6 +43,42 @@ export interface DailyTokensResponse {
 }
 
 // ============================================================================
+// Qoder Usage Types
+// ============================================================================
+
+export interface QoderUsageEntry {
+  id: string
+  sessionId: string
+  requestId: string
+  sessionTitle: string | null
+  project: string
+  startedAt: string | null
+  source: 'IDE'
+  operation: string
+  model: string | null
+  modelMultiplier: number | null
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  credits: number | null
+  costUsd: number | null
+  costSource: string
+  pricingStatus: PricingStatus | string | null
+}
+
+export interface QoderUsageResponse {
+  entries: QoderUsageEntry[]
+  totalCredits: number | null
+  totalCostUsd: number | null
+  costSource: string
+  calibration: {
+    baseCreditsPerMillionTokensEnv: string | null
+    ultimateMultiplierEnv: string | null
+    usdPerCreditEnv: string | null
+  }
+}
+
+// ============================================================================
 // Model Ranking Types
 // ============================================================================
 

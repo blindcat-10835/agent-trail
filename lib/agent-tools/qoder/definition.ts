@@ -3,7 +3,7 @@
  *
  * Session browsing + replay focused with subagent support.
  * No live Gateway, no office/workspace, no approvals UI.
- * Cost is estimated from Qoder Credits rules on root sessions.
+ * Cost is estimated from token usage calibrated against Qoder Credits.
  */
 
 import type { AgentToolDefinition } from '../types'

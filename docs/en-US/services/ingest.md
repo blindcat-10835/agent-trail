@@ -221,7 +221,7 @@ The transaction wrapping is critical: `better-sqlite3` is synchronous, so a thro
 
 ### Skip cache versioning
 
-The cache key prefix `parser-v7-turn-activity-placement` is at the top of `sync/index.ts` as `PARSER_CACHE_VERSION`. **Bump it whenever parser output shape changes** — every existing `sessions.file_hash` will mismatch the new prefix and the next sync will re-parse everything. This is the safe alternative to manually invalidating cache rows in a migration.
+The cache key prefix `parser-v10-qoder-token-calibrated-cost` is at the top of `sync/index.ts` as `PARSER_CACHE_VERSION`. **Bump it whenever parser output shape changes** — every existing `sessions.file_hash` will mismatch the new prefix and the next sync will re-parse everything. This is the safe alternative to manually invalidating cache rows in a migration.
 
 Migrations in `db/index.ts` use a milder form of the same pattern: setting `file_hash = NULL` for rows whose metadata-extraction logic changed.
 

@@ -50,8 +50,8 @@ export const SOURCE_CAPABILITIES: Record<string, SourceCapabilities> = {
     replay: true,
   },
   qoder: {
-    // Qoder cost is estimated from its own Credits rules for root sessions.
-    // Subagents still remain costless because Qoder bills the parent request.
+    // Qoder cost is estimated from root-session token usage plus recursive
+    // subagents, calibrated against Qoder Credits usage.
     agents: false,
     automations: false,
     cost: true,

@@ -21,6 +21,7 @@ import { StarredSessions } from '@/components/overview/starred-sessions'
 import { ActivityTimeline } from '@/components/overview/activity-timeline'
 import { OverviewAgents } from '@/components/overview/overview-agents'
 import { OverviewAutomations } from '@/components/overview/overview-automations'
+import { QoderUsageList } from '@/components/overview/qoder-usage-list'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import type { TimeWindow } from '@/types/overview'
 import { getSourceTag } from '@/types/trace'
@@ -139,6 +140,8 @@ export function OverviewPage() {
 
       {/* ═══ AGENTS STRIP (OpenClaw only) ═══ */}
       <OverviewAgents capabilities={capabilities} toolId={toolId} capsLoading={capsLoading} />
+
+      {toolId === 'qoder' && <QoderUsageList />}
 
       {/* ═══ ROW A: Models · Projects · Activity ═══ */}
       <section className="mt-4">

@@ -169,7 +169,7 @@ curl -X POST http://localhost:3000/api/agent-tools/claude-code/sync \
   -d '{"force":true}'
 ```
 
-跳过缓存的 key 是带版本号的：`parser-v7-turn-activity-placement:<source>:<sha256>`。如果你修改了解析器的输出结构，请将 `ingest/sync/index.ts` 顶部的 `PARSER_CACHE_VERSION` 递增——下一次同步时，因为每个 `file_hash` 都会与新前缀不匹配，所有内容都会被重新解析。
+跳过缓存的 key 是带版本号的：`parser-v10-qoder-token-calibrated-cost:<source>:<sha256>`。如果你修改了解析器的输出结构，请将 `ingest/sync/index.ts` 顶部的 `PARSER_CACHE_VERSION` 递增——下一次同步时，因为每个 `file_hash` 都会与新前缀不匹配，所有内容都会被重新解析。
 
 关于 schema 详情和迁移历史，请参见 [`db-schema.md`](db-schema.md)。
 

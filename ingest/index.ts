@@ -15,6 +15,7 @@ import { turnsRoutes } from './api/turns.js';
 import { agentsRoutes } from './api/agents.js';
 import { starsRoutes } from './api/stars.js';
 import { overviewRoutes } from './api/overview.js';
+import { qoderUsageRoutes } from './api/qoder-usage.js';
 import { searchRoutes } from './api/search.js';
 import { eventsRoutes } from './api/routes/events.js';
 import { rateLimiter } from './api/middleware/rate-limit.js';
@@ -129,6 +130,7 @@ app.route('/', sessionsRoutes);
 app.route('/', turnsRoutes);
 app.route('/', agentsRoutes);
 app.route('/', overviewRoutes);
+app.route('/', qoderUsageRoutes);
 
 // Mount SSE event routes (global + per-session streams)
 app.route('/', eventsRoutes);

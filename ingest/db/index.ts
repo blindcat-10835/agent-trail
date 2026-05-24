@@ -146,7 +146,7 @@ export function runMigrations(): void {
   }
 
   const currentVersion = db.pragma('user_version', { simple: true }) as number;
-  const targetVersion = 21;
+  const targetVersion = 22;
 
   if (currentVersion >= targetVersion) {
     logger.debug(`Schema at version ${currentVersion}, no migrations needed`);
@@ -722,6 +722,10 @@ export function runMigrations(): void {
             OR COALESCE(total_reasoning_tokens, 0) > 0
           )
       `,
+    },
+    {
+      desc: 'Invalidate Qoder parser cache to backfill calibrated token cost estimates',
+      sql: "UPDATE sessions SET file_hash = NULL WHERE source = 'qoder'",
     },
   ];
 
