@@ -254,7 +254,8 @@ function rollUpSessionCosts(rows: SessionCostRow[]): CostRollup {
     .filter((row) => !(row.source === 'qoder' && row.relationshipType === 'subagent'))
     .filter((row) => row.sourceCostUsd != null || row.totalTokens > 0)
     .map((row) => {
-      if (row.sourceCostUsd != null) {
+      const isReportedZero = row.costPricingStatus === 'reported_zero';
+      if (row.sourceCostUsd != null && !isReportedZero) {
         return {
           cost: row.sourceCostUsd,
           pricingStatus: 'priced' as PricingStatus,
