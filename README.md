@@ -6,7 +6,7 @@
 
 **A local AI coding agent observability dashboard for Claude Code, Codex, OpenCode, OpenClaw, and Qoder.**
 
-Track token usage, estimated cost, tool calls, subagent trees, and replay full coding-agent sessions from local JSONL / SQLite files — no cloud, no telemetry.
+Track token usage, estimated cost, tool calls, subagent trees, and replay full coding-agent sessions from local JSONL / SQLite files.
 
 🏠 [camtrik.github.io/agent-trail](https://camtrik.github.io/agent-trail/)
 
@@ -33,7 +33,7 @@ A unified dashboard aggregates token consumption and estimated cost across Claud
 - Which sessions consumed the most tokens and where your budget is going
 - Live activity feed as new sessions are written to disk
 
-Everything is computed locally from the JSONL files your agents already produce — no account, no upload, no cloud.
+Everything is computed locally from the JSONL files your agents already produce.
 
 ### Full session replay with tool and subagent detail
 
@@ -175,8 +175,6 @@ Agent Trail is useful if you are:
 - Tracking LLM **token usage and estimated cost** across multiple agents locally
 - Analyzing which sessions or projects consumed the most tokens
 - Debugging expensive or failed AI coding agent runs
-- Looking for a **local-first, no-telemetry** alternative to cloud observability tools
-
 ---
 
 ## Privacy
@@ -185,8 +183,6 @@ This is a **local-only** tool. No data leaves your machine.
 
 - JSONL files are parsed and indexed into a local SQLite database (`data/ingest.db`).
 - The dashboard is read-only — it replays recorded tool calls, never re-executes them.
-- No telemetry, no analytics, no cloud sync.
-
 ---
 
 ## Architecture
