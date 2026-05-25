@@ -245,22 +245,34 @@ Don't commit the gitignore change yourself — show the diff and let the user de
 The user may ask you to run the worktree on two specific ports so they can inspect the changes in that worktree without conflicting with the main app already running elsewhere.
 
 - When that happens, run the backend on the requested ingest port and run the frontend on the requested Next port, with the frontend pointing to the same `INGEST_PORT`.
-- Prefer the explicit one-off commands below instead of `pnpm dev`, so you do not accidentally reuse the default `3000` / `8078` ports.
+- Both services are long-running processes — they **must** be backgrounded with `nohup ... &`, otherwise they block the shell.
 - On macOS, if the worktree hits native-addon `dlopen(...)` / Team ID issues, retry the same commands with the bundled Codex Node runtime instead of the system `node`.
+- Before starting, **kill any existing processes** on the target ports to avoid `EADDRINUSE` errors.
 
-Example:
-
-```bash
-INGEST_PORT=7002 /Users/ebbi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --import tsx ingest/index.ts
-PORT=3002 INGEST_PORT=7002 /Users/ebbi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node ./node_modules/next/dist/bin/next dev --webpack
-```
-
-- After boot, verify the exact ports the user asked for:
+Example (frontend on `3002`, ingest on `7002`):
 
 ```bash
-curl http://127.0.0.1:7002/health
-curl -I http://127.0.0.1:3002
+# 1. Clear target ports if occupied
+lsof -ti:3002,7002 | xargs kill -9 2>/dev/null
+
+# 2. Start ingest (background)
+INGEST_PORT=7002 nohup \
+  /Users/ebbi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node \
+  --import tsx ingest/index.ts > /tmp/ingest-7002.log 2>&1 &
+
+# 3. Wait for ingest to be ready, then verify
+sleep 3 && curl -s http://127.0.0.1:7002/health
+
+# 4. Start frontend (background)
+PORT=3002 INGEST_PORT=7002 nohup \
+  /Users/ebbi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node \
+  ./node_modules/next/dist/bin/next dev --webpack > /tmp/frontend-3002.log 2>&1 &
+
+# 5. Wait for frontend compilation, then verify
+sleep 10 && curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3002
 ```
+
+All commands must run with `workdir` set to the worktree path. After verification, report the two URLs to the user. Logs are at `/tmp/ingest-<port>.log` and `/tmp/frontend-<port>.log` for debugging.
 
 ---
 
