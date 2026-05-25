@@ -1,7 +1,7 @@
 ---
 type: fix
 title: Turn inspect shows zero input/output tokens for Codex and OpenCode
-status: wip
+status: done
 priority: p1
 created: 2026-05-25
 updated: 2026-05-25
