@@ -1,0 +1,201 @@
+<div align="center">
+
+# Agent Trail
+
+[English](README.md) · [简体中文](README.zh-CN.md) · **日本語**
+
+**Claude Code、Codex、OpenCode、OpenClaw、Qoder に対応したローカル AI コーディングエージェント可観測性ダッシュボード。**
+
+ローカルの JSONL / SQLite ファイルからトークン使用量、推定コスト、ツール呼び出し、サブエージェントツリーを追跡し、コーディングエージェントセッションを完全にリプレイ — クラウド不要、テレメトリなし。
+
+🏠 [camtrik.github.io/agent-trail](https://camtrik.github.io/agent-trail/)
+
+[![npm version](https://img.shields.io/npm/v/%40camtrik%2Fagent-trail?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/@camtrik/agent-trail)
+[![GitHub stars](https://img.shields.io/github/stars/camtrik/agent-trail?style=for-the-badge&logo=github&color=181717)](https://github.com/camtrik/agent-trail)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
+
+![概要ダッシュボード](image/README/1779286882349.png)
+
+![セッションリプレイ](image/README/1779290188740.png)
+
+</div>
+
+---
+
+## 機能
+
+### 全エージェントの使用量概要
+
+統一されたダッシュボードが Claude Code、OpenClaw、Codex、OpenCode、Qoder のトークン消費量と推定コストを集計し、日別・セッション別・プロジェクト別・モデル別に分類します。一目で確認できる項目：
+
+- 任意の期間（今日 / 今週 / 全期間）の総トークン数と推定 USD コスト
+- プロジェクト別・モデル別の内訳と時系列トレンド
+- 最もトークンを消費したセッションと予算の使途
+- 新しいセッションがディスクに書き込まれる際のリアルタイムアクティビティフィード
+
+すべてエージェントが既に生成している JSONL ファイルからローカルで計算 — アカウント不要、アップロード不要、クラウド不要。
+
+### ツール呼び出しとサブエージェント詳細を含む完全なセッションリプレイ
+
+任意のセッションを開き、すべてのターンを実際に発生した通りにステップ実行できます。リプレイビューは生テキストを超えて、各アシスタントターンの内部構造を表示します：
+
+- **ツール呼び出し**: `Bash`、`Read`、`Edit`、`Write` やカスタムツール呼び出しを展開し、正確な入力引数とモデルが受け取った完全な出力を表示
+- **サブエージェント生成**: Claude Code や OpenClaw がサブエージェントを起動すると、ダッシュボードはネストされたエージェントツリーをレンダリングし、どのサブタスクが委任されたか、どんな指示を受け取ったか、何を返したかを追跡
+- **注入コンテキストとシステムイベント**: 通常はターン間に存在する隠れたコンテキストブロック、権限プロンプト、合成メッセージを表示
+- **ターンごとのトークン計算**: input、output、cache-read、cache-write、reasoning トークン数をターンレベルで表示
+
+---
+
+## インストール
+
+### 方法1 — npm（Node.js 22 以上）
+
+```bash
+npm install -g @camtrik/agent-trail
+agent-trail
+```
+
+既存のグローバルインストールの更新：
+
+```bash
+npm update -g @camtrik/agent-trail
+# または最新の公開バージョンを強制インストール：
+npm install -g @camtrik/agent-trail@latest
+```
+
+Node 22、24 以降で動作 — `npm install` がローカル ABI に合わせたネイティブモジュール（better-sqlite3）を解決します。初回インストールは依存関係の取得に約 30 秒かかります。
+
+実行時ログはデフォルトで静かです。詳細な診断情報が必要な場合：
+
+```bash
+AGENT_TRAIL_LOG_LEVEL=debug agent-trail
+```
+
+### 方法2 — Docker ローカルビルド（Node.js 不要）
+
+```bash
+git clone https://github.com/camtrik/agent-trail.git
+cd agent-trail
+docker compose up --build
+```
+
+デフォルトの Compose ファイルは Docker 内で Node 24 を使用してアプリをローカルビルドするため、ホストマシンに Node.js をインストールする必要はありません。
+
+[http://localhost:3030](http://localhost:3030) を開きます。
+
+### 方法3 — Docker 公開イメージ（Node.js 不要）
+
+```bash
+docker compose -f docker-compose.image.yml up -d
+```
+
+または公開イメージを直接実行：
+
+```bash
+docker run --rm -p 127.0.0.1:3030:3030 \
+  -v "$HOME/.claude/projects:/agents/claude:ro" \
+  -e CLAUDE_PROJECTS_DIR=/agents/claude \
+  ghcr.io/camtrik/agent-trail:latest
+```
+
+[http://localhost:3030](http://localhost:3030) を開きます。`-v` と対応する環境変数（`OPENCLAW_DIR`、`CODEX_SESSIONS_DIR`、`OPENCODE_DB_PATH`）で追加のエージェントディレクトリをマウントします。
+
+### 方法4 — ソースから
+
+```bash
+pnpm install
+pnpm dev       # Next.js (3000) + インジェストサービス (8078) を起動
+```
+
+完全なセットアップと環境変数リファレンスは [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) を参照してください。
+
+---
+
+## アンインストール
+
+### npm グローバルインストール
+
+```bash
+npm uninstall -g @camtrik/agent-trail
+```
+
+パッケージアプリが作成したローカルインデックス/設定のクリーンアップ（任意）：
+
+```bash
+rm -rf ~/.agent-trail
+```
+
+この操作は元の Claude Code、OpenClaw、Codex、OpenCode、Qoder のセッションファイルを削除しません。
+
+### Docker Compose
+
+コンテナの停止と削除：
+
+```bash
+docker compose down
+# 公開イメージの compose ファイルを使用した場合：
+docker compose -f docker-compose.image.yml down
+```
+
+ダッシュボードの SQLite インデックスを保存する Docker ボリュームのクリーンアップ（任意）：
+
+```bash
+docker compose down -v
+# または：
+docker compose -f docker-compose.image.yml down -v
+```
+
+イメージのクリーンアップ（任意）：
+
+```bash
+docker image rm agent-trail:local
+docker image rm ghcr.io/camtrik/agent-trail:latest
+```
+
+---
+
+## 対応 AI コーディングエージェント
+
+| エージェント             | ソースファイル                                | 備考                                     |
+| ------------------------ | --------------------------------------------- | ---------------------------------------- |
+| **Claude Code**          | `~/.claude/projects/**/*.jsonl`               | 完全なツール呼び出しとサブエージェントリプレイ |
+| **OpenClaw**             | `~/.openclaw/agents/*/sessions/*.jsonl`       | ゲートウェイライブビュー + ファイルインジェスト |
+| **Codex**                | `~/.codex/sessions/**/*.jsonl`                | 親子セッションツリー                     |
+| **OpenCode**             | `~/.local/share/opencode/opencode.db`         | SQLite ソース                            |
+| **Qoder**                | ローカルキャッシュ DB                         | トークン数（コストは集計から除外）       |
+
+---
+
+## ユースケース
+
+Agent Trail は以下のような場合に役立ちます：
+
+- **Claude Code** のツール呼び出し、サブエージェントツリー、注入コンテキストの調査
+- **Codex**、**OpenCode**、**OpenClaw**、**Qoder** のコーディングセッションをターンごとにリプレイ
+- 複数のエージェントにわたる **LLM トークン使用量と推定コスト** のローカル追跡
+- 最もトークンを消費したセッションやプロジェクトの分析
+- 高コストまたは失敗した AI コーディングエージェント実行のデバッグ
+- クラウド可観測性ツールに対する **ローカルファースト・テレメトリなし** の代替手段を探している
+
+---
+
+## プライバシー
+
+これは**完全ローカル**なツールです。データがマシンから外部に出ることはありません。
+
+- JSONL ファイルは解析され、ローカル SQLite データベース（`data/ingest.db`）にインデックス化されます。
+- ダッシュボードは読み取り専用 — 記録されたツール呼び出しをリプレイするだけで、再実行はしません。
+- テレメトリ、分析、クラウド同期は一切ありません。
+
+---
+
+## アーキテクチャ
+
+1 つのリポジトリ、2 つのサービス：
+
+| サービス                       | パス        | ポート                                      | 目的                                         |
+| ------------------------------ | ----------- | ------------------------------------------- | -------------------------------------------- |
+| **Next.js フロントエンド**     | `app/`      | `3030` パッケージ/Docker；`3000` 開発モード  | UI、BFF プロキシでインジェストへ転送          |
+| **インジェストサービス**       | `ingest/`   | `8078`                                      | ファイル監視、JSONL パーサー、SQLite、REST + SSE |
+
+完全なデータフローとアーキテクチャの決定については [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) と [`docs/DATA-FLOW.md`](docs/DATA-FLOW.md) を参照してください。

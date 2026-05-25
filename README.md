@@ -1,12 +1,24 @@
+<div align="center">
+
 # Agent Trail
 
-**Agent Trail is a local AI coding agent observability dashboard for Claude Code, Codex, OpenCode, OpenClaw, and Qoder.**
+**English** · [简体中文](README.zh-CN.md) · [日本語](README.ja-JP.md)
+
+**A local AI coding agent observability dashboard for Claude Code, Codex, OpenCode, OpenClaw, and Qoder.**
 
 Track token usage, estimated cost, tool calls, subagent trees, and replay full coding-agent sessions from local JSONL / SQLite files — no cloud, no telemetry.
+
+🏠 [camtrik.github.io/agent-trail](https://camtrik.github.io/agent-trail/)
+
+[![npm version](https://img.shields.io/npm/v/%40camtrik%2Fagent-trail?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/@camtrik/agent-trail)
+[![GitHub stars](https://img.shields.io/github/stars/camtrik/agent-trail?style=for-the-badge&logo=github&color=181717)](https://github.com/camtrik/agent-trail)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
 ![Overview dashboard](image/README/1779286882349.png)
 
 ![Session replay](image/README/1779290188740.png)
+
+</div>
 
 ---
 

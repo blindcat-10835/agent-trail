@@ -1,0 +1,201 @@
+<div align="center">
+
+# Agent Trail
+
+[English](README.md) · **简体中文** · [日本語](README.ja-JP.md)
+
+**本地 AI 编程代理可观测性仪表盘，支持 Claude Code、Codex、OpenCode、OpenClaw 和 Qoder。**
+
+从本地 JSONL / SQLite 文件追踪 token 用量、预估成本、工具调用、子代理树，并完整回放编程代理会话 — 无云端、无遥测。
+
+🏠 [camtrik.github.io/agent-trail](https://camtrik.github.io/agent-trail/)
+
+[![npm version](https://img.shields.io/npm/v/%40camtrik%2Fagent-trail?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/@camtrik/agent-trail)
+[![GitHub stars](https://img.shields.io/github/stars/camtrik/agent-trail?style=for-the-badge&logo=github&color=181717)](https://github.com/camtrik/agent-trail)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
+
+![概览仪表盘](image/README/1779286882349.png)
+
+![会话回放](image/README/1779290188740.png)
+
+</div>
+
+---
+
+## 它能做什么
+
+### 跨代理用量概览
+
+统一的仪表盘聚合展示 Claude Code、OpenClaw、Codex、OpenCode 和 Qoder 的 token 消耗与预估成本 — 按天、会话、项目、模型细粒度拆分。一目了然：
+
+- 任意时间窗口（今日 / 本周 / 全部）的总 token 和预估美元成本
+- 按项目和模型拆分，附带时间趋势
+- 哪些会话消耗最多 token、预算流向何处
+- 新会话写入磁盘时的实时活动流
+
+所有数据均从代理已有的 JSONL 文件本地计算 — 无需账号、无需上传、无需云端。
+
+### 完整会话回放，含工具调用和子代理详情
+
+打开任意会话，逐步回放每个轮次的全过程。回放视图超越原始文本 — 展示每个 assistant 轮次的内部结构：
+
+- **工具调用**：展开任意 `Bash`、`Read`、`Edit`、`Write` 或自定义工具调用，查看精确的输入参数和模型接收到的完整输出
+- **子代理生成**：当 Claude Code 或 OpenClaw 启动子代理时，仪表盘渲染嵌套的代理树，方便追踪委托了哪个子任务、接收了什么指令、返回了什么结果
+- **注入上下文和系统事件**：展示隐藏的上下文块、权限提示和合成消息 — 这些通常在轮次之间存在，但塑造了模型的行为
+- **每轮次 token 统计**：查看 input、output、cache-read、cache-write 和 reasoning token 计数，精确到轮次级别
+
+---
+
+## 安装
+
+### 方式一 — npm（任意 Node.js 22+）
+
+```bash
+npm install -g @camtrik/agent-trail
+agent-trail
+```
+
+更新已有的全局安装：
+
+```bash
+npm update -g @camtrik/agent-trail
+# 或强制安装最新发布版本：
+npm install -g @camtrik/agent-trail@latest
+```
+
+兼容 Node 22、24 及更高版本 — `npm install` 会自动解析适配你本地 ABI 的原生模块（better-sqlite3）。首次安装约需 30 秒下载依赖。
+
+运行时日志默认静默。如需详细诊断：
+
+```bash
+AGENT_TRAIL_LOG_LEVEL=debug agent-trail
+```
+
+### 方式二 — Docker 本地构建（无需安装 Node.js）
+
+```bash
+git clone https://github.com/camtrik/agent-trail.git
+cd agent-trail
+docker compose up --build
+```
+
+默认 Compose 文件在 Docker 内使用 Node 24 本地构建应用，宿主机不需要安装 Node.js。
+
+打开 [http://localhost:3030](http://localhost:3030)。
+
+### 方式三 — Docker 已发布镜像（无需安装 Node.js）
+
+```bash
+docker compose -f docker-compose.image.yml up -d
+```
+
+或直接运行已发布镜像：
+
+```bash
+docker run --rm -p 127.0.0.1:3030:3030 \
+  -v "$HOME/.claude/projects:/agents/claude:ro" \
+  -e CLAUDE_PROJECTS_DIR=/agents/claude \
+  ghcr.io/camtrik/agent-trail:latest
+```
+
+打开 [http://localhost:3030](http://localhost:3030)。通过 `-v` 和对应的环境变量（`OPENCLAW_DIR`、`CODEX_SESSIONS_DIR`、`OPENCODE_DB_PATH`）挂载更多代理目录。
+
+### 方式四 — 从源码运行
+
+```bash
+pnpm install
+pnpm dev       # 启动 Next.js (3000) + 摄入服务 (8078)
+```
+
+完整配置和环境变量参考见 [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)。
+
+---
+
+## 卸载
+
+### npm 全局安装
+
+```bash
+npm uninstall -g @camtrik/agent-trail
+```
+
+清理打包应用创建的本地索引/配置（可选）：
+
+```bash
+rm -rf ~/.agent-trail
+```
+
+此操作不会删除你原有的 Claude Code、OpenClaw、Codex、OpenCode 或 Qoder 会话文件。
+
+### Docker Compose
+
+停止并移除容器：
+
+```bash
+docker compose down
+# 如果使用的是已发布镜像的 compose 文件：
+docker compose -f docker-compose.image.yml down
+```
+
+清理 Docker 数据卷（存储仪表盘 SQLite 索引，可选）：
+
+```bash
+docker compose down -v
+# 或：
+docker compose -f docker-compose.image.yml down -v
+```
+
+可选清理镜像：
+
+```bash
+docker image rm agent-trail:local
+docker image rm ghcr.io/camtrik/agent-trail:latest
+```
+
+---
+
+## 支持的 AI 编程代理
+
+| 代理                   | 源文件                                      | 备注                             |
+| ---------------------- | ------------------------------------------- | -------------------------------- |
+| **Claude Code**        | `~/.claude/projects/**/*.jsonl`             | 完整工具调用和子代理回放         |
+| **OpenClaw**           | `~/.openclaw/agents/*/sessions/*.jsonl`     | 网关实时视图 + 文件摄入         |
+| **Codex**              | `~/.codex/sessions/**/*.jsonl`              | 父子会话树                       |
+| **OpenCode**           | `~/.local/share/opencode/opencode.db`       | SQLite 数据源                    |
+| **Qoder**              | 本地缓存数据库                              | Token 计数（成本不计入汇总）     |
+
+---
+
+## 使用场景
+
+Agent Trail 适用于以下场景：
+
+- 审查 **Claude Code** 的工具调用、子代理树和注入上下文
+- 逐步回放 **Codex**、**OpenCode**、**OpenClaw** 或 **Qoder** 的编程会话
+- 在本地追踪多个代理的 **LLM token 用量和预估成本**
+- 分析哪些会话或项目消耗了最多的 token
+- 调试昂贵或失败的 AI 编程代理运行
+- 寻找云端可观测性工具的 **本地优先、无遥测** 替代方案
+
+---
+
+## 隐私
+
+这是一个**纯本地**工具。没有任何数据离开你的机器。
+
+- JSONL 文件被解析并索引到本地 SQLite 数据库（`data/ingest.db`）。
+- 仪表盘是只读的 — 它回放记录的工具调用，从不重新执行它们。
+- 无遥测、无分析、无云端同步。
+
+---
+
+## 架构
+
+一个仓库，两个服务：
+
+| 服务                       | 路径        | 端口                                    | 用途                                 |
+| -------------------------- | ----------- | --------------------------------------- | ------------------------------------ |
+| **Next.js 前端**           | `app/`      | `3030` 打包/Docker；`3000` 开发模式     | UI、BFF 代理转发到摄入服务           |
+| **摄入服务**               | `ingest/`   | `8078`                                  | 文件监听、JSONL 解析器、SQLite、REST + SSE |
+
+完整数据流和架构决策见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) 和 [`docs/DATA-FLOW.md`](docs/DATA-FLOW.md)。
