@@ -465,7 +465,11 @@ function parseSessionRow(row: SessionRow): TraceSession {
   let estimatedCost: number | null;
   let pricingStatus: string | undefined;
 
-  if (row.source_cost_usd != null) {
+  // reported_zero means the source reported $0 despite having token usage — treat as
+  // missing cost data and fall through to model-based estimation.
+  const isReportedZero = row.cost_pricing_status === 'reported_zero';
+
+  if (row.source_cost_usd != null && !isReportedZero) {
     estimatedCost = row.source_cost_usd;
     pricingStatus = 'priced';
   } else {
@@ -535,8 +539,8 @@ function parseSessionRow(row: SessionRow): TraceSession {
     outputTokens,
     estimatedCost: estimatedCost,
     sourceCostUsd: row.source_cost_usd ?? undefined,
-    costSource: row.cost_source ?? undefined,
-    costPricingStatus: row.cost_pricing_status ?? pricingStatus,
+    costSource: isReportedZero ? 'model-pricing-estimate' : (row.cost_source ?? undefined),
+    costPricingStatus: isReportedZero ? pricingStatus : (row.cost_pricing_status ?? pricingStatus),
   };
 }
 
