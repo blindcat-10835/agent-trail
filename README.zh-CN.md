@@ -48,7 +48,7 @@
 
 ## 安装
 
-### 方式一 — npm（任意 Node.js 22+）
+### 方式一 — npm（推荐，任意 Node.js 22+）
 
 ```bash
 npm install -g @camtrik/agent-trail
@@ -71,7 +71,7 @@ npm install -g @camtrik/agent-trail@latest
 AGENT_TRAIL_LOG_LEVEL=debug agent-trail
 ```
 
-### 方式二 — Docker 本地构建（无需安装 Node.js）
+### 方式二 — Docker 本地构建
 
 ```bash
 git clone https://github.com/camtrik/agent-trail.git
@@ -83,7 +83,7 @@ docker compose up --build
 
 打开 [http://localhost:3030](http://localhost:3030)。
 
-### 方式三 — Docker 已发布镜像（无需安装 Node.js）
+### 方式三 — Docker 已发布镜像
 
 ```bash
 docker compose -f docker-compose.image.yml up -d

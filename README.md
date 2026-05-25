@@ -48,7 +48,7 @@ Open any session and step through every turn exactly as it happened. The replay 
 
 ## Install
 
-### Option 1 — npm (any Node.js 22+)
+### Option 1 — npm (recommended, any Node.js 22+)
 
 ```bash
 npm install -g @camtrik/agent-trail
@@ -71,7 +71,7 @@ Runtime logs are quiet by default. For verbose diagnostics:
 AGENT_TRAIL_LOG_LEVEL=debug agent-trail
 ```
 
-### Option 2 — Docker local build (no Node.js required)
+### Option 2 — Docker local build
 
 ```bash
 git clone https://github.com/camtrik/agent-trail.git
@@ -83,7 +83,7 @@ The default Compose file builds the app locally with Node 24 inside Docker, so y
 
 Open [http://localhost:3030](http://localhost:3030).
 
-### Option 3 — Docker published image (no Node.js required)
+### Option 3 — Docker published image
 
 ```bash
 docker compose -f docker-compose.image.yml up -d
