@@ -88,6 +88,23 @@ interface ParseResult {
 - **OpenClaw**：content block 提取、去除 gateway 注入的元数据前缀以提取展示名
 - **Codex**：`turn_context` 边界检测，利用原生 turn 标记
 
+### Token 用量语义（cache 计算因 source 而异）
+
+各 parser 写入的 `totalTokens` 不是简单的 `input + output`，cache token 是否计入 total 取决于该 source 的 `usageSemantics`：
+
+| Source | cacheRead 来源 | cacheWrite | `totalTokens` 公式 | 语义 |
+| --- | --- | --- | --- | --- |
+| **claude-code** | `cache_read_input_tokens` | `cache_creation_input_tokens` | `input + output + cacheRead + cacheWrite` | `additive` |
+| **opencode** | `tokens_cache_read` | `tokens_cache_write` | `input + output + cacheRead + cacheWrite + reasoning` | additive |
+| **codex** | `cached_input_tokens` | 无此字段（恒 0） | `input + output`（用原生 `total_tokens`） | `overlap` |
+| **qoder** | `cached_tokens` | 无此字段（恒 0） | `prompt + completion`（cached 不加） | overlap |
+| **openclaw** | 不解析 | 不解析 | `input + output` | 无 cache 追踪 |
+
+- **`additive`（claude/opencode）**：`input` 是**裸输入**，cacheRead/cacheWrite 是独立的桶，必须相加才得到总输入，因此都计入 `totalTokens`。
+- **`overlap`（codex/qoder）**：`input` 本身**已包含**缓存命中部分，cacheRead 是 `input` 的子集；若再加进 total 会重复计算，因此 cacheRead **不**计入 `totalTokens`。
+
+这解释了前端为何 `totalTokens ≠ input + output`：对 additive 源，差值 = `cacheRead + cacheWrite (+ reasoning)`。语义标记见 `ingest/parser/claude.ts`（`'additive'`）与 `ingest/parser/codex.ts`（`'overlap'`）。
+
 Parser 不操作数据库——它只将磁盘上的字节转换为内存中的类型化对象。
 
 ---
