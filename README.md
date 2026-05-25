@@ -185,13 +185,4 @@ This is a **local-only** tool. No data leaves your machine.
 - The dashboard is read-only — it replays recorded tool calls, never re-executes them.
 ---
 
-## Architecture
 
-Two services, one repo:
-
-| Service                    | Path        | Port                                  | Purpose                                         |
-| -------------------------- | ----------- | ------------------------------------- | ----------------------------------------------- |
-| **Next.js frontend** | `app/`    | `3030` packaged/Docker; `3000` dev | UI, BFF proxy to ingest                         |
-| **Ingest service**   | `ingest/` | `8078`                                | File watcher, JSONL parsers, SQLite, REST + SSE |
-
-For the full data flow and architecture decisions see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DATA-FLOW.md`](docs/DATA-FLOW.md).
