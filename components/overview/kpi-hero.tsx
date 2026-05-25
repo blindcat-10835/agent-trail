@@ -605,8 +605,8 @@ function KpiMiniStack({
   const totalCost = aggregates?.totalCost ?? null
   const pricingStatus = aggregates?.pricingStatus
   const wLabel = WINDOW_LABELS[window] ?? '30D'
-  const windowDays = window === 'today' ? 1 : window === '7d' ? 7 : window === 'all' ? null : 30
-  const dailyBurn = totalCost === null || windowDays === null ? null : totalCost / windowDays
+  const cacheReadT = aggregates?.cacheReadTokens ?? 0
+  const cacheWriteT = aggregates?.cacheWriteTokens ?? 0
 
   return (
     <div className="flex flex-col gap-[3px]">
@@ -628,14 +628,12 @@ function KpiMiniStack({
         color="oklch(0.78 0.15 45)"
         sub={loading ? '…' : `${pctOf(outT, totalT)} of total`}
       />
-      {window !== 'today' && (
-        <KpiMini
-          label="DAILY BURN · AVG"
-          value={loading ? DASH : fmtCost(dailyBurn, pricingStatus)}
-          color="oklch(0.75 0.17 340)"
-          sub={loading ? '…' : pricingSub(pricingStatus, 'est. avg/day')}
-        />
-      )}
+      <KpiMini
+        label={`CACHE R/W · ${wLabel}`}
+        value={loading ? DASH : `${fmtTokens(cacheReadT)} / ${fmtTokens(cacheWriteT)}`}
+        color="oklch(0.75 0.17 340)"
+        sub={loading ? '…' : 'read / write'}
+      />
     </div>
   )
 }
