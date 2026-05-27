@@ -33,6 +33,7 @@ ingest/
 ├── api/
 │   ├── sources.ts           # /api/v1/sources、/sources/:type、/sources/:type/sync、/sources/:type/status
 │   ├── sessions.ts          # /api/v1/sessions、/sessions/lookup、/sessions/:id
+│   ├── search.ts            # /api/v1/sessions/search、/sessions/:id/search
 │   ├── turns.ts             # /sessions/:id/turns、/sessions/:id/turns/:index、/sessions/:id/messages
 │   ├── routes/
 │   │   └── events.ts        # /api/v1/events、/api/v1/sessions/:id/events（SSE）

@@ -190,7 +190,9 @@ The ingest service exposes a Hono REST API on port 8078:
 | Endpoint | What it returns |
 | --- | --- |
 | `GET /api/v1/sessions` | Paginated session list, filterable by source/project/status |
+| `GET /api/v1/sessions/search` | Cross-session message-body search returning session-level candidates |
 | `GET /api/v1/sessions/:id` | Single session metadata |
+| `GET /api/v1/sessions/:id/search` | In-session message-body search returning message-level hits |
 | `GET /api/v1/sessions/:id/turns` | Turn assembly view, with pagination |
 | `GET /api/v1/sessions/:id/messages` | Raw flat message list |
 | `GET /api/v1/events` | Global invalidation SSE stream |

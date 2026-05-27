@@ -76,9 +76,9 @@ export function validateSessionId(sessionId: string): void {
  * @param raw - Raw limit string from query params
  * @returns Parsed and capped numeric limit
  */
-export function sanitizeLimit(raw: string | undefined): number {
-  const parsed = parseInt(raw || '50', 10)
-  if (isNaN(parsed) || parsed < 1) return 50
+export function sanitizeLimit(raw: string | undefined, fallback = 50): number {
+  const parsed = parseInt(raw || String(fallback), 10)
+  if (isNaN(parsed) || parsed < 1) return fallback
   return Math.min(parsed, MAX_LIMIT)
 }
 

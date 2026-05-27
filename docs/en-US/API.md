@@ -7,7 +7,7 @@ agent-trail exposes two HTTP surfaces:
 
 Source-scoped frontend reads should always go through `/api/agent-tools/[tool]/...`. The ingest API is documented here for tooling, debugging, and parity reference.
 
-> All examples assume defaults from [`CONFIGURATION.md`](CONFIGURATION.md). `[tool]` is one of `openclaw | claude-code | codex | opencode` (the `all` aggregate scope is shell-only and is rejected by the BFF).
+> All examples assume defaults from [`CONFIGURATION.md`](CONFIGURATION.md). `[tool]` is usually one of `openclaw | claude-code | codex | opencode | qoder`; a few read-only aggregate BFF endpoints such as `/health` and `/sessions/search` also accept `all`.
 
 ---
 
@@ -155,6 +155,49 @@ Paginated session list with filtering and sort.
 
 `turns` is always `[]` here — fetch turns separately via `/sessions/:id/turns`.
 
+> `q` / `search` only matches session metadata (`name`, `project`, `id`). It does **not** search message bodies. For body-level reverse lookup, use `GET /api/v1/sessions/search` below.
+
+#### `GET /api/v1/sessions/search`
+
+Cross-session message-body search. Returns **session-level** deduplicated hits, with each session appearing at most once plus one matching `snippet` so an agent can keep drilling in.
+
+| Query | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `q` | string | _(required)_ | Message-body keywords; empty returns **400** |
+| `source` | `openclaw \| claude-code \| codex \| opencode \| qoder` | _(all)_ | Optional source filter |
+| `limit` | non-negative int | `20` | Capped at 100; **400** if negative |
+| `includeChildren` | `true` (only this value enables it) | `false` | Roots only by default; set to true to include child/subagent sessions |
+
+Implementation prefers SQLite FTS5 and falls back to `LIKE` if the FTS query cannot run. Results are primarily ordered by `updatedAt DESC`, with `matchCount` as a secondary ranking signal.
+
+```json
+{
+  "query": "gree",
+  "results": [
+    {
+      "id": "codex:session-123",
+      "sessionId": "codex:session-123",
+      "source": "codex",
+      "sourceSessionId": "abc-123",
+      "project": "/Users/me/research",
+      "name": "GREE valuation follow-up",
+      "displayTitle": "GREE valuation follow-up",
+      "updatedAt": "2026-05-27T09:15:00.000Z",
+      "summary": "Find my recent GREE / 3632 valuation session.",
+      "snippet": "...recent >>>GREE<<< / 3632 valuation session...",
+      "matchCount": 3
+    }
+  ],
+  "pagination": { "limit": 20, "returned": 1, "hasMore": false }
+}
+```
+
+Responsibility boundary:
+
+- `GET /api/v1/sessions?q=...`: list search over session metadata.
+- `GET /api/v1/sessions/search?q=...`: reverse-lookup candidate sessions from message bodies.
+- `GET /api/v1/sessions/:id/search?q=...`: search message hits within one known session.
+
 #### `GET /api/v1/sessions/lookup`
 
 Look up a session by `(source, key)` — used by OpenClaw Gateway-to-ingest drilldown.
@@ -199,6 +242,33 @@ Flat ordered message list.
 
 - **400** invalid session ID format / role / limit / offset.
 - **404** session not found.
+
+#### `GET /api/v1/sessions/:id/search`
+
+Search message bodies within **one known session**, returning message-level hits.
+
+| Query | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `q` | string | _(required)_ | Message-body keywords; empty returns **400** |
+
+```json
+{
+  "sessionId": "codex:session-123",
+  "query": "valuation",
+  "results": [
+    {
+      "id": "msg-42",
+      "ordinal": 8,
+      "role": "assistant",
+      "turnIndex": 3,
+      "snippet": "...base-case >>>valuation<<< still assumes..."
+    }
+  ]
+}
+```
+
+- **400** invalid session ID format or empty query.
+- **200** returns an empty array when nothing matches.
 
 #### `GET /api/v1/sessions/:id/turns`
 
@@ -304,7 +374,7 @@ All BFF routes use `Content-Type: application/json` for both requests (when appl
 
 ### 2.1 Tool-scoped proxies
 
-Every per-tool endpoint follows the same pattern:
+Every per-tool endpoint follows the same pattern (except read-only aggregate endpoints such as `/health` and `/sessions/search`, which also allow `all`):
 
 1. `assertSourceToolId(tool)` — rejects unknown tools with **400**.
 2. Look up the right adapter (`openclaw | claude-code | codex | opencode`).
@@ -319,6 +389,16 @@ Pass-through to ingest `/health`. Returns whatever ingest returns (no shape tran
 #### `GET /api/agent-tools/[tool]/sessions`
 
 Same query params as ingest `GET /api/v1/sessions`, **except** `source` is ignored (the BFF injects it from `[tool]`) and `limit` is capped at **100** before being forwarded.
+
+> `q` on this endpoint is still metadata-only session search. For cross-session message-body search, use `GET /api/agent-tools/[tool]/sessions/search`.
+
+#### `GET /api/agent-tools/[tool]/sessions/search`
+
+Wraps ingest `GET /api/v1/sessions/search`.
+
+- When `tool=all`, the BFF does not inject `source`, so the search spans all indexed sources.
+- When `tool=<source>`, the BFF injects that `source` and ignores any caller-provided `source`.
+- `q` is required; `limit` is capped to **100** at the BFF; `includeChildren` passes through unchanged.
 
 #### `GET /api/agent-tools/qoder/qoder-usage`
 

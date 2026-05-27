@@ -207,7 +207,9 @@ Ingest 服务在 8078 端口暴露 Hono REST API：
 | Endpoint | 返回内容 |
 | --- | --- |
 | `GET /api/v1/sessions` | 分页 session 列表，支持 source/project/status 过滤 |
+| `GET /api/v1/sessions/search` | 跨 session 的消息正文搜索，返回 session 级候选结果 |
 | `GET /api/v1/sessions/:id` | 单个 session 元数据 |
+| `GET /api/v1/sessions/:id/search` | 单个 session 内的消息正文搜索，返回 message 级命中 |
 | `GET /api/v1/sessions/:id/turns` | Turn 组装视图，支持分页 |
 | `GET /api/v1/sessions/:id/messages` | 原始平铺消息列表 |
 | `GET /api/v1/events` | 全局失效 SSE 流 |

@@ -7,7 +7,7 @@ agent-trail 暴露两个 HTTP 接口：
 
 前端按源读取数据应始终通过 `/api/agent-tools/[tool]/...` 路径。此处记录摄取 API 供工具开发、调试和对照参考。
 
-> 所有示例假定使用 [`CONFIGURATION.md`](CONFIGURATION.md) 中的默认值。`[tool]` 取值为 `openclaw | claude-code | codex | opencode | qoder`（`all` 聚合作用域仅用于 shell 层，BFF 会拒绝它）。
+> 所有示例假定使用 [`CONFIGURATION.md`](CONFIGURATION.md) 中的默认值。`[tool]` 通常取值为 `openclaw | claude-code | codex | opencode | qoder`；少数只读聚合 BFF（如 `/health`、`/sessions/search`）也接受 `all`。
 
 ---
 
@@ -155,6 +155,49 @@ agent-trail 暴露两个 HTTP 接口：
 
 `turns` 在此处始终为 `[]` — 请通过 `/sessions/:id/turns` 单独获取轮次。
 
+> `q` / `search` 只匹配 session 元数据（`name`、`project`、`id`），**不会**搜索 messages 正文。需要正文级反查时，请使用下面的 `GET /api/v1/sessions/search`。
+
+#### `GET /api/v1/sessions/search`
+
+跨所有 session 的消息正文搜索。返回 **session 级** 去重结果，每个 session 最多出现一次，并附带一个命中 `snippet` 便于 agent 继续定位。
+
+| 查询参数 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `q` | string | _(必填)_ | 消息正文关键词；空字符串返回 **400** |
+| `source` | `openclaw \| claude-code \| codex \| opencode \| qoder` | _(全部)_ | 可选的数据源过滤 |
+| `limit` | 非负整数 | `20` | 上限 100；负数返回 **400** |
+| `includeChildren` | `true`（仅此值启用） | `false` | 默认隐藏 subagent / child session，仅返回根 session |
+
+实现上优先走 SQLite FTS5；查询无法被 FTS 执行时回退到 `LIKE`。结果按 `updatedAt DESC` 为主排序，并附加 `matchCount` 作为基础去重/排序辅助。
+
+```json
+{
+  "query": "gree",
+  "results": [
+    {
+      "id": "codex:session-123",
+      "sessionId": "codex:session-123",
+      "source": "codex",
+      "sourceSessionId": "abc-123",
+      "project": "/Users/me/research",
+      "name": "GREE valuation follow-up",
+      "displayTitle": "GREE valuation follow-up",
+      "updatedAt": "2026-05-27T09:15:00.000Z",
+      "summary": "Find my recent GREE / 3632 valuation session.",
+      "snippet": "...recent >>>GREE<<< / 3632 valuation session...",
+      "matchCount": 3
+    }
+  ],
+  "pagination": { "limit": 20, "returned": 1, "hasMore": false }
+}
+```
+
+职责边界：
+
+- `GET /api/v1/sessions?q=...`：按 session 元数据搜列表。
+- `GET /api/v1/sessions/search?q=...`：按 messages 正文反查候选 session。
+- `GET /api/v1/sessions/:id/search?q=...`：在已知 session 内搜命中的 message 片段。
+
 #### `GET /api/v1/sessions/lookup`
 
 通过 `(source, key)` 查找会话 — 供 OpenClaw Gateway 到摄取服务的下钻使用。
@@ -199,6 +242,33 @@ agent-trail 暴露两个 HTTP 接口：
 
 - **400** 无效的会话 ID 格式 / role / limit / offset。
 - **404** 会话未找到。
+
+#### `GET /api/v1/sessions/:id/search`
+
+在**单个已知 session** 内搜索消息正文，返回 message 级命中结果。
+
+| 查询参数 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `q` | string | _(必填)_ | 消息正文关键词；空字符串返回 **400** |
+
+```json
+{
+  "sessionId": "codex:session-123",
+  "query": "valuation",
+  "results": [
+    {
+      "id": "msg-42",
+      "ordinal": 8,
+      "role": "assistant",
+      "turnIndex": 3,
+      "snippet": "...base-case >>>valuation<<< still assumes..."
+    }
+  ]
+}
+```
+
+- **400** 无效的会话 ID 格式或空查询。
+- **200** 无命中时返回空数组，而不是错误。
 
 #### `GET /api/v1/sessions/:id/turns`
 
@@ -304,7 +374,7 @@ X-Accel-Buffering: no
 
 ### 2.1 按工具划分的代理
 
-每个按工具划分的端点均遵循相同的模式：
+每个按工具划分的端点均遵循相同的模式（`/health`、`/sessions/search` 这类允许 `all` 的聚合只读端点除外）：
 
 1. `assertSourceToolId(tool)` — 拒绝未知工具并返回 **400**。
 2. 查找正确的适配器 (`openclaw | claude-code | codex | opencode`)。
@@ -319,6 +389,16 @@ X-Accel-Buffering: no
 #### `GET /api/agent-tools/[tool]/sessions`
 
 与摄取服务 `GET /api/v1/sessions` 相同的查询参数，**区别**在于 `source` 被忽略（BFF 根据 `[tool]` 注入），并且 `limit` 在转发前上限为 **100**。
+
+> 该端点的 `q` 仍然只是 session 元数据搜索；如需跨 session 搜 messages 正文，请改用 `GET /api/agent-tools/[tool]/sessions/search`。
+
+#### `GET /api/agent-tools/[tool]/sessions/search`
+
+包装摄取服务 `GET /api/v1/sessions/search`。
+
+- `tool=all` 时，不注入 `source`，返回跨源候选 session。
+- `tool=<source>` 时，BFF 注入对应 `source`，并忽略调用方自行传入的 `source`。
+- `q` 必填；`limit` 在 BFF 层上限为 **100**；`includeChildren` 直接透传。
 
 #### `GET /api/agent-tools/qoder/qoder-usage`
 

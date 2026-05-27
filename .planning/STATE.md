@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data-Rich HUD Redesign
 status: completed
-last_updated: "2026-05-22T12:03:14.000Z"
+last_updated: "2026-05-27T11:01:56Z"
 progress:
   total_phases: 8
   completed_phases: 6
@@ -16,7 +16,7 @@ progress:
 
 **Project:** agent-tracing-dashboard
 **Core Value:** Developers can quickly find local agent sessions and accurately review each turn of user input, agent response, tool/skill/subagent activity, and failure reasons.
-**Last Updated:** 2026-05-22
+**Last Updated:** 2026-05-27
 
 ---
 
@@ -184,6 +184,7 @@ v1.1 has two explicit workstreams:
 | 260517-wjv | Complete remaining Phase 13 Sessions table and long-session detail gaps | 2026-05-17 | this commit | [260517-wjv-complete-remaining-phase-13-sessions-tab](./quick/260517-wjv-complete-remaining-phase-13-sessions-tab/) |
 | 260521-pql | Reduce package footprint and quiet packaged runtime logs | 2026-05-21 | faf5ad6 | [260521-pql-package-size-quiet-runtime-logs](./quick/260521-pql-package-size-quiet-runtime-logs/) |
 | 260522-liv | Live indexing updates | 2026-05-22 | 3a2bd13 | [260522-liv-live-indexing-updates](./quick/260522-liv-live-indexing-updates/) |
+| 260527-rhm | Global session content search | 2026-05-27 | this commit | [260527-rhm-complete-backlog-item-docs-backlog-globa](./quick/260527-rhm-complete-backlog-item-docs-backlog-globa/) |
 
 ### Watchpoints
 
@@ -212,5 +213,5 @@ v1.1 has two explicit workstreams:
 ---
 
 *State created: 2026-05-06*
-*Last updated: 2026-05-22*
-*Last activity: 2026-05-22 - Completed quick task 260522-liv: Live indexing updates*
+*Last updated: 2026-05-27*
+*Last activity: 2026-05-27 - Completed quick task 260527-rhm: Global session content search*

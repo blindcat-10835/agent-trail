@@ -173,6 +173,30 @@ export interface TraceSession {
   costPricingStatus?: string | null;
 }
 
+export interface TraceSessionSearchHit {
+  id: string;
+  sessionId: string;
+  source: TraceSource;
+  sourceSessionId?: string;
+  project: string;
+  name?: string;
+  displayTitle: string;
+  updatedAt?: string;
+  summary?: string;
+  snippet: string;
+  matchCount: number;
+}
+
+export interface TraceSessionSearchResult {
+  query: string;
+  results: TraceSessionSearchHit[];
+  pagination: {
+    limit: number;
+    returned: number;
+    hasMore: boolean;
+  };
+}
+
 // ============================================================================
 // Turn Types
 // ============================================================================
