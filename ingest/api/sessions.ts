@@ -34,12 +34,16 @@ function column(alias: string | undefined, name: string): string {
   return alias ? `${alias}.${name}` : name;
 }
 
-function updatedAtExpr(alias?: string): string {
+export function updatedAtExpr(alias?: string): string {
   const source = column(alias, 'source');
   return `CASE WHEN ${source} = 'qoder'
     THEN MAX(COALESCE(${column(alias, 'ended_at')}, ''), COALESCE(${column(alias, 'started_at')}, ''))
     ELSE MAX(COALESCE(${column(alias, 'ended_at')}, ''), COALESCE(${column(alias, 'started_at')}, ''), COALESCE(${column(alias, 'file_mtime')}, ''))
   END`;
+}
+
+export function sessionDisplayTitleExpr(alias?: string): string {
+  return `COALESCE(${column(alias, 'name')}, ${column(alias, 'project')} || ' — ' || COALESCE(substr(${column(alias, 'started_at')}, 1, 10), 'unknown'))`;
 }
 
 function sessionTotalTokensExpr(alias?: string): string {
@@ -53,6 +57,24 @@ function isValidSource(source: string): source is typeof VALID_SOURCES[number] {
 
 function isValidSessionSort(sort: string): sort is typeof VALID_SESSION_SORTS[number] {
   return (VALID_SESSION_SORTS as readonly string[]).includes(sort);
+}
+
+interface SessionDisplayTitleParts {
+  displayTitle?: string | null;
+  name?: string | null;
+  project: string;
+  startedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export function resolveSessionDisplayTitle({
+  displayTitle,
+  name,
+  project,
+  startedAt,
+  updatedAt,
+}: SessionDisplayTitleParts): string {
+  return displayTitle || name || `${project} — ${(startedAt ?? updatedAt)?.split('T')[0] || 'unknown'}`;
 }
 
 // ============================================================================
@@ -249,7 +271,7 @@ sessionsRoutes.get('/api/v1/sessions', (c) => {
       s.last_sync_at, s.file_mtime, s.cwd, s.git_branch, s.agent_name,
       s.source_cost_usd, s.cost_source, s.cost_pricing_status,
       ${updatedAtExpr('s')} as updated_at,
-      COALESCE(s.name, s.project || ' — ' || COALESCE(substr(s.started_at, 1, 10), 'unknown')) as display_title,
+      ${sessionDisplayTitleExpr('s')} as display_title,
       ${sessionTotalTokensExpr('s')} as computed_total_tokens,
       (
         SELECT m.model
@@ -358,7 +380,7 @@ sessionsRoutes.get('/api/v1/sessions/:id', (c) => {
       s.last_sync_at, s.file_mtime, s.cwd, s.git_branch, s.agent_name,
       s.source_cost_usd, s.cost_source, s.cost_pricing_status,
       ${updatedAtExpr('s')} as updated_at,
-      COALESCE(s.name, s.project || ' — ' || COALESCE(substr(s.started_at, 1, 10), 'unknown')) as display_title,
+      ${sessionDisplayTitleExpr('s')} as display_title,
       ${sessionTotalTokensExpr('s')} as computed_total_tokens,
       (
         SELECT m.model
@@ -530,7 +552,13 @@ function parseSessionRow(row: SessionRow): TraceSession {
       system: row.parser_malformed_lines > 0 || row.is_truncated === 1 ? 1 : 0,
     },
     // Phase 10 enrichment fields
-    displayTitle: row.display_title || row.name || `${row.project} — ${row.started_at?.split('T')[0] || 'unknown'}`,
+    displayTitle: resolveSessionDisplayTitle({
+      displayTitle: row.display_title,
+      name: row.name,
+      project: row.project,
+      startedAt: row.started_at,
+      updatedAt: row.updated_at,
+    }),
     durationMs: row.started_at && row.ended_at
       ? new Date(row.ended_at).getTime() - new Date(row.started_at).getTime()
       : null,
@@ -544,7 +572,7 @@ function parseSessionRow(row: SessionRow): TraceSession {
   };
 }
 
-function normalizeSummary(value: string | null | undefined): string | null {
+export function normalizeSummary(value: string | null | undefined): string | null {
   if (!value) return null;
   const compact = value.replace(/\s+/g, ' ').trim();
   if (!compact) return null;

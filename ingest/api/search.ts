@@ -9,6 +9,12 @@
 
 import { Hono } from 'hono';
 import { getDatabase } from '../db';
+import {
+  normalizeSummary,
+  resolveSessionDisplayTitle,
+  sessionDisplayTitleExpr,
+  updatedAtExpr,
+} from './sessions.js';
 import type {
   TraceSessionSearchHit,
   TraceSessionSearchResult,
@@ -53,22 +59,8 @@ function parseSearchLimit(raw: string | undefined): number | null {
   return Math.min(parsed, MAX_SEARCH_LIMIT);
 }
 
-function updatedAtExpr(alias: string): string {
-  return `CASE WHEN ${alias}.source = 'qoder'
-    THEN MAX(COALESCE(${alias}.ended_at, ''), COALESCE(${alias}.started_at, ''))
-    ELSE MAX(COALESCE(${alias}.ended_at, ''), COALESCE(${alias}.started_at, ''), COALESCE(${alias}.file_mtime, ''))
-  END`;
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function normalizeSummary(value: string | null | undefined): string | undefined {
-  if (!value) return undefined;
-  const compact = value.replace(/\s+/g, ' ').trim();
-  if (!compact) return undefined;
-  return compact.length > 180 ? `${compact.slice(0, 177)}...` : compact;
 }
 
 function buildFallbackSnippet(content: string | null | undefined, query: string): string {
@@ -105,10 +97,12 @@ function buildSearchResponse(
   const visibleRows = hasMore ? rows.slice(0, limit) : rows;
 
   const results: TraceSessionSearchHit[] = visibleRows.map((row) => {
-    const displayTitle =
-      row.display_title ||
-      row.name ||
-      `${row.project} — ${row.updated_at?.split('T')[0] || 'unknown'}`;
+    const displayTitle = resolveSessionDisplayTitle({
+      displayTitle: row.display_title,
+      name: row.name,
+      project: row.project,
+      updatedAt: row.updated_at,
+    });
 
     return {
       id: row.id,
@@ -119,7 +113,7 @@ function buildSearchResponse(
       name: row.name || undefined,
       displayTitle,
       updatedAt: row.updated_at || undefined,
-      summary: normalizeSummary(row.summary),
+      summary: normalizeSummary(row.summary) || undefined,
       snippet: (row.snippet || buildFallbackSnippet(row.content, snippetQuery) || displayTitle).trim(),
       matchCount: row.match_count,
     };
@@ -202,7 +196,7 @@ function searchSessionsWithFts(
       s.project,
       s.name,
       ${updatedAtExpr('s')} as updated_at,
-      COALESCE(s.name, s.project || ' — ' || COALESCE(substr(s.started_at, 1, 10), 'unknown')) as display_title,
+      ${sessionDisplayTitleExpr('s')} as display_title,
       (
         SELECT m.content
         FROM messages m
@@ -254,7 +248,7 @@ function searchSessionsWithLike(
       s.project,
       s.name,
       ${updatedAtExpr('s')} as updated_at,
-      COALESCE(s.name, s.project || ' — ' || COALESCE(substr(s.started_at, 1, 10), 'unknown')) as display_title,
+      ${sessionDisplayTitleExpr('s')} as display_title,
       (
         SELECT m.content
         FROM messages m

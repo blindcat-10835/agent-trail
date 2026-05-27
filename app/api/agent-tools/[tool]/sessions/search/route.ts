@@ -9,7 +9,16 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { assertAgentToolId, assertSourceToolId } from '@/lib/agent-tools/registry'
-import { fetchIngest, sanitizeError, sanitizeLimit } from '@/lib/agent-tools/server-adapter'
+import { fetchIngest, sanitizeError } from '@/lib/agent-tools/server-adapter'
+
+function parseSearchLimit(raw: string): number | null {
+  const parsed = parseInt(raw, 10)
+  if (Number.isNaN(parsed) || parsed < 0) {
+    return null
+  }
+
+  return Math.min(parsed, 100)
+}
 
 export async function GET(
   request: NextRequest,
@@ -33,7 +42,15 @@ export async function GET(
 
     const limit = request.nextUrl.searchParams.get('limit')
     if (limit !== null) {
-      upstreamParams.set('limit', String(sanitizeLimit(limit, 20)))
+      const parsedLimit = parseSearchLimit(limit)
+      if (parsedLimit === null) {
+        return NextResponse.json(
+          { error: 'Invalid limit parameter, must be non-negative integer' },
+          { status: 400 },
+        )
+      }
+
+      upstreamParams.set('limit', String(parsedLimit))
     }
 
     const includeChildren = request.nextUrl.searchParams.get('includeChildren')
