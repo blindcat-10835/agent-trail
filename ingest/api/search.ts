@@ -15,6 +15,7 @@ import {
   sessionDisplayTitleExpr,
   updatedAtExpr,
 } from './sessions.js';
+import { parseSessionSearchLimit } from '@/lib/session-search';
 import type {
   TraceSessionSearchHit,
   TraceSessionSearchResult,
@@ -25,8 +26,6 @@ export const searchRoutes = new Hono();
 
 const SESSION_ID_RE = /^[a-zA-Z0-9:\-_.]{1,256}$/;
 const VALID_SOURCES = ['openclaw', 'claude-code', 'codex', 'opencode', 'qoder'] as const;
-const DEFAULT_SEARCH_LIMIT = 20;
-const MAX_SEARCH_LIMIT = 100;
 
 interface GlobalSearchRow {
   id: string;
@@ -48,15 +47,6 @@ function isValidSource(source: string): source is TraceSource {
 
 function sanitizeSearchQuery(query: string): string {
   return query.replace(/["'*+\-():!^&|]/g, '').trim();
-}
-
-function parseSearchLimit(raw: string | undefined): number | null {
-  const parsed = parseInt(raw || String(DEFAULT_SEARCH_LIMIT), 10);
-  if (isNaN(parsed) || parsed < 0) {
-    return null;
-  }
-
-  return Math.min(parsed, MAX_SEARCH_LIMIT);
 }
 
 function escapeRegExp(value: string): string {
@@ -276,7 +266,7 @@ searchRoutes.get('/api/v1/sessions/search', (c) => {
   const query = c.req.query('q');
   const source = c.req.query('source');
   const includeChildren = c.req.query('includeChildren') === 'true';
-  const limit = parseSearchLimit(c.req.query('limit'));
+  const limit = parseSessionSearchLimit(c.req.query('limit'));
 
   if (!query || query.trim().length === 0) {
     return c.json({ error: 'Search query (q) is required' }, 400);
