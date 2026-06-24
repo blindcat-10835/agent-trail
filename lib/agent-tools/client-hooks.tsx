@@ -59,6 +59,36 @@ const LIVE_REFRESH_EVENTS = new Set([
 
 const INDEXING_PHASES = new Set(['starting', 'discovering', 'warming', 'indexing'])
 
+/**
+ * Thrown by the BFF fetch layer when ingest replies 504.
+ *
+ * The BFF maps an ingest-fetch timeout to 504 with the message
+ * "Ingest service is still indexing. Retry shortly." (see sanitizeError in
+ * server-adapter.ts). That happens when a heavy background sync starves the
+ * single-threaded ingest event loop on startup — the service IS reachable, just
+ * busy. Distinct from a genuine 502 "unreachable" so callers can show an
+ * "indexing" state with auto-retry instead of a hard error.
+ */
+export class IngestIndexingError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'IngestIndexingError'
+  }
+}
+
+/**
+ * Bounded backoff schedule (ms) for retrying session fetches while ingest is
+ * indexing. ~60s total budget covers a cold-start full sync of a large corpus
+ * (claude-code measured at ~69s). After the budget is exhausted the caller
+ * surfaces a real error; a later sync_complete SSE / refresh still recovers.
+ */
+const INDEXING_RETRY_DELAYS_MS = [2000, 3000, 5000, 5000, 5000, 5000, 8000, 8000, 8000, 8000]
+const MAX_INDEXING_RETRIES = INDEXING_RETRY_DELAYS_MS.length
+
+function indexingRetryDelay(attempt: number): number {
+  return INDEXING_RETRY_DELAYS_MS[Math.min(attempt, INDEXING_RETRY_DELAYS_MS.length - 1)]
+}
+
 interface IngestSchedulerStatus {
   active?: boolean
   queued?: boolean
@@ -339,7 +369,10 @@ async function fetchToolApi<T>(
       typeof body.error === 'string'
         ? body.error
         : `Request failed: ${res.status}`
-    throw new Error(error)
+    // 504 is only produced by the BFF's ingest-timeout/indexing branch — surface
+    // it as a distinct error so session hooks can show an "indexing" state with
+    // auto-retry rather than the "unreachable" error used for 502.
+    throw res.status === 504 ? new IngestIndexingError(error) : new Error(error)
   }
   return body as T
 }
@@ -649,6 +682,57 @@ export function prefetchOverviewData(
 }
 
 /**
+ * Shared "ingest is indexing" retry controller for session hooks.
+ *
+ * `run` is the fetch to re-attempt; it is kept in a ref so scheduling never
+ * captures a stale closure. `schedule()` enters the indexing state and arms the
+ * next backoff retry, returning false once the budget is exhausted (caller then
+ * surfaces a real error). `resolve()` clears the indexing state on success or a
+ * non-indexing error. Timers are cleared on unmount.
+ */
+function useIndexingRetry(run: () => void) {
+  const [indexing, setIndexing] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const attemptRef = useRef(0)
+  const runRef = useRef(run)
+
+  useEffect(() => {
+    runRef.current = run
+  }, [run])
+
+  const clear = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = undefined
+    }
+  }, [])
+
+  const resolve = useCallback(() => {
+    attemptRef.current = 0
+    clear()
+    setIndexing(false)
+  }, [clear])
+
+  const schedule = useCallback((): boolean => {
+    if (attemptRef.current >= MAX_INDEXING_RETRIES) {
+      clear()
+      setIndexing(false)
+      return false
+    }
+    setIndexing(true)
+    const delay = indexingRetryDelay(attemptRef.current)
+    attemptRef.current += 1
+    clear()
+    timerRef.current = setTimeout(() => runRef.current(), delay)
+    return true
+  }, [clear])
+
+  useEffect(() => () => clear(), [clear])
+
+  return { indexing, schedule, resolve }
+}
+
+/**
  * Hook: Fetch sessions for a tool from ingest via BFF proxy.
  *
  * Returns live sessions, pagination metadata, loading state, and a refetch
@@ -657,7 +741,7 @@ export function prefetchOverviewData(
  *
  * @param toolId - Current tool from AgentToolProvider
  * @param query - Optional filter/sort/pagination params forwarded to ingest
- * @returns { sessions, pagination, loading, error, refetch }
+ * @returns { sessions, pagination, loading, error, indexing, refetch }
  */
 export function useToolSessions(
   toolId: AgentToolId,
@@ -677,6 +761,9 @@ export function useToolSessions(
     initialCached ? initialCached.pagination.offset + initialCached.pagination.limit : 0,
   )
 
+  const fetchRef = useRef<(mode?: FetchMode) => void>(() => {})
+  const { indexing, schedule, resolve } = useIndexingRetry(() => fetchRef.current('network'))
+
   const applySessionsResponse = useCallback((data: SessionsResponse) => {
     setSessions(data.sessions)
     setPagination(data.pagination)
@@ -695,6 +782,7 @@ export function useToolSessions(
       setLoading(false)
       setError(null)
       setCurrentOffset(0)
+      resolve()
       return
     }
 
@@ -702,6 +790,7 @@ export function useToolSessions(
       const cached = getCachedSessionsResponse(toolId, parsedQuery)
       if (cached) {
         applySessionsResponse(cached)
+        resolve()
         setLoading(false)
         setIsLoadingMore(false)
         return
@@ -713,12 +802,27 @@ export function useToolSessions(
     try {
       const data = await fetchSessionsResponse(toolId, parsedQuery)
       applySessionsResponse(data)
+      resolve()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load sessions')
+      if (err instanceof IngestIndexingError) {
+        // Ingest is reachable but still indexing — keep retrying with backoff
+        // instead of surfacing a hard error. Only fall back to error once the
+        // retry budget is exhausted.
+        if (!schedule()) {
+          setError('Ingest service is still indexing. Retry shortly.')
+        }
+      } else {
+        resolve()
+        setError(err instanceof Error ? err.message : 'Failed to load sessions')
+      }
     } finally {
       setLoading(false)
     }
-  }, [toolId, queryKey, enabled, applySessionsResponse])
+  }, [toolId, queryKey, enabled, applySessionsResponse, schedule, resolve])
+
+  useEffect(() => {
+    fetchRef.current = fetchSessions
+  }, [fetchSessions])
 
   const loadMore = useCallback(async () => {
     if (!enabled || isLoadingMore) return
@@ -764,7 +868,7 @@ export function useToolSessions(
     void fetchSessions('network')
   }, [fetchSessions])
 
-  return { sessions, pagination, groupCounts, loading, error, isLoadingMore, loadMore, refetch }
+  return { sessions, pagination, groupCounts, loading, error, indexing, isLoadingMore, loadMore, refetch }
 }
 
 /**
@@ -877,6 +981,8 @@ interface AggregateToolResult {
   _groupCounts: SessionsGroupCounts | undefined
   pagination: SourcePagination | null
   status: AggregateSourceStatus
+  /** True when this source failed specifically because ingest is still indexing. */
+  indexing: boolean
 }
 
 function loadedAggregateResult(toolId: SourceToolId, data: SessionsResponse): AggregateToolResult {
@@ -891,6 +997,7 @@ function loadedAggregateResult(toolId: SourceToolId, data: SessionsResponse): Ag
       count: data.sessions.length,
       total: data.pagination.total,
     },
+    indexing: false,
   }
 }
 
@@ -907,6 +1014,7 @@ function failedAggregateResult(toolId: SourceToolId, err?: unknown): AggregateTo
       total: 0,
       error: err instanceof Error ? err.message : 'Failed to load source',
     },
+    indexing: err instanceof IngestIndexingError,
   }
 }
 
@@ -930,10 +1038,16 @@ export function useAggregateSessions(
   const queryKey = JSON.stringify(query ?? {})
   const enabled = options?.enabled ?? true
 
+  const fetchRef = useRef<(mode?: FetchMode) => void>(() => {})
+  const { indexing, schedule, resolve } = useIndexingRetry(() => fetchRef.current('network'))
+
   const applyAggregateResults = useCallback((results: AggregateToolResult[]) => {
     const merged = results.flatMap((result) => result.sessions).sort(compareSessionsByFreshness)
     const sourceStatuses = results.map((result) => result.status)
     const allSourcesFailed = sourceStatuses.every((source) => source.status === 'error')
+    // Treat "every source is still indexing and nothing has loaded yet" as an
+    // indexing state (retry with backoff) rather than an unreachable error.
+    const indexingAndEmpty = merged.length === 0 && results.some((result) => result.indexing)
 
     const newPaginationBySource: Partial<Record<SourceToolId, SourcePagination>> = {}
     for (const result of results) {
@@ -945,7 +1059,12 @@ export function useAggregateSessions(
     setSessions(merged)
     setSources(sourceStatuses)
     setTotalCount(sourceStatuses.reduce((sum, source) => sum + source.total, 0))
-    setError(allSourcesFailed ? 'All ingest sources unreachable' : null)
+    if (indexingAndEmpty) {
+      setError(schedule() ? null : 'Ingest service is still indexing. Retry shortly.')
+    } else {
+      resolve()
+      setError(allSourcesFailed ? 'All ingest sources unreachable' : null)
+    }
     setPaginationBySource(newPaginationBySource)
 
     const mergedAgent = new Map<string, number>()
@@ -978,7 +1097,7 @@ export function useAggregateSessions(
         : null,
     )
     setLoading(false)
-  }, [])
+  }, [schedule, resolve])
 
   const fetchAggregateSessions = useCallback((mode: FetchMode = 'network') => {
     if (!enabled) {
@@ -990,6 +1109,7 @@ export function useAggregateSessions(
       setGroupCounts(null)
       setPaginationBySource({})
       setIsLoadingMore(false)
+      resolve()
       return
     }
 
@@ -1025,7 +1145,11 @@ export function useAggregateSessions(
         setError(err instanceof Error ? err.message : 'Failed')
         setLoading(false)
       })
-  }, [queryKey, enabled, applyAggregateResults])
+  }, [queryKey, enabled, applyAggregateResults, resolve])
+
+  useEffect(() => {
+    fetchRef.current = fetchAggregateSessions
+  }, [fetchAggregateSessions])
 
   const hasMore = Object.values(paginationBySource).some((p) => p?.hasMore === true)
 
@@ -1124,6 +1248,7 @@ export function useAggregateSessions(
     sources,
     loading,
     error,
+    indexing,
     paginationBySource,
     hasMore,
     isLoadingMore,

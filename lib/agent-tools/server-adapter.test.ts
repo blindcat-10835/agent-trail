@@ -4,6 +4,7 @@ import {
   fetchIngest,
   getSourceScopedSession,
   requireSourceScopedSession,
+  sanitizeError,
   SessionValidationError,
 } from './server-adapter'
 import type { TraceSession } from '@/types/trace'
@@ -50,6 +51,26 @@ describe('buildSourceScopedSessionParams', () => {
     expect(params.get('source')).toBe('openclaw')
     expect(params.get('status')).toBe('idle')
     expect(params.get('limit')).toBe('100')
+  })
+})
+
+describe('sanitizeError', () => {
+  it('maps an ingest timeout to a 504 "still indexing" response', () => {
+    const result = sanitizeError(new Error('Ingest service request timed out'))
+    expect(result.code).toBe(504)
+    expect(result.error).toMatch(/still indexing/i)
+  })
+
+  it('maps any other ingest failure to a 502 "unreachable" response', () => {
+    const result = sanitizeError(new Error('ECONNREFUSED'))
+    expect(result.code).toBe(502)
+    expect(result.error).toBe('Ingest service unreachable')
+  })
+
+  it('passes through validation error codes', () => {
+    const result = sanitizeError(new SessionValidationError('bad id', 400))
+    expect(result.code).toBe(400)
+    expect(result.error).toBe('bad id')
   })
 })
 

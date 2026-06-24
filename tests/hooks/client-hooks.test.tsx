@@ -240,6 +240,120 @@ describe('session refresh event', () => {
 })
 
 // ============================================================================
+// Ingest indexing state (504 → indexing + auto-retry, distinct from 502)
+// ============================================================================
+
+function statusResponse(status: number, body: unknown) {
+  return { ok: false, status, json: async () => body }
+}
+
+function okSessionsResponse(sessions: TraceSession[]) {
+  return {
+    ok: true,
+    json: async () => ({
+      sessions,
+      pagination: { total: sessions.length, limit: 100, offset: 0, hasMore: false },
+    }),
+  }
+}
+
+describe('ingest indexing state', () => {
+  it('surfaces an indexing state (not an error) when a tool fetch returns 504', async () => {
+    fetchMock.mockResolvedValue(
+      statusResponse(504, { error: 'Ingest service is still indexing. Retry shortly.' }),
+    )
+
+    let latest: ReturnType<typeof useToolSessions> | undefined
+    function Consumer() {
+      latest = useToolSessions('codex', { limit: '40', sort: 'updated_at', order: 'desc' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.indexing).toBe(true))
+    expect(latest?.error).toBeNull()
+  })
+
+  it('clears the indexing state once a later tool fetch succeeds', async () => {
+    fetchMock
+      .mockResolvedValueOnce(statusResponse(504, { error: 'Ingest service is still indexing.' }))
+      .mockResolvedValue(
+        okSessionsResponse([
+          sessionFixture('s1', 'codex', { startedAt: '2026-05-10T00:00:00.000Z' }),
+        ]),
+      )
+
+    let latest: ReturnType<typeof useToolSessions> | undefined
+    function Consumer() {
+      latest = useToolSessions('codex', { limit: '40', sort: 'updated_at', order: 'desc' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.indexing).toBe(true))
+
+    act(() => notifySessionsRefresh())
+
+    await waitFor(() => expect(latest?.indexing).toBe(false))
+    expect(latest?.sessions).toHaveLength(1)
+    expect(latest?.error).toBeNull()
+  })
+
+  it('surfaces a hard error (not indexing) when a tool fetch returns 502', async () => {
+    fetchMock.mockResolvedValue(
+      statusResponse(502, { error: 'Ingest service unreachable' }),
+    )
+
+    let latest: ReturnType<typeof useToolSessions> | undefined
+    function Consumer() {
+      latest = useToolSessions('codex', { limit: '40', sort: 'updated_at', order: 'desc' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.error).toBe('Ingest service unreachable'))
+    expect(latest?.indexing).toBe(false)
+  })
+
+  it('surfaces indexing (not the unreachable error) when every aggregate source returns 504', async () => {
+    fetchMock.mockResolvedValue(
+      statusResponse(504, { error: 'Ingest service is still indexing.' }),
+    )
+
+    let latest: AggregateHookResult | undefined
+    function Consumer() {
+      latest = useAggregateSessions({ limit: '100' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.indexing).toBe(true))
+    expect(latest?.error).toBeNull()
+  })
+
+  it('surfaces the aggregate unreachable error (not indexing) when every source returns 502', async () => {
+    fetchMock.mockResolvedValue(
+      statusResponse(502, { error: 'Ingest service unreachable' }),
+    )
+
+    let latest: AggregateHookResult | undefined
+    function Consumer() {
+      latest = useAggregateSessions({ limit: '100' })
+      return null
+    }
+
+    render(<Consumer />)
+
+    await waitFor(() => expect(latest?.error).toBe('All ingest sources unreachable'))
+    expect(latest?.indexing).toBe(false)
+  })
+})
+
+// ============================================================================
 // useAggregateSessions
 // ============================================================================
 
