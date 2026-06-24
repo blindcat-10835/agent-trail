@@ -1,11 +1,11 @@
 ---
 type: feat
 title: Surface Indexing State During Ingest Startup Sync
-status: review
+status: done
 priority: p2
 created: 2026-06-24
-updated: 2026-06-24
-branch:
+updated: 2026-06-25
+branch: feat/startup-indexing-state
 worktree:
 ---
 
