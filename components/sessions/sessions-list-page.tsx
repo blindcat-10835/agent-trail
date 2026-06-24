@@ -286,6 +286,7 @@ export function SessionsListPage() {
   const paginationTotal = isAll ? aggResult.totalCount : toolResult.pagination?.total
   const loading = isAll ? aggResult.loading : toolResult.loading
   const error = isAll ? aggResult.error : toolResult.error
+  const indexing = isAll ? aggResult.indexing : toolResult.indexing
   const refetch = isAll ? aggResult.refetch : toolResult.refetch
   const hasMore = isAll ? aggResult.hasMore : (toolResult.pagination?.hasMore ?? false)
   const isLoadingMore = isAll ? aggResult.isLoadingMore : toolResult.isLoadingMore
@@ -319,6 +320,20 @@ export function SessionsListPage() {
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
   }, [filtered, groupByProject])
 
+  if (indexing && rawSessions.length === 0) {
+    return (
+      <div className="sl-root">
+        <div className="sl-empty" style={{ paddingTop: 80 }}>
+          <div style={{ marginBottom: 14 }}>
+            <span className="live-indexing-chip">INDEXING</span>
+          </div>
+          <div className="sl-empty-title">BUILDING INDEX</div>
+          <div className="sl-empty-body">正在建立会话索引,完成后自动刷新。</div>
+        </div>
+      </div>
+    )
+  }
+
   if (loading && rawSessions.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -332,7 +347,7 @@ export function SessionsListPage() {
       <div className="sl-root">
         <div className="sl-empty" style={{ paddingTop: 80 }}>
           <div className="sl-empty-title">INGEST UNREACHABLE</div>
-          <div className="sl-empty-body">Ensure the ingest service is running on port 8078.</div>
+          <div className="sl-empty-body">Ensure the ingest service is running.</div>
         </div>
       </div>
     )

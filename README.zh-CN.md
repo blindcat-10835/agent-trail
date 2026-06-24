@@ -44,6 +44,16 @@
 - **注入上下文和系统事件**：展示隐藏的上下文块、权限提示和合成消息 — 这些通常在轮次之间存在，但塑造了模型的行为
 - **每轮次 token 统计**：查看 input、output、cache-read、cache-write 和 reasoning token 计数，精确到轮次级别
 
+### 让你的编程代理搜索历史会话
+
+Agent Trail 内置了一个代理 skill **`local-session-search`**，教会 AI 编程代理（Claude Code、Codex 等）通过本地 ingest/BFF 接口查找你的历史会话 —— 即使你事先不知道会话 ID。
+
+- 可以直接问代理：*"找一下我之前调试 WebSocket 重连那个 bug 的会话"*。
+- skill 会先用消息正文全局搜索（`GET /api/v1/sessions/search`）找出候选会话，再下钻到会话详情 / 轮次 / 消息来作答。
+- 它返回足够的元数据 —— `source`、`sessionId`、标题、项目、`updatedAt` 以及命中片段 —— 让代理定位并打开正确的会话。
+
+该 skill 位于 [`.agents/skills/local-session-search/SKILL.md`](.agents/skills/local-session-search/SKILL.md)。
+
 ---
 
 ## 安装

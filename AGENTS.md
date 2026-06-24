@@ -87,6 +87,7 @@ types/                  # 共享类型 (trace.ts 等)
 - **BFF 代理**：前端不直连 ingest，所有请求走 `app/api/agent-tools/[tool]/...`（D-07）。
 - **GSD 工作流**：项目用 `.planning/` 跟踪 milestone/phase/plan。开新工作前看 `.planning/STATE.md` 了解当前 phase。不要手编 `.planning/` 里的 STATE/ROADMAP —— 用 `/gsd-*` 命令。
 - **清理废弃代码**：修改代码时发现不再被任何地方引用的组件、函数、类型、文件，且判断未来也不太可能被使用，应当删除而不是留在代码库中。
+- **多语言 README 同步**：项目维护三份 README —— `README.md`（英文，权威源）、`README.zh-CN.md`（简体中文）、`README.ja-JP.md`（日本語）。**任何对其中一份的内容改动（新增/删除/修改章节），必须在同一次改动里同步到另外两份**，不要只改一份。提交前用 `ls README*.md` 核对三份都改到。
 
 ## Documentation
 
@@ -130,3 +131,11 @@ types/                  # 共享类型 (trace.ts 等)
 | 跨 session 恢复上下文              | `gsd-resume-work`                                                |
 | Phase 三段式：讨论 → 规划 → 执行 | `gsd-discuss-phase` / `gsd-plan-phase` / `gsd-execute-phase` |
 | 列出全部 GSD 命令                  | `gsd-help`                                                       |
+
+### 本项目 Agent skill
+
+下面是项目内置的 agent 运行时 skill（canonical 源在 `.agents/skills/`，由 `scripts/link-agents.sh` 软链到各工具目录；其他工具目录已 gitignore，不要手动复制）。
+
+| 场景                                                                                                          | 使用的 skill           |
+| ------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| 检索/定位本地已 ingest 的历史 session：按消息正文全局搜索 → 拿 `source`+`sessionId` → 下钻 detail/turns/messages | `local-session-search` |

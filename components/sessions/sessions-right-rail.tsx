@@ -85,7 +85,7 @@ function AggregateSessionsRightRail({
   const { href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const { sessions, totalCount, loading, error, hasMore, isLoadingMore, loadMore } = useAggregateSessions(DEFAULT_SESSIONS_RAIL_QUERY)
+  const { sessions, totalCount, loading, error, indexing, hasMore, isLoadingMore, loadMore } = useAggregateSessions(DEFAULT_SESSIONS_RAIL_QUERY)
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
 
@@ -113,6 +113,7 @@ function AggregateSessionsRightRail({
       sessions={sessions}
       loading={loading || syncing}
       error={syncError ?? error}
+      indexing={indexing}
       total={totalCount}
       selectedSessionId={selectedSessionId}
       onRefresh={handleRefresh}
@@ -132,7 +133,7 @@ function SourceSessionsRightRail({
   const { href } = useAgentTool()
   const router = useRouter()
   const setSelectedSessionId = useToolStore((s) => s.setSelectedSessionId)
-  const { sessions, pagination, loading, error, isLoadingMore, loadMore, refetch } = useToolSessions(
+  const { sessions, pagination, loading, error, indexing, isLoadingMore, loadMore, refetch } = useToolSessions(
     sourceToolId,
     DEFAULT_SESSIONS_RAIL_QUERY,
   )
@@ -163,6 +164,7 @@ function SourceSessionsRightRail({
       sessions={sessions}
       loading={loading || syncing}
       error={syncError ?? error}
+      indexing={indexing}
       total={pagination?.total}
       selectedSessionId={selectedSessionId}
       onRefresh={handleRefresh}
@@ -179,6 +181,7 @@ function SessionsRailContent({
   sessions,
   loading,
   error,
+  indexing,
   total,
   selectedSessionId,
   onRefresh,
@@ -191,6 +194,7 @@ function SessionsRailContent({
   sessions: TraceSession[]
   loading: boolean
   error: string | null
+  indexing?: boolean
   total: number | undefined
   selectedSessionId: string | null
   onRefresh: () => void
@@ -336,7 +340,12 @@ function SessionsRailContent({
 
       {/* SCROLL AREA */}
       <div className="rr-scroll">
-        {loading && sessions.length === 0 ? (
+        {indexing && sessions.length === 0 ? (
+          <div className="rr-empty">
+            <span className="live-indexing-chip">INDEXING</span>
+            <div className="rr-empty-body" style={{ marginTop: 10 }}>正在建立会话索引,完成后自动刷新。</div>
+          </div>
+        ) : loading && sessions.length === 0 ? (
           <div style={{ display: 'grid', placeItems: 'center', height: 120 }}>
             <div className="h-7 w-7 animate-spin rounded-full border-b-2 border-accent" />
           </div>
