@@ -5,6 +5,7 @@ import { Wrench, Sparkles, Bot, ChevronDown, ChevronRight, Copy, Check } from 'l
 import type { TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
 import { useReplayStore } from '@/stores/replay-store'
 import { cn } from '@/lib/utils'
+import { CopyButton } from '@/components/ui/copy-button'
 import { ToolBlock } from './tool-block'
 import { SkillBlock } from './skill-block'
 import { SubagentBlock } from './subagent-block'
@@ -166,7 +167,7 @@ export function TurnCard({ turn }: TurnCardProps) {
                           searchQuery={searchQuery}
                           className="text-[12px] leading-relaxed text-foreground"
                         />
-                        <CopyMessageButton content={msg.content} />
+                        <CopyButton text={msg.content} />
                       </div>
                     )}
                     {attachedActivities.map(({ activity, idx }) => (
@@ -231,7 +232,7 @@ function UserMessageBlock({ content, searchQuery }: { content: string; searchQue
           <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             USER
           </span>
-          <CopyMessageButton content={parsed.userText} />
+          <CopyButton text={parsed.userText} />
         </div>
         {parsed.userText && (
           <MarkdownContent
@@ -245,26 +246,6 @@ function UserMessageBlock({ content, searchQuery }: { content: string; searchQue
         <InjectedContextBlock key={i} part={part} />
       ))}
     </div>
-  )
-}
-
-/** Inline copy button for individual messages — shown on group hover */
-function CopyMessageButton({ content }: { content: string }) {
-  const [copied, setCopied] = useState(false)
-  const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(content)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }, [content])
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-muted-foreground hover:text-accent flex-shrink-0"
-      title={copied ? 'Copied!' : 'Copy'}
-    >
-      {copied ? <Check className="w-2.5 h-2.5 text-accent" /> : <Copy className="w-2.5 h-2.5" />}
-    </button>
   )
 }
 

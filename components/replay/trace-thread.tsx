@@ -7,7 +7,9 @@ import { useRouter } from 'next/navigation'
 import type { TraceSession, TraceTurn, TraceActivity, TraceMessage } from '@/types/trace'
 import { useAgentTool } from '@/lib/agent-tools/client-hooks'
 import { formatSessionCost } from '@/lib/session-cost'
+import { parseUserMessage } from '@/lib/replay/parse-user-message'
 import { SessionIdCopyButton } from '@/components/ui/session-id-copy-button'
+import { CopyButton } from '@/components/ui/copy-button'
 import { MarkdownContent } from './markdown-content'
 import { ToolBlock } from './tool-block'
 import { SkillBlock } from './skill-block'
@@ -134,6 +136,8 @@ function TurnCard({
   const ref = useRef<HTMLElement>(null)
   const searchQuery = useReplayStore((s) => s.searchQuery)
   const userContent = turn.userMessage?.content || ''
+  // Plain user text with injected system blocks stripped — what the copy button copies.
+  const userCopyText = parseUserMessage(userContent).userText
   const tokenIn = turn.tokenUsage?.inputTokens ?? 0
   const tokenOut = turn.tokenUsage?.outputTokens ?? 0
 
@@ -167,10 +171,13 @@ function TurnCard({
           </span>
         </header>
 
-        <div className="v2-bubble user" data-turn-bubble={turn.index}>
+        <div className="v2-bubble user group" data-turn-bubble={turn.index}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
             <span className="v2-role" style={{ marginBottom: 0 }}>USER</span>
-            <span className="v2-time mono">{formatTime(turn.startedAt)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="v2-time mono">{formatTime(turn.startedAt)}</span>
+              <CopyButton text={userCopyText} />
+            </div>
           </div>
           <MarkdownContent content={userContent} searchQuery={searchQuery} className="v2-msg" />
         </div>
@@ -190,8 +197,11 @@ function TurnCard({
           return (
             <div key={getMessageKey(msg, index)}>
               {showMessage && (
-                <div className="v2-bubble asst">
-                  <span className="v2-role">ASSISTANT</span>
+                <div className="v2-bubble asst group">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span className="v2-role" style={{ marginBottom: 0 }}>ASSISTANT</span>
+                    <CopyButton text={msg.content} />
+                  </div>
                   <MarkdownContent content={msg.content} searchQuery={searchQuery} className="v2-msg" />
                 </div>
               )}

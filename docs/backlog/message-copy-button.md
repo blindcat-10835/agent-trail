@@ -1,11 +1,12 @@
 ---
 type: feat
 title: Add Per-Message Copy Button in Turn Replay
-status: todo
+status: done
 priority: p3
 created: 2026-06-05
-branch:
-worktree:
+updated: 2026-06-24
+branch: feat/message-copy-button
+worktree: .worktree/feat-message-copy-button
 ---
 
 ## Description
