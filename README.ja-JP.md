@@ -44,6 +44,16 @@
 - **注入コンテキストとシステムイベント**: 通常はターン間に存在する隠れたコンテキストブロック、権限プロンプト、合成メッセージを表示
 - **ターンごとのトークン計算**: input、output、cache-read、cache-write、reasoning トークン数をターンレベルで表示
 
+### コーディングエージェントに過去のセッションを検索させる
+
+Agent Trail には、AI コーディングエージェント（Claude Code、Codex など）がローカルの ingest/BFF API を通じて過去のセッションを見つける方法を教える、組み込みのエージェント skill **`local-session-search`** が同梱されています —— セッション ID を事前に知らなくても構いません。
+
+- *「WebSocket 再接続のバグをデバッグしたセッションを探して」* のようにエージェントに尋ねられます。
+- skill はメッセージ本文のグローバル検索（`GET /api/v1/sessions/search`）で候補セッションを洗い出し、セッション詳細 / ターン / メッセージへドリルダウンして回答します。
+- `source`、`sessionId`、タイトル、プロジェクト、`updatedAt`、一致したスニペットなど、エージェントが正しいセッションを特定して開くのに十分なメタデータを返します。
+
+この skill は [`.agents/skills/local-session-search/SKILL.md`](.agents/skills/local-session-search/SKILL.md) にあります。
+
 ---
 
 ## インストール

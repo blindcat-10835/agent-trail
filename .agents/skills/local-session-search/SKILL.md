@@ -7,6 +7,16 @@ description: Locate, inspect, and summarize locally ingested AI agent sessions t
 
 Use this skill for local agent-trail sessions already ingested into SQLite. Prefer the BFF when working through the running Next app; use direct ingest for CLI/debugging or when the frontend port is unknown.
 
+## Scope
+
+This skill is the **agent-usage layer** on top of the global session-content search *primitive* (`GET /api/v1/sessions/search`). The primitive answers "which sessions match this text?"; this skill describes how an agent picks candidates from it and when to drill down.
+
+Responsibility boundary:
+
+- **ingest only searches and reads.** Its job is the four endpoints below: global search, session detail, `turns`, `messages`, and `lookup`. Nothing more.
+- **the agent orchestrates everything else.** Candidate selection, deciding when to drill down, and any summarization happen agent-side — read the relevant turns/messages first, then summarize.
+- **out of ingest scope, on purpose:** result summaries, related-session recommendations, deep-link orchestration, and complex filter sets. Do not push these back into the ingest API; keep them in the agent's own workflow.
+
 ## Bases
 
 - Direct ingest default: `INGEST=http://localhost:8078`
@@ -31,7 +41,7 @@ Use the global session-content search endpoint. It returns one row per candidate
 
 ```bash
 curl -sS --get "$INGEST/api/v1/sessions/search" \
-  --data-urlencode "q=GREE valuation" \
+  --data-urlencode "q=WebSocket reconnection" \
   --data-urlencode "limit=5" \
   | jq '.results[] | {source, sessionId, sourceSessionId, displayTitle, project, updatedAt, snippet, matchCount}'
 ```
@@ -40,7 +50,7 @@ Via BFF:
 
 ```bash
 curl -sS --get "$BASE/api/agent-tools/all/sessions/search" \
-  --data-urlencode "q=GREE valuation" \
+  --data-urlencode "q=WebSocket reconnection" \
   --data-urlencode "limit=5" \
   | jq '.results[] | {source, sessionId, sourceSessionId, displayTitle, project, updatedAt, snippet, matchCount}'
 ```
@@ -49,16 +59,16 @@ For source-scoped BFF search, replace `all` with the source tool:
 
 ```bash
 curl -sS --get "$BASE/api/agent-tools/codex/sessions/search" \
-  --data-urlencode "q=GREE valuation" \
+  --data-urlencode "q=WebSocket reconnection" \
   --data-urlencode "limit=5" \
   | jq '.results[] | {source, sessionId, displayTitle, project, updatedAt, snippet}'
 ```
 
 Search heuristics:
 
-- Use 2-4 specific terms, not one broad token: `GREE valuation`, `3632 グリー`, `company valuation`, project names, ticker symbols, or memorable phrases.
+- Use 2-4 specific terms, not one broad token: `WebSocket reconnection`, `JWT refresh token`, `CORS preflight error`, project names, error messages, function/file names, or memorable phrases.
 - Try aliases and language variants when the first pass is noisy.
-- For Chinese/Japanese short phrases, include ASCII or numeric aliases such as ticker codes, company names, or skill names; the default FTS tokenizer can miss CJK-only queries.
+- For Chinese/Japanese short phrases, include ASCII aliases such as the English library/API name, error code, or function/file name; the default FTS tokenizer can miss CJK-only queries.
 - Inspect several candidates. Current sorting prioritizes recent sessions first, so a recent meta-discussion can beat the older target when the query is broad.
 - Add `includeChildren=true` only when subagent/child sessions are relevant; root sessions are the default.
 - Do not use `GET /api/v1/sessions?q=...` for message-body search. That endpoint only searches session metadata.
@@ -90,7 +100,7 @@ Use turns for replay-style summaries. Use messages when you need the flat chrono
 
 ```bash
 curl -sS --get "$INGEST/api/v1/sessions/$SESSION_ID/search" \
-  --data-urlencode "q=valuation" \
+  --data-urlencode "q=reconnection" \
   | jq '.results[] | {ordinal, role, turnIndex, snippet}'
 ```
 

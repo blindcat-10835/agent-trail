@@ -44,6 +44,16 @@ Open any session and step through every turn exactly as it happened. The replay 
 - **Injected context and system events**: surface hidden context blocks, permission prompts, and synthetic messages that normally live between turns but shape how the model behaves
 - **Token accounting per turn**: see input, output, cache-read, cache-write, and reasoning token counts at the turn level, not just the session level
 
+### Let your coding agent search past sessions
+
+Agent Trail ships a bundled agent skill, **`local-session-search`**, that teaches an AI coding agent (Claude Code, Codex, etc.) how to find your historical sessions through the local ingest/BFF API — without you knowing the session ID up front.
+
+- Ask your agent something like *"find the session where I debugged the WebSocket reconnection bug."*
+- The skill drives a global message-body search (`GET /api/v1/sessions/search`) to surface candidate sessions, then drills down into session detail / turns / messages to answer.
+- It returns enough metadata — `source`, `sessionId`, title, project, `updatedAt`, and a matching snippet — for the agent to locate and open the right session.
+
+The skill lives at [`.agents/skills/local-session-search/SKILL.md`](.agents/skills/local-session-search/SKILL.md).
+
 ---
 
 ## Install
