@@ -10,6 +10,7 @@ import {
   useIngestLiveUpdates,
 } from '@/lib/agent-tools/client-hooks'
 import { useUIStore } from '@/stores/ui-store'
+import { AgentTrailLogo } from '@/components/brand/agent-trail-logo'
 import { SourceSwitcher } from './source-switcher'
 import { ThemeToggle } from '@/components/hud/theme-toggle'
 
@@ -42,11 +43,13 @@ export function ShellHeader() {
   return (
     <header className="grid grid-cols-[280px_1fr_auto] items-center px-5 h-12 border-b border-border bg-gradient-to-b from-card to-background relative">
       {/* Brand — links to ALL-OVR */}
-      <Link href="/all/dashboard" className="flex items-center gap-3 group">
-        <div className="hud-clip-sm w-7 h-7 bg-accent flex items-center justify-center text-background font-bold text-sm group-hover:opacity-80 transition-opacity">
-          ◆
-        </div>
-        <div className="text-base font-bold tracking-[0.3em] text-accent group-hover:opacity-80 transition-opacity">
+      <Link
+        href="/all/dashboard"
+        aria-label="Agents Trail overview"
+        className="group flex w-fit items-center gap-3"
+      >
+        <AgentTrailLogo className="size-8 shrink-0 text-accent transition-[opacity,filter] group-hover:opacity-85 group-hover:drop-shadow-[0_0_6px_var(--accent-dim)]" />
+        <div className="text-base font-bold tracking-[0.3em] text-accent transition-opacity group-hover:opacity-85">
           AGENTS TRAIL
         </div>
       </Link>

@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Trail — Local Dashboard for Claude Code, Codex, OpenCode and AI Coding Agents</title>
-  <meta name="description" content="Agent Trail is a local AI coding agent observability dashboard for Claude Code, Codex, OpenCode, OpenClaw, and Qoder. Track token usage, estimated cost, tool calls, subagent trees, and replay full sessions — no cloud, no telemetry." />
+  <title>Agents Trail — Local Dashboard for Claude Code, Codex, OpenCode and AI Coding Agents</title>
+  <meta name="description" content="Agents Trail is a local AI coding agent observability dashboard for Claude Code, Codex, OpenCode, OpenClaw, and Qoder. Track token usage, estimated cost, tool calls, subagent trees, and replay full sessions — no cloud, no telemetry." />
   <meta name="keywords" content="Claude Code dashboard, Codex session viewer, AI coding agent dashboard, token usage tracker, subagent replay, agent observability, LLMOps, local developer tools" />
-  <meta property="og:title" content="Agent Trail — Local Dashboard for AI Coding Agents" />
+  <meta property="og:title" content="Agents Trail — Local Dashboard for AI Coding Agents" />
   <meta property="og:description" content="Track Claude Code, Codex, OpenCode, OpenClaw, and Qoder sessions locally. Token usage, cost tracking, tool calls, subagent trees, and session replay." />
   <meta property="og:type" content="website" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -57,7 +57,7 @@
       position: sticky; top: 0; z-index: 10; position: relative;
     }
     .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-    .brand-tile { width: 28px; height: 28px; background: var(--accent); clip-path: var(--clip-sm); display: grid; place-items: center; color: var(--background); font: 700 14px/1 var(--font-sans); }
+    .brand-mark { width: 28px; height: 28px; fill: var(--accent); filter: drop-shadow(0 0 6px var(--accent-dim)); flex-shrink: 0; }
     .brand-wordmark { font: 700 14px/1 var(--font-sans); letter-spacing: .3em; text-transform: uppercase; color: var(--accent); }
     .header-right { display: flex; gap: 6px; align-items: center; }
     .header-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
@@ -185,8 +185,16 @@
 
 <header class="site-header">
   <div class="brand">
-    <div class="brand-tile">◆</div>
-    <span class="brand-wordmark">Agent Trail</span>
+    <svg class="brand-mark" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <path d="M4 14 14 4h11v15l-6 6v20l-9 9v6l-6-6V14Z" />
+      <path d="M60 14 50 4H39v15l6 6v20l9 9v6l6-6V14Z" />
+      <path d="m32 23 6 6-6 6-6-6 6-6Z" />
+      <path d="M27 39h10l2 3H25l2-3Z" />
+      <path d="M23 45h18l2 3H21l2-3Z" />
+      <path d="M19 51h26l3 4H16l3-4Z" />
+      <path d="M14 58h36l3 4H11l3-4Z" />
+    </svg>
+    <span class="brand-wordmark">Agents Trail</span>
   </div>
   <div class="header-right">
     <!-- Lang dropdown -->
@@ -244,11 +252,11 @@
       <div class="section-rule"></div>
     </div>
     <div class="screenshot-wrap">
-      <img src="image/README/1779286882349.png" alt="Agent Trail overview dashboard" />
+      <img src="image/README/1779286882349.png" alt="Agents Trail overview dashboard" />
     </div>
     <p class="screenshot-cap" data-i18n="cap-overview">Overview — token usage, cost, and live activity across all agents</p>
     <div class="screenshot-wrap">
-      <img src="image/README/1779290188740.png" alt="Agent Trail session replay" />
+      <img src="image/README/1779290188740.png" alt="Agents Trail session replay" />
     </div>
     <p class="screenshot-cap" data-i18n="cap-replay">Session replay — step through turns, expand tool calls, trace subagent trees</p>
   </section>
@@ -367,7 +375,7 @@
     <div class="privacy-card">
       <div class="privacy-title" data-i18n="privacy-title">◆ Local only</div>
       <p class="privacy-body" data-i18n-html="privacy-body">
-        <strong>No data leaves your machine.</strong> Agent Trail parses your JSONL files into a local SQLite database
+        <strong>No data leaves your machine.</strong> Agents Trail parses your JSONL files into a local SQLite database
         at <code>~/.agent-trail/</code>. The dashboard is read-only — it replays recorded tool calls, never re-executes them.
         No telemetry, no analytics, no cloud sync.
       </p>
@@ -380,7 +388,7 @@
 <footer class="site-footer">
   <div class="footer-hairline"></div>
   <div class="sb-group">
-    <span>SRC<b>AGENT TRAIL</b></span>
+    <span>SRC<b>AGENTS TRAIL</b></span>
     <span>LICENSE<b>MIT</b></span>
     <span><span class="live-dot"></span>OPEN SOURCE</span>
   </div>
@@ -444,7 +452,7 @@ const LANGS = {
     'install2-label': 'Option 3 — From source',
     'section-privacy': 'Privacy',
     'privacy-title': '◆ Local only',
-    'privacy-body': '<strong>No data leaves your machine.</strong> Agent Trail parses your JSONL files into a local SQLite database at <code>~/.agent-trail/</code>. The dashboard is read-only — it replays recorded tool calls, never re-executes them. No telemetry, no analytics, no cloud sync.',
+    'privacy-body': '<strong>No data leaves your machine.</strong> Agents Trail parses your JSONL files into a local SQLite database at <code>~/.agent-trail/</code>. The dashboard is read-only — it replays recorded tool calls, never re-executes them. No telemetry, no analytics, no cloud sync.',
   },
 
   zh: {
@@ -498,7 +506,7 @@ const LANGS = {
     'install2-label': '方式 3 — 从源码构建',
     'section-privacy': '隐私',
     'privacy-title': '◆ 纯本地运行',
-    'privacy-body': '<strong>数据不会离开你的机器。</strong> Agent Trail 将 JSONL 文件解析并索引到本地 SQLite 数据库（<code>~/.agent-trail/</code>）。Dashboard 只读 — 仅回放录制的 Tool Call，不会重新执行。无遥测、无分析、无云同步。',
+    'privacy-body': '<strong>数据不会离开你的机器。</strong> Agents Trail 将 JSONL 文件解析并索引到本地 SQLite 数据库（<code>~/.agent-trail/</code>）。Dashboard 只读 — 仅回放录制的 Tool Call，不会重新执行。无遥测、无分析、无云同步。',
   },
 
   ja: {
@@ -552,7 +560,7 @@ const LANGS = {
     'install2-label': '方法 3 — ソースからビルド',
     'section-privacy': 'プライバシー',
     'privacy-title': '◆ 完全ローカル',
-    'privacy-body': '<strong>データはマシンの外に出ません。</strong> Agent Trail は JSONL ファイルをローカルの SQLite データベース（<code>~/.agent-trail/</code>）にインデックスします。Dashboard は読み取り専用 — 記録された Tool Call を再生するだけで、再実行はしません。テレメトリ・分析・クラウド同期は一切ありません。',
+    'privacy-body': '<strong>データはマシンの外に出ません。</strong> Agents Trail は JSONL ファイルをローカルの SQLite データベース（<code>~/.agent-trail/</code>）にインデックスします。Dashboard は読み取り専用 — 記録された Tool Call を再生するだけで、再実行はしません。テレメトリ・分析・クラウド同期は一切ありません。',
   },
 };
 

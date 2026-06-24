@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Agents Trail outline Time Gate logo</title>
+  <g color="#ffb000">
+    <path d="M24 6H14L6 14v38l6 6 10-10V25l5-5V6h-3ZM40 6h10l8 8v38l-6 6-10-10V25l-5-5V6h3Z" fill="none" stroke="currentColor" stroke-linecap="square" stroke-linejoin="miter" stroke-width="4"/>
+    <path d="m32 22 6 6-6 6-6-6 6-6Z" fill="currentColor"/>
+    <path d="M27 40h10M23 47h18M18 55h28" fill="none" stroke="currentColor" stroke-linecap="square" stroke-width="3"/>
+  </g>
+</svg>

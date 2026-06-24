@@ -1,11 +1,12 @@
 ---
 type: feat
 title: Replace Default Next.js Logo and Favicon
-status: todo
+status: wip
 priority: p2
 created: 2026-05-27
-branch:
-worktree:
+updated: 2026-06-24
+branch: feat/time-gate-branding
+worktree: .worktree/feat-time-gate-branding
 ---
 
 ## Description
@@ -22,8 +23,16 @@ worktree:
 
 ## Acceptance criteria
 
-- [ ] 替换 `app/favicon.ico` 为自定义图标（或使用 Next.js App Router 约定式 `icon.svg`/`icon.png`）
-- [ ] 在 `metadata.icons` 或约定式文件中配置完整的 favicon 套件（16/32/180/apple-touch-icon）
-- [ ] 图标风格与赛博朋克 HUD 主题一致（accent 色、几何感）
-- [ ] 可选：替换 header 品牌区的 `◆` 为 SVG logo 组件
-- [ ] 可选：添加 `opengraph-image` 用于社交分享
+- [x] 替换 `app/favicon.ico` 为自定义图标（或使用 Next.js App Router 约定式 `icon.svg`/`icon.png`）
+- [x] 在 `metadata.icons` 或约定式文件中配置完整的 favicon 套件（16/32/180/apple-touch-icon）
+- [x] 图标风格与赛博朋克 HUD 主题一致（accent 色、几何感）
+- [x] 可选：替换 header 品牌区的 `◆` 为 SVG logo 组件
+- [x] 可选：添加 `opengraph-image` 用于社交分享
+
+## Implementation
+
+- Time Gate 主标、紧凑标、描边标三套 SVG 品牌资产
+- Header 使用继承语义化 `text-accent` 的 React SVG 组件
+- Next.js file-based metadata 提供 16/32/SVG favicon 与 180px Apple 图标
+- Web App Manifest 提供 192/512px 安装图标
+- 静态 1200×630 Open Graph 分享图，避免运行时图片生成
