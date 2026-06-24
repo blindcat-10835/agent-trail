@@ -30,10 +30,11 @@ Description is short kebab-case — 2-4 words, lowercase. Names that read clearl
 
 ## Sub-actions
 
-This skill handles three actions. Detect intent from the user's phrasing — if ambiguous, ask.
+This skill handles four actions. Detect intent from the user's phrasing — if ambiguous, ask.
 
 - **`new`** — create a worktree for a new branch (the most common case)
 - **`list`** — show existing worktrees and their branches
+- **`merge`** — land a finished branch into `main` as a `--no-ff` merge commit (do this before `cleanup`)
 - **`cleanup`** — find worktrees whose branches are already merged into main, confirm with user, remove them
 
 ---
@@ -169,9 +170,50 @@ Group output:
 
 ---
 
+## Action: merge
+
+Goal: land a finished branch into `main` with a merge commit that records the branch's identity. Run this after the branch's work is committed and before `cleanup`.
+
+### Step 1 — Confirm the branch is ready and check its position
+
+```bash
+git -C <worktree> status --porcelain          # tree should be clean (work is committed)
+git fetch origin main
+git log --oneline main..<branch>               # commits that will land
+git merge-base --is-ancestor main <branch>     # is a fast-forward physically possible?
+```
+
+### Step 2 — Merge with `--no-ff` from the main checkout
+
+`main` is checked out in the main checkout, not in the worktree, so target it explicitly:
+
+```bash
+git -C <main-checkout> merge --no-ff <branch> -m "Merge <branch>: <one-line summary>"
+```
+
+- **Always use `--no-ff`.** This project records every feature/fix branch as a merge commit — run `git log --merges` and you'll see `Merge feat/...: ...` / `Merge fix/...: ...`. The merge commit is the audit trail that the work lived on a branch; a fast-forward flattens it into linear history and erases that.
+- Message format: `Merge <type>/<desc>: <short human summary of what landed>` — e.g. `Merge feat/message-copy-button: add per-message copy button in turn replay`.
+- **Never use `--ff-only`**, and never "infer" the project uses linear history from the top of `git log`. The first-parent line reads linear, but the real history is merge-commit-based — when in doubt, check `git log --merges`.
+
+### Step 3 — If main moved since the branch point
+
+A fast-forward isn't possible anyway in this case. From the worktree, rebase onto main and resolve first, then run Step 2:
+
+```bash
+git -C <worktree> rebase main
+```
+
+Either way, still finish with a `--no-ff` merge commit on main.
+
+### Step 4 — Hand off to cleanup
+
+The branch now appears in `git branch --merged main` → run the `cleanup` action to remove the worktree, mark any linked backlog item `done`, and archive it.
+
+---
+
 ## Action: cleanup
 
-Goal: safely remove worktrees whose branches are already merged into main. **Never** auto-delete; always show the list and require confirmation.
+Goal: safely remove worktrees whose branches have already been merged into main via the `merge` action. **Never** auto-delete; always show the list and require confirmation.
 
 ### Step 1 — Find candidates
 
@@ -289,3 +331,4 @@ All commands must run with `workdir` set to the worktree path. After verificatio
 - Don't run `pnpm install` without asking — it's the slowest step and not always needed
 - Don't delete worktrees or branches without explicit confirmation, even if they look stale
 - Don't use `git branch -D` unless the user explicitly asks for force-delete
+- Don't merge with `--ff-only` or by guessing the project's history style from the top of `git log` — this project always lands branches as `--no-ff` merge commits (`Merge <branch>: <summary>`). See the `merge` action.
