@@ -1,12 +1,16 @@
+---
 type: feat
 title: Add Agent Session Search Skill
-status: todo
+status: done
 priority: p2
 created: 2026-05-27
 branch:
 worktree:
+---
 
 ## Description
+
+> 已实现：由 `local-session-search` skill 落地（`.agents/skills/local-session-search/SKILL.md`），并在 `AGENTS.md` 登记。
 
 希望在全局 session 搜索接口落地之后，再补一个 agent/skill 层的接入能力，教导 agent 如何稳定地使用这个程序来检索本地历史会话。
 
@@ -33,11 +37,11 @@ worktree:
 
 ## Acceptance criteria
 
-- [ ] 在 `global-session-search` 可用后，提供一个 agent-facing 的使用约定或 skill，说明如何检索本地 sessions。
-- [ ] 该约定明确第一步用全局搜索接口找候选，第二步用现有 session detail / messages / turns 接口继续读取。
-- [ ] 至少覆盖本次核心用例：agent 可以找到相关 session，并向用户返回 `source`、`sessionId`、标题、项目、更新时间。
-- [ ] 明确哪些事情由 ingest API 负责，哪些事情由 agent/skill 自己编排，避免再次把增强能力误塞回底层接口。
-- [ ] 与 `global-session-search` 的关系被说明清楚：前者偏 agent 使用方式，后者偏底层搜索 primitive。
+- [x] 在 `global-session-search` 可用后，提供一个 agent-facing 的使用约定或 skill，说明如何检索本地 sessions。
+- [x] 该约定明确第一步用全局搜索接口找候选，第二步用现有 session detail / messages / turns 接口继续读取。
+- [x] 至少覆盖本次核心用例：agent 可以找到相关 session，并向用户返回 `source`、`sessionId`、标题、项目、更新时间。
+- [x] 明确哪些事情由 ingest API 负责，哪些事情由 agent/skill 自己编排，避免再次把增强能力误塞回底层接口。
+- [x] 与 `global-session-search` 的关系被说明清楚：前者偏 agent 使用方式，后者偏底层搜索 primitive。
 
 ## Related
 
