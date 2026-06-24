@@ -17,8 +17,22 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Agent Trail",
-  description: "Local session replay dashboard for AI coding agents.",
+  metadataBase: new URL("http://localhost:3029"),
+  applicationName: "Agents Trail",
+  title: {
+    default: "Agents Trail",
+    template: "%s — Agents Trail",
+  },
+  description: "Local session tracing and replay dashboard for AI coding agents.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Agents Trail",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export default function RootLayout({

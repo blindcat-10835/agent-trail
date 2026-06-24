@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">Agents Trail social card</title>
+  <desc id="description">Time Gate logo with the Agents Trail wordmark and Trace Replay Inspect tagline.</desc>
+  <rect width="1200" height="630" fill="#070b09"/>
+  <path d="M0 1h1200" stroke="#ffb000" stroke-opacity=".32" stroke-width="2"/>
+  <path d="M0 629h1200" stroke="#ffb000" stroke-opacity=".32" stroke-width="2"/>
+  <g fill="#ffb000" transform="translate(112 150) scale(5.15)">
+    <path d="M4 14 14 4h11v15l-6 6v20l-9 9v6l-6-6V14Z"/>
+    <path d="M60 14 50 4H39v15l6 6v20l9 9v6l6-6V14Z"/>
+    <path d="m32 23 6 6-6 6-6-6 6-6Z"/>
+    <path d="M27 39h10l2 3H25l2-3Z"/>
+    <path d="M23 45h18l2 3H21l2-3Z"/>
+    <path d="M19 51h26l3 4H16l3-4Z"/>
+    <path d="M14 58h36l3 4H11l3-4Z"/>
+  </g>
+  <g font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace">
+    <text x="525" y="290" fill="#ffb000" font-size="68" font-weight="800" letter-spacing="14">AGENTS</text>
+    <text x="525" y="375" fill="#ffb000" font-size="68" font-weight="800" letter-spacing="14">TRAIL</text>
+    <text x="529" y="440" fill="#aaa99f" font-size="22" letter-spacing="5">TRACE · REPLAY · INSPECT</text>
+  </g>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Agents Trail Time Gate logo</title>
+  <g fill="#ffb000">
+    <path d="M4 14 14 4h11v15l-6 6v20l-9 9v6l-6-6V14Z"/>
+    <path d="M60 14 50 4H39v15l6 6v20l9 9v6l6-6V14Z"/>
+    <path d="m32 23 6 6-6 6-6-6 6-6Z"/>
+    <path d="M27 39h10l2 3H25l2-3Z"/>
+    <path d="M23 45h18l2 3H21l2-3Z"/>
+    <path d="M19 51h26l3 4H16l3-4Z"/>
+    <path d="M14 58h36l3 4H11l3-4Z"/>
+  </g>
+</svg>
