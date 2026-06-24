@@ -1,10 +1,10 @@
 ---
 type: feat
 title: Replace Default Next.js Logo and Favicon
-status: wip
+status: done
 priority: p2
 created: 2026-05-27
-updated: 2026-06-24
+updated: 2026-06-25
 branch: feat/time-gate-branding
 worktree: .worktree/feat-time-gate-branding
 ---
