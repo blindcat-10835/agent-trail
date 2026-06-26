@@ -10,7 +10,7 @@ import { Hono } from 'hono';
 import { loadConfig, getConfig } from './config/index.js';
 import { openDatabase, initSchema, closeDatabase } from './db/index.js';
 import { sourcesRoutes } from './api/sources.js';
-import { sessionsRoutes } from './api/sessions.js';
+import { sessionsRoutes, statsRoutes } from './api/sessions.js';
 import { turnsRoutes } from './api/turns.js';
 import { agentsRoutes } from './api/agents.js';
 import { starsRoutes } from './api/stars.js';
@@ -126,6 +126,8 @@ app.route('/', sourcesRoutes);
 app.route('/', starsRoutes);
 // Mount search before sessions so /sessions/:id/search matches before /sessions/:id
 app.route('/', searchRoutes);
+// statsRoutes must be before sessionsRoutes so /:id wildcard doesn't intercept
+app.route('/', statsRoutes);
 app.route('/', sessionsRoutes);
 app.route('/', turnsRoutes);
 app.route('/', agentsRoutes);

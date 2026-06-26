@@ -14,6 +14,8 @@ const definition: AgentToolDefinition = {
     subagents: false,
     cost: true,
     approvals: false,
+    skills: true,
+    toolcalls: true,
   },
   nav: [
     {
@@ -27,6 +29,18 @@ const definition: AgentToolDefinition = {
       href: (toolId) => `/${toolId}/sessions`,
       label: 'SES',
       title: 'Sessions',
+    },
+    {
+      id: 'skl',
+      href: (toolId) => `/${toolId}/skills`,
+      label: 'SKL',
+      title: 'Skills',
+    },
+    {
+      id: 'tcl',
+      href: (toolId) => `/${toolId}/toolcalls`,
+      label: 'TCL',
+      title: 'Tool Calls',
     },
   ],
   ui: {

@@ -578,3 +578,171 @@ export function normalizeSummary(value: string | null | undefined): string | nul
   if (!compact) return null;
   return compact.length > 180 ? `${compact.slice(0, 177)}...` : compact;
 }
+
+// ============================================================================
+// statsRoutes — Dedicated Hono instance for aggregated stats endpoints
+// Registered BEFORE sessionsRoutes in index.ts to avoid /:id wildcard conflict
+// ============================================================================
+
+export const statsRoutes = new Hono();
+
+interface SkillStatRow {
+  skill_name: string;
+  total_calls: number;
+  success_count: number;
+  error_count: number;
+  total_duration_ms: number;
+  source: string;
+  session_count: number;
+  avg_duration_ms: number;
+}
+
+interface SkillSessionSample {
+  session_id: string;
+  session_name: string | null;
+  display_title: string | null;
+  source: string;
+  status: string;
+  duration_ms: number | null;
+  input_summary: string | null;
+  error: string | null;
+  updated_at: string | null;
+}
+
+interface SkillsStatsResponse {
+  stats: SkillStatRow[];
+  total_skills: number;
+}
+
+interface ToolCallStatRow {
+  name: string;
+  category: string;
+  total_calls: number;
+  success_count: number;
+  error_count: number;
+  total_duration_ms: number;
+  session_count: number;
+  source: string;
+  avg_duration_ms: number;
+}
+
+interface ToolCallStatsResponse {
+  stats: ToolCallStatRow[];
+  total_tool_calls: number;
+}
+
+statsRoutes.get('/api/v1/sessions/skills-stats', (c) => {
+  const source = c.req.query('source');
+  const db = getDatabase();
+
+  const conditions: string[] = ["tc.name = 'skill'"];
+  const params: unknown[] = [];
+
+  if (source && source !== 'all') {
+    conditions.push('s.source = ?');
+    params.push(source);
+  }
+
+  const where = conditions.join(' AND ');
+
+  const stats = db.prepare(`
+    SELECT
+      json_extract(tc.input_json, '$.name') as skill_name,
+      COUNT(*) as total_calls,
+      SUM(CASE WHEN tc.status = 'success' THEN 1 ELSE 0 END) as success_count,
+      SUM(CASE WHEN tc.status = 'error' THEN 1 ELSE 0 END) as error_count,
+      COALESCE(SUM(tc.duration_ms), 0) as total_duration_ms,
+      s.source,
+      COUNT(DISTINCT tc.session_id) as session_count,
+      COALESCE(AVG(tc.duration_ms), 0) as avg_duration_ms
+    FROM tool_calls tc
+    JOIN sessions s ON s.id = tc.session_id
+    WHERE ${where}
+    GROUP BY skill_name, s.source
+    ORDER BY total_calls DESC
+  `).all(...params) as SkillStatRow[];
+
+  const total_skills = stats.reduce((sum, r) => sum + r.total_calls, 0);
+
+  return c.json({ stats, total_skills } as SkillsStatsResponse);
+});
+
+statsRoutes.get('/api/v1/sessions/skills-stats/:skillName', (c) => {
+  const skillName = c.req.param('skillName');
+  const source = c.req.query('source');
+  const db = getDatabase();
+
+  const conditions: string[] = [
+    "tc.name = 'skill'",
+    'json_extract(tc.input_json, \'$.name\') = ?',
+  ];
+  const params: unknown[] = [skillName];
+
+  if (source && source !== 'all') {
+    conditions.push('s.source = ?');
+    params.push(source);
+  }
+
+  const where = conditions.join(' AND ');
+
+  const sessions = db.prepare(`
+    SELECT
+      tc.session_id,
+      s.name as session_name,
+      ${sessionDisplayTitleExpr('s')} as display_title,
+      s.source,
+      tc.status,
+      tc.duration_ms,
+      CASE
+        WHEN json_extract(tc.input_json, '$.user_message') IS NOT NULL AND json_extract(tc.input_json, '$.user_message') != ''
+        THEN substr(json_extract(tc.input_json, '$.user_message'), 1, 200)
+        ELSE substr(json_extract(tc.input_json, '$.name'), 1, 200)
+      END as input_summary,
+      tc.error,
+      ${updatedAtExpr('s')} as updated_at
+    FROM tool_calls tc
+    JOIN sessions s ON s.id = tc.session_id
+    WHERE ${where}
+    ORDER BY tc.duration_ms DESC
+    LIMIT 200
+  `).all(...params) as SkillSessionSample[];
+
+  return c.json({ skill_name: skillName, sessions });
+});
+
+statsRoutes.get('/api/v1/sessions/toolcall-stats', (c) => {
+  const source = c.req.query('source');
+  const db = getDatabase();
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (source && source !== 'all') {
+    conditions.push('s.source = ?');
+    params.push(source);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const stats = db.prepare(`
+    SELECT
+      tc.name,
+      tc.category,
+      COUNT(*) as total_calls,
+      SUM(CASE WHEN tc.status = 'success' THEN 1 ELSE 0 END) as success_count,
+      SUM(CASE WHEN tc.status = 'error' THEN 1 ELSE 0 END) as error_count,
+      COALESCE(SUM(tc.duration_ms), 0) as total_duration_ms,
+      s.source,
+      COUNT(DISTINCT tc.session_id) as session_count,
+      COALESCE(AVG(tc.duration_ms), 0) as avg_duration_ms
+    FROM tool_calls tc
+    JOIN sessions s ON s.id = tc.session_id
+    ${where}
+    GROUP BY tc.name, tc.category, s.source
+    ORDER BY total_calls DESC
+  `).all(...params) as ToolCallStatRow[];
+
+  const total_tool_calls = stats.reduce((sum, r) => sum + r.total_calls, 0);
+
+  return c.json({ stats, total_tool_calls } as ToolCallStatsResponse);
+});

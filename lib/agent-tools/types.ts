@@ -75,6 +75,10 @@ export interface AgentToolCapabilities {
   cost: boolean
   /** Approval workflow visibility */
   approvals: boolean
+  /** Skill usage tracking and display */
+  skills: boolean
+  /** Tool call usage stats and display */
+  toolcalls: boolean
 }
 
 // ============================================================================
